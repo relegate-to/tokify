@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kriuchkov/tock/internal/app/insights"
 	"github.com/kriuchkov/tock/internal/app/localization"
 	"github.com/kriuchkov/tock/internal/config"
 	"github.com/kriuchkov/tock/internal/core/models"
@@ -226,4 +228,96 @@ func TestReportModelHandleKeyMsgScrollsViewport(t *testing.T) {
 	_, handled := model.handleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	require.True(t, handled)
 	assert.Positive(t, model.viewport.YOffset)
+}
+
+func TestRenderWeekBar(t *testing.T) {
+	model := initialCalendarModel(
+		&stubActivityResolver{},
+		&config.Config{},
+		timeutil.NewFormatter("24"),
+		localization.MustNew(localization.LanguageEnglish),
+		map[string]models.TagColor{"Alpha": {FG: "2"}, "Beta": {FG: "4"}},
+	)
+
+	t.Run("segmented width matches scaled day width", func(t *testing.T) {
+		bar := model.renderWeekBar(
+			2*time.Hour,
+			4*time.Hour,
+			[]insights.ProjectDuration{
+				{Name: "Alpha", Duration: 90 * time.Minute},
+				{Name: "Beta", Duration: 30 * time.Minute},
+			},
+		)
+		assert.Equal(t, 12, strings.Count(bar, "█"))
+	})
+
+	t.Run("no project breakdown uses solid fallback", func(t *testing.T) {
+		bar := model.renderWeekBar(2*time.Hour, 4*time.Hour, nil)
+		assert.Equal(t, 12, strings.Count(bar, "█"))
+	})
+
+	t.Run("very small duration uses single bar char", func(t *testing.T) {
+		bar := model.renderWeekBar(time.Minute, 10*time.Hour, nil)
+		assert.Contains(t, bar, barChar)
+	})
+
+	t.Run("zero duration returns empty", func(t *testing.T) {
+		bar := model.renderWeekBar(0, 10*time.Hour, nil)
+		assert.Empty(t, bar)
+	})
+}
+
+func TestEffectiveTagColor_ScopeSelectiveToggle(t *testing.T) {
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			TagColors: map[string]string{"Work": "2"},
+		},
+		Timewarrior: config.TimewarriorConfig{
+			UseTockTagColorsWeeklyActivity: true,
+		},
+	}
+
+	model := initialCalendarModel(
+		&stubActivityResolver{},
+		cfg,
+		timeutil.NewFormatter("24"),
+		localization.MustNew(localization.LanguageEnglish),
+		map[string]models.TagColor{"Work": {FG: "196", BG: "0"}},
+	)
+
+	weekly, ok := model.effectiveTagColor("Work", tagColorScopeWeekly)
+	require.True(t, ok)
+	assert.Equal(t, "2", string(weekly.FG))
+	assert.Empty(t, string(weekly.BG))
+
+	calendar, ok := model.effectiveTagColor("Work", tagColorScopeCalendar)
+	require.True(t, ok)
+	assert.Equal(t, "196", string(calendar.FG))
+	assert.Equal(t, "0", string(calendar.BG))
+}
+
+func TestEffectiveTagColor_GlobalToggleAppliesToAllScopes(t *testing.T) {
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			TagColors: map[string]string{"Work": "3"},
+		},
+		Timewarrior: config.TimewarriorConfig{
+			UseTockTagColors: true,
+		},
+	}
+
+	model := initialCalendarModel(
+		&stubActivityResolver{},
+		cfg,
+		timeutil.NewFormatter("24"),
+		localization.MustNew(localization.LanguageEnglish),
+		map[string]models.TagColor{"Work": {FG: "196", BG: "0"}},
+	)
+
+	for _, scope := range []tagColorScope{tagColorScopeCalendar, tagColorScopeWeekly, tagColorScopeTopProject} {
+		ts, ok := model.effectiveTagColor("Work", scope)
+		require.True(t, ok)
+		assert.Equal(t, "3", string(ts.FG))
+		assert.Empty(t, string(ts.BG))
+	}
 }
