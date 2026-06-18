@@ -1,0 +1,11 @@
+backend: file
+check_updates: true
+export:
+    ical:
+        file_name: custom_export_name.ics
+file:
+    path: test_data/test_tock_data.txt
+last_update_check: 2026-05-14T09:25:38.596148+03:00
+theme:
+    name: default
+time_format: 12

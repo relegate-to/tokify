@@ -1,0 +1,167 @@
+# Tock Configuration File
+# Default location: ~/.config/tock/tock.yaml
+#
+# You can override any setting using environment variables:
+# TOCK_BACKEND=timewarrior
+# TOCK_FILE_PATH=/custom/path/tock.txt
+# TOCK_TODOTXT_PATH=/custom/path/todo.txt
+# TOCK_TIMEWARRIOR_DATA_PATH=/custom/timewarrior/data
+# TOCK_TIMEWARRIOR_USE_TOCK_TAG_COLORS=true
+# TOCK_TIMEWARRIOR_USE_TOCK_TAG_COLORS_CALENDAR=true
+# TOCK_TIMEWARRIOR_USE_TOCK_TAG_COLORS_WEEKLY_ACTIVITY=true
+# TOCK_TIMEWARRIOR_USE_TOCK_TAG_COLORS_TOP_PROJECTS=true
+# TOCK_TIME_FORMAT=12
+# TOCK_CHECK_UPDATES=false
+# TOCK_WORKING_HOURS_ENABLED=true
+# TOCK_WORKING_HOURS_STOP_AT=17:30
+# TOCK_WORKING_HOURS_WEEKDAYS=mon,tue,wed,thu,fri
+
+# Storage backend: file, todotxt, timewarrior, or sqlite
+backend: file
+
+# File backend configuration
+file:
+  # Path to the activity log file
+  # Default: ~/.tock.txt
+  path: ~/.tock.txt
+
+# TodoTXT backend configuration
+todotxt:
+  # Path to TodoTXT activity file
+  # Default: ~/.tock.todo.txt
+  # Tock stores exact timestamps in tock_* key:value extensions.
+  path: ~/.tock.todo.txt
+
+# Sqlite backend configuration
+sqlite:
+  # Path to sqlite database file
+  # Default: ~/.tock.db
+  path: ~/.tock.db
+
+# Timewarrior backend configuration
+timewarrior:
+  # Path to timewarrior data directory
+  # Default: ~/.timewarrior/data
+  data_path: ~/.timewarrior/data
+
+  # Optional: explicit path to timewarrior.cfg
+  # When set, this path is used directly instead of the auto-detected locations.
+  # Auto-detection tries (in order):
+  #   1. <data_path>/../timewarrior.cfg  (classic ~/.timewarrior layout)
+  #   2. ~/.config/timewarrior/timewarrior.cfg  (XDG layout)
+  # config_path: ~/.timewarrior/timewarrior.cfg
+
+  # Optional: ignore TimeWarrior tag colors from timewarrior.cfg and use
+  # tock `theme.tag_colors` values instead (affects calendar details,
+  # weekly activity bars, and top projects bars).
+  # Default: false
+  # use_tock_tag_colors: true
+
+  # Optional: selective overrides (if global use_tock_tag_colors is false).
+  # Each flag enables tock `theme.tag_colors` only for that section.
+  # use_tock_tag_colors_calendar: true
+  # use_tock_tag_colors_weekly_activity: true
+  # use_tock_tag_colors_top_projects: true
+
+# Check for updates
+# Default: true
+check_updates: true
+
+# Working hours auto-stop
+# When enabled, tock stops the latest running activity at stop_at
+# the next time you run a command after that cutoff.
+working_hours:
+  # Enable or disable working-hours auto-stop
+  # Default: false
+  enabled: false
+
+  # Local cutoff time for automatic stop
+  # Default: empty (disabled until set)
+  # stop_at: "17:30"
+
+  # Comma-separated weekdays when auto-stop is active
+  # Default: mon,tue,wed,thu,fri
+  weekdays: "mon,tue,wed,thu,fri"
+
+# Export settings
+export:
+  ical:
+    # Filename for bulk iCal export
+    # Default: tock_export.ics
+    file_name: "tock_export.ics"
+
+# Calendar view configuration
+calendar:
+  # Format for duration display (time spent)
+  # Uses Go's standard time formatting syntax, or the special keyword "decimal" / "decimal:N".
+  # https://github.com/golang/go/blob/go1.25.0/src/time/format.go#L132
+  # Reference time key: Mon Jan 2 15:04:05 -0700 MST 2006
+  # Common placeholders:
+  # 15 - Hour (24-hour)
+  # 03 - Hour (12-hour)
+  # 04 - Minute
+  # 05 - Second
+  # Example: time_spent_format: "15:04" results in "01:16"
+  # Example: time_spent_format: "15:04:05" results in "01:16:00"
+  # Note: Since this uses standard time formatting, durations >= 24 hours 
+  # will wrap around (e.g. 25h becomes 01:00).
+  #
+  # Special values:
+  #   "decimal"   — decimal hours, 2 decimal places: 1h15m → "1.25", 1h20m → "1.33"
+  #   "decimal:N" — decimal hours with N decimal places (0 = integer, 4 = extended)
+  #                 e.g. "decimal:0" → "1", "decimal:4" → "1.3333"
+  # time_spent_format: "15:04"
+
+  # Format for start time display.
+  # Uses Go's standard time formatting syntax.
+  # Defaults to global time_format (24-hour: "15:04", 12-hour: "03:04 PM")
+  # time_start_format: "15:04"
+
+  # Format for end time display (appended after duration).
+  # Uses Go's standard time formatting syntax.
+  # This string is appended directly, so include any separators you want.
+  # Defaults to " • " + global time_format
+  # Example: " 🏁 15:04" results in " ... 01:30 🏁 17:00"
+  # time_end_format: " • 15:04"
+
+  # Format for total daily duration.
+  # Defaults to time_spent_format.
+  # Also supports "decimal" and "decimal:N" (see time_spent_format above).
+  # time_total_format: "15:04"
+
+  # Align duration to the left side
+  # true:  04:01 Total
+  #        02:13 Project
+  # false: Total: 04:01
+  #        - Project: 02:13
+  # Default: false
+  # align_duration_left: false
+
+# Time format configuration
+# time_format: "24"  # 24-hour format (default): 15:04
+# time_format: "12"  # 12-hour format: 03:04 PM
+
+# Theme configuration
+theme:
+  # Theme name: dark, light, or custom
+  # Default: dark
+  name: dark
+  
+  # Custom colors (only used if name is "custom")
+  # Can be hex codes (#ff0000) or ANSI color numbers (1-255)
+  # primary: "63"
+  # secondary: "196"
+  # text: "255"
+  # sub_text: "248"
+  # faint: "240"
+  # highlight: "214"
+  # tag: "34"
+
+  # Per-tag foreground colors (all backends).
+  # Keys are tag names; values are hex codes or ANSI color numbers.
+  # When using the TimeWarrior backend, colors from timewarrior.cfg
+  # (color.tag.*) are merged on top of these values automatically.
+  # tag_colors:
+  #   work: "2"
+  #   personal: "196"
+  #   urgent: "#FF5F00"

@@ -1,0 +1,14 @@
+testfile.bartib
+coverage.out
+coverage.html
+demo_activities.txt
+demo/demo.cast
+demo/demo_data.txt
+
+.idea/
+.vscode/
+vendor/
+bin/
+.dev/
+.claude/
+.DS_Store
