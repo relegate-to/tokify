@@ -1,26 +1,88 @@
-html {
-    background-color: rgba(27, 38, 54, 1);
-    text-align: center;
-    color: white;
+/* Design tokens — Toki
+ *
+ * Subject: a developer's time logbook, kept open while they work.
+ * Reference world: chart room / chronometer. Pale cool paper, midnight ink,
+ * brass for the one thing that needs your attention (something running).
+ */
+
+:root {
+    /* Ground */
+    --paper:        #E5E8E2;
+    --paper-sunk:   #DBDFD9;
+    --paper-edge:   #C7CCC1;
+
+    /* Ink */
+    --ink:          #11192A;
+    --ink-soft:     #3D4658;
+    --ink-faint:    #6F7785;
+    --whisper:      #8E948A;
+
+    /* Rules and divisions */
+    --rule:         #C4C8BE;
+    --rule-strong:  #8E948A;
+
+    /* The single accent — brass on a chronometer's dial */
+    --brass:        #B68B3C;
+    --brass-deep:   #8B6C2D;
+
+    /* Reserved for destructive only */
+    --mark:         #8E2E1C;
+
+    /* Type */
+    --display: 'Newsreader', 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
+    --body:    'Inter Tight', 'Inter', -apple-system, system-ui, sans-serif;
+    --mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+    /* Scale */
+    --t-now-desc:   2.25rem;   /* the italic headline */
+    --t-eyebrow:    0.72rem;   /* small-caps */
+    --t-body:       0.95rem;
+    --t-mono-now:   1.55rem;
+    --t-mono-row:   0.92rem;
+
+    /* Rhythm */
+    --gutter:       2rem;
+    --row-gap:      0.6rem;
+    --window-pad:   2.25rem 2.5rem 2rem;
 }
 
-body {
+html, body {
     margin: 0;
-    color: white;
-    font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
-    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
+    padding: 0;
+    height: 100%;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
 }
 
-@font-face {
-    font-family: "Nunito";
-    font-style: normal;
-    font-weight: 400;
-    src: local(""),
-    url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
+#root {
+    min-height: 100vh;
 }
 
-#app {
-    height: 100vh;
-    text-align: center;
+button,
+input {
+    font: inherit;
+    color: inherit;
+}
+
+::selection {
+    background: var(--brass);
+    color: var(--paper);
+}
+
+:focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
 }

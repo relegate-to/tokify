@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"github.com/go-faster/errors"
 
@@ -9,8 +11,9 @@ import (
 	"github.com/kriuchkov/tock/internal/core/models"
 )
 
-// App is the Wails-bound application surface. It owns a tock Runtime so the
-// desktop UI calls the same services the `tock` CLI does.
+// App is the Wails-bound surface for the Toki desktop window. It owns a tock
+// Runtime so the GUI talks to the same services and the same data file the
+// `tock` CLI does — there is no parallel implementation of any business rule.
 type App struct {
 	ctx context.Context
 	rt  *runtime.Runtime
@@ -22,23 +25,109 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-
 	rt, err := runtime.Load(ctx, runtime.Request{})
 	if err != nil {
-		// Surface as nil rt; methods below will return a typed error to the UI.
 		return
 	}
 	a.rt = rt
 }
 
-// ListRecent returns up to `limit` most recent activities. The hello-world
-// integration point: it proves the desktop app talks to tock's services.
-func (a *App) ListRecent(limit int) ([]models.Activity, error) {
+func (a *App) requireRuntime() error {
 	if a.rt == nil {
-		return nil, errors.New("tock runtime is not initialized")
+		return errors.New("toki couldn't reach the tock data file")
 	}
-	if limit <= 0 {
-		limit = 20
+	return nil
+}
+
+// GetRunning returns the activity currently being tracked, or nil if nothing
+// is running. The window's hero state.
+func (a *App) GetRunning() (*models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
 	}
-	return a.rt.ActivityService.GetRecent(a.ctx, limit)
+	running := true
+	acts, err := a.rt.ActivityService.List(a.ctx, models.ActivityFilter{IsRunning: &running})
+	if err != nil {
+		return nil, err
+	}
+	if len(acts) == 0 {
+		return nil, nil
+	}
+	// Pick the latest start time in case multiple slipped through.
+	latest := acts[0]
+	for _, act := range acts[1:] {
+		if act.StartTime.After(latest.StartTime) {
+			latest = act
+		}
+	}
+	return &latest, nil
+}
+
+// ListToday returns activities that started today, oldest first — the order
+// you read a logbook.
+func (a *App) ListToday() ([]models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	to := from.Add(24 * time.Hour)
+	acts, err := a.rt.ActivityService.List(a.ctx, models.ActivityFilter{FromDate: &from, ToDate: &to})
+	if err != nil {
+		return nil, err
+	}
+	return acts, nil
+}
+
+// Start begins a new activity. Description is required; project is optional.
+// Starting a new one stops anything already running (tock's own behavior).
+func (a *App) Start(description, project string) (*models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return nil, errors.New("describe what you're working on")
+	}
+	return a.rt.ActivityService.Start(a.ctx, models.StartActivityRequest{
+		Description: description,
+		Project:     strings.TrimSpace(project),
+	})
+}
+
+// Stop ends the running activity.
+func (a *App) Stop() (*models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	return a.rt.ActivityService.Stop(a.ctx, models.StopActivityRequest{})
+}
+
+// Projects returns distinct project names seen recently — feeds the small-caps
+// hint chip below the input.
+func (a *App) Projects() ([]string, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	recent, err := a.rt.ActivityService.GetRecent(a.ctx, 100)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, act := range recent {
+		p := strings.TrimSpace(act.Project)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+		if len(out) >= 8 {
+			break
+		}
+	}
+	return out, nil
 }
