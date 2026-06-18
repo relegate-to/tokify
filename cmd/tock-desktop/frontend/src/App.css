@@ -23,6 +23,12 @@
     -webkit-app-region: drag;
     user-select: none;
     z-index: 100;
+    background: linear-gradient(
+        to bottom,
+        var(--paper) 0%,
+        var(--paper) 65%,
+        rgba(229, 232, 226, 0) 100%
+    );
 }
 
 /* Reserve the titlebar's vertical space inside the centered column. */
@@ -339,6 +345,71 @@
     font-style: italic;
     color: var(--ink-faint);
     padding: 0.75rem 0;
+}
+
+/* ── Earlier — days behind today ──────────────────────────────────────── */
+
+.earlier {
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--rule-strong);
+}
+
+.earlier__header {
+    margin-bottom: -0.25rem;
+}
+
+.earlier__title {
+    font-family: var(--body);
+    font-size: var(--t-eyebrow);
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0;
+}
+
+.day {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.day__header {
+    position: sticky;
+    top: var(--titlebar-h);
+    z-index: 5;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 0.5rem 0 0.5rem;
+    margin-bottom: 0.2rem;
+    border-bottom: 1px solid var(--rule);
+    background: linear-gradient(
+        to bottom,
+        var(--paper) 0%,
+        var(--paper) 80%,
+        rgba(229, 232, 226, 0.92) 100%
+    );
+}
+
+.day__label {
+    font-family: var(--body);
+    font-size: var(--t-eyebrow);
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0;
+}
+
+.day__total {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
 }
 
 /* ── Notice (errors, etc) ─────────────────────────────────────────────── */

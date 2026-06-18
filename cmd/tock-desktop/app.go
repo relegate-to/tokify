@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -101,6 +102,28 @@ func (a *App) Stop() (*models.Activity, error) {
 		return nil, err
 	}
 	return a.rt.ActivityService.Stop(a.ctx, models.StopActivityRequest{})
+}
+
+// ListRecent returns up to `limit` activities, newest start time first,
+// without deduplication — the historical stream the logbook browses.
+func (a *App) ListRecent(limit int) ([]models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 200
+	}
+	acts, err := a.rt.ActivityService.List(a.ctx, models.ActivityFilter{})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(acts, func(i, j int) bool {
+		return acts[i].StartTime.After(acts[j].StartTime)
+	})
+	if len(acts) > limit {
+		acts = acts[:limit]
+	}
+	return acts, nil
 }
 
 // Projects returns distinct project names seen recently — feeds the small-caps

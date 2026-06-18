@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import {
     GetRunning,
+    ListRecent,
     ListToday,
     Projects,
     Start,
@@ -17,15 +18,17 @@ const TICK_MS = 1_000;
 function App() {
     const [running, setRunning] = useState<Activity | null>(null);
     const [today, setToday] = useState<Activity[]>([]);
+    const [recent, setRecent] = useState<Activity[]>([]);
     const [projects, setProjects] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [tick, setTick] = useState(0);
 
     const refresh = () => {
-        Promise.all([GetRunning(), ListToday(), Projects()])
-            .then(([r, t, p]) => {
+        Promise.all([GetRunning(), ListToday(), ListRecent(200), Projects()])
+            .then(([r, t, all, p]) => {
                 setRunning((r as Activity) ?? null);
                 setToday((t as Activity[]) ?? []);
+                setRecent((all as Activity[]) ?? []);
                 setProjects(p ?? []);
                 setError(null);
             })
@@ -82,6 +85,8 @@ function App() {
             {error && <div className="notice">{error}</div>}
 
             <Logbook activities={today} totalMs={todayTotal} />
+
+            <EarlierLog activities={recent} />
         </div>
     );
 }
@@ -219,45 +224,138 @@ function Logbook({
                 <p className="logbook__empty">Nothing tracked today.</p>
             ) : (
                 <ol className="logbook__list">
-                    {activities.map((a, i) => {
-                        const start = new Date(a.start_time as any);
-                        const end = a.end_time ? new Date(a.end_time as any) : null;
-                        const ms = (end?.getTime() ?? Date.now()) - start.getTime();
-                        const isRunning = !end;
-                        return (
-                            <li
-                                key={`${a.start_time}-${i}`}
-                                className="logbook__row"
-                            >
-                                <span className="logbook__time">{formatClock(start)}</span>
-                                <div className="logbook__entry">
-                                    {a.project && (
-                                        <span
-                                            className={`logbook__project${
-                                                isRunning ? ' logbook__project--running' : ''
-                                            }`}
-                                        >
-                                            {a.project}
-                                        </span>
-                                    )}
-                                    <span className="logbook__desc">
-                                        {a.description || 'No description'}
-                                    </span>
-                                </div>
-                                <span
-                                    className={`logbook__duration${
-                                        isRunning ? ' logbook__duration--running' : ''
-                                    }`}
-                                >
-                                    {formatDuration(ms)}
-                                </span>
-                            </li>
-                        );
-                    })}
+                    {activities.map((a, i) => (
+                        <LogRow key={`${a.start_time}-${i}`} activity={a} />
+                    ))}
                 </ol>
             )}
         </section>
     );
+}
+
+function LogRow({ activity }: { activity: Activity }) {
+    const start = new Date(activity.start_time as any);
+    const end = activity.end_time ? new Date(activity.end_time as any) : null;
+    const ms = (end?.getTime() ?? Date.now()) - start.getTime();
+    const isRunning = !end;
+    return (
+        <li className="logbook__row">
+            <span className="logbook__time">{formatClock(start)}</span>
+            <div className="logbook__entry">
+                {activity.project && (
+                    <span
+                        className={`logbook__project${
+                            isRunning ? ' logbook__project--running' : ''
+                        }`}
+                    >
+                        {activity.project}
+                    </span>
+                )}
+                <span className="logbook__desc">
+                    {activity.description || 'No description'}
+                </span>
+            </div>
+            <span
+                className={`logbook__duration${
+                    isRunning ? ' logbook__duration--running' : ''
+                }`}
+            >
+                {formatDuration(ms)}
+            </span>
+        </li>
+    );
+}
+
+function EarlierLog({ activities }: { activities: Activity[] }) {
+    const groups = useMemo(() => groupByLocalDate(activities), [activities]);
+    if (groups.length === 0) return null;
+    return (
+        <section className="earlier" aria-label="Earlier activities">
+            <header className="earlier__header">
+                <h2 className="earlier__title">Earlier</h2>
+            </header>
+            {groups.map((g) => (
+                <DayGroup key={g.dateKey} day={g.date} activities={g.items} />
+            ))}
+        </section>
+    );
+}
+
+function DayGroup({
+    day,
+    activities,
+}: {
+    day: Date;
+    activities: Activity[];
+}) {
+    const totalMs = activities.reduce((sum, a) => {
+        const startMs = new Date(a.start_time as any).getTime();
+        const endMs = a.end_time
+            ? new Date(a.end_time as any).getTime()
+            : startMs;
+        return sum + (endMs - startMs);
+    }, 0);
+    return (
+        <div className="day">
+            <header className="day__header">
+                <h3 className="day__label">{dayLabel(day)}</h3>
+                <span className="day__total">{formatTotal(totalMs)}</span>
+            </header>
+            <ol className="logbook__list">
+                {activities.map((a, i) => (
+                    <LogRow key={`${a.start_time}-${i}`} activity={a} />
+                ))}
+            </ol>
+        </div>
+    );
+}
+
+function startOfDay(d: Date) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function groupByLocalDate(
+    activities: Activity[],
+): { dateKey: string; date: Date; items: Activity[] }[] {
+    const today = startOfDay(new Date()).getTime();
+    const buckets = new Map<string, { date: Date; items: Activity[] }>();
+
+    // Activities arrive newest-first from the server; we want oldest entries
+    // within each day at the top so a day reads chronologically downward.
+    for (const a of activities) {
+        const start = new Date(a.start_time as any);
+        const dayStart = startOfDay(start);
+        if (dayStart.getTime() >= today) continue;
+        const key = `${dayStart.getFullYear()}-${dayStart.getMonth()}-${dayStart.getDate()}`;
+        const existing = buckets.get(key);
+        if (existing) {
+            existing.items.unshift(a);
+        } else {
+            buckets.set(key, { date: dayStart, items: [a] });
+        }
+    }
+
+    return Array.from(buckets.entries())
+        .map(([dateKey, value]) => ({ dateKey, ...value }))
+        .sort((a, b) => b.date.getTime() - a.date.getTime());
+}
+
+function dayLabel(d: Date) {
+    const today = startOfDay(new Date()).getTime();
+    const diffDays = Math.round((today - d.getTime()) / (24 * 60 * 60 * 1000));
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) {
+        return d
+            .toLocaleDateString(undefined, { weekday: 'long' })
+            .toLowerCase();
+    }
+    return d
+        .toLocaleDateString(undefined, {
+            weekday: 'short',
+            day: '2-digit',
+            month: 'short',
+        })
+        .toLowerCase();
 }
 
 function pad(n: number) {

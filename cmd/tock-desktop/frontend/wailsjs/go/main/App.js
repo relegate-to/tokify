@@ -6,6 +6,10 @@ export function GetRunning() {
   return window['go']['main']['App']['GetRunning']();
 }
 
+export function ListRecent(arg1) {
+  return window['go']['main']['App']['ListRecent'](arg1);
+}
+
 export function ListToday() {
   return window['go']['main']['App']['ListToday']();
 }
