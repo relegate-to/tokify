@@ -48,10 +48,51 @@
     -webkit-app-region: drag;
 }
 
+.masthead__left {
+    display: flex;
+    align-items: baseline;
+    gap: 1.25rem;
+}
+
 .masthead__name,
-.masthead__date {
+.masthead__date,
+.masthead__nav-item {
     --wails-draggable: no-drag;
     -webkit-app-region: no-drag;
+}
+
+.masthead__nav {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+}
+
+.masthead__nav-item {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: var(--body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--whisper);
+    transition: color 120ms ease;
+}
+
+.masthead__nav-item:hover {
+    color: var(--ink-soft);
+}
+
+.masthead__nav-item--active {
+    color: var(--brass-deep);
+}
+
+.masthead__sep {
+    color: var(--rule-strong);
+    font-family: var(--mono);
+    font-size: 0.7rem;
 }
 
 .masthead__name {
@@ -208,36 +249,6 @@
     align-items: baseline;
     font-size: 0.8rem;
     color: var(--ink-faint);
-}
-
-.starter__project-chips {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.starter__chip {
-    background: none;
-    border: 1px solid var(--rule);
-    padding: 0.18rem 0.55rem;
-    cursor: pointer;
-    font-family: var(--body);
-    font-size: 0.66rem;
-    font-weight: 600;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--ink-soft);
-    transition: color 120ms ease, border-color 120ms ease;
-}
-
-.starter__chip:hover {
-    color: var(--brass-deep);
-    border-color: var(--brass);
-}
-
-.starter__chip--selected {
-    color: var(--brass-deep);
-    border-color: var(--brass);
 }
 
 .starter__hint {
@@ -410,6 +421,239 @@
     font-size: 0.82rem;
     color: var(--ink-faint);
     font-variant-numeric: tabular-nums;
+}
+
+/* ── ProjectField — typeable with chip shortcuts ──────────────────────── */
+
+.project-field {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+        "label input"
+        "label chips";
+    column-gap: 0.6rem;
+    row-gap: 0.4rem;
+    align-items: baseline;
+}
+
+.project-field__label {
+    grid-area: label;
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 1.05rem;
+    color: var(--ink-faint);
+}
+
+.project-field__input {
+    grid-area: input;
+    background: transparent;
+    border: none;
+    border-bottom: 1px dashed var(--rule-strong);
+    outline: none;
+    padding: 0.15rem 0;
+    font-family: var(--body);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink);
+    transition: border-color 120ms ease;
+}
+
+.project-field__input::placeholder {
+    color: var(--ink-faint);
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: none;
+    font-style: italic;
+    font-family: var(--display);
+}
+
+.project-field__input:focus {
+    border-bottom-color: var(--brass);
+}
+
+.project-field__chips {
+    grid-area: chips;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.project-field__chip {
+    background: none;
+    border: 1px solid var(--rule);
+    padding: 0.15rem 0.5rem;
+    cursor: pointer;
+    font-family: var(--body);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    transition: color 120ms ease, border-color 120ms ease;
+}
+
+.project-field__chip:hover {
+    color: var(--brass-deep);
+    border-color: var(--brass);
+}
+
+.project-field__chip--active {
+    color: var(--brass-deep);
+    border-color: var(--brass);
+}
+
+/* ── History — search and rows ────────────────────────────────────────── */
+
+.history {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.search {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--ink-faint);
+}
+
+.search:focus-within {
+    border-bottom-color: var(--brass);
+}
+
+.search__caret {
+    font-family: var(--mono);
+    color: var(--ink-faint);
+    font-size: 0.95rem;
+}
+
+.search__input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0;
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 1.3rem;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+}
+
+.search__input::placeholder {
+    color: var(--ink-faint);
+    font-style: italic;
+}
+
+.search__count {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Hover affordance for editable rows */
+.logbook__row--editable {
+    cursor: text;
+    transition: background-color 120ms ease;
+}
+
+.logbook__row--editable:hover {
+    background: var(--paper-sunk);
+    box-shadow:
+        -1rem 0 0 var(--paper-sunk),
+        1rem 0 0 var(--paper-sunk);
+}
+
+.logbook__row--editing {
+    background: var(--paper-sunk);
+    box-shadow:
+        -1rem 0 0 var(--paper-sunk),
+        1rem 0 0 var(--paper-sunk);
+    padding: 0.75rem 0;
+}
+
+.row-edit__desc {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--rule-strong);
+    outline: none;
+    padding: 0.1rem 0;
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 1.05rem;
+    color: var(--ink);
+    width: 100%;
+}
+
+.row-edit__desc:focus {
+    border-bottom-color: var(--brass);
+}
+
+.row-edit__actions {
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
+    margin-top: 0.65rem;
+    flex-wrap: wrap;
+}
+
+.row-edit__save,
+.row-edit__cancel,
+.row-edit__remove {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: var(--body);
+    font-size: var(--t-eyebrow);
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border-bottom: 1px solid transparent;
+    transition: border-color 120ms ease, color 120ms ease;
+}
+
+.row-edit__save {
+    color: var(--brass-deep);
+}
+
+.row-edit__save:hover {
+    border-bottom-color: var(--brass);
+}
+
+.row-edit__cancel:hover {
+    color: var(--ink);
+    border-bottom-color: var(--ink-faint);
+}
+
+.row-edit__remove {
+    color: var(--mark);
+    margin-left: auto;
+}
+
+.row-edit__remove:hover {
+    border-bottom-color: var(--mark);
+}
+
+.row-edit__remove--confirm {
+    margin-left: 0.55rem;
+}
+
+.row-edit__confirm {
+    margin-left: auto;
+    display: flex;
+    align-items: baseline;
+    gap: 0.55rem;
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 0.9rem;
+    color: var(--mark);
 }
 
 /* ── Notice (errors, etc) ─────────────────────────────────────────────── */

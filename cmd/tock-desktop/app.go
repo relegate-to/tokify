@@ -104,6 +104,34 @@ func (a *App) Stop() (*models.Activity, error) {
 	return a.rt.ActivityService.Stop(a.ctx, models.StopActivityRequest{})
 }
 
+// UpdateActivity edits an existing activity's description and project in
+// place. The activity is identified by its StartTime; the repo upserts by
+// the same key, so passing the original StartTime preserves identity.
+func (a *App) UpdateActivity(orig models.Activity, description, project string) (*models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return nil, errors.New("describe what you were working on")
+	}
+	updated := orig
+	updated.Description = description
+	updated.Project = strings.TrimSpace(project)
+	if err := a.rt.ActivityRepo.Save(a.ctx, updated); err != nil {
+		return nil, err
+	}
+	return &updated, nil
+}
+
+// RemoveActivity deletes an activity.
+func (a *App) RemoveActivity(orig models.Activity) error {
+	if err := a.requireRuntime(); err != nil {
+		return err
+	}
+	return a.rt.ActivityService.Remove(a.ctx, orig)
+}
+
 // ListRecent returns up to `limit` activities, newest start time first,
 // without deduplication — the historical stream the logbook browses.
 func (a *App) ListRecent(limit int) ([]models.Activity, error) {

@@ -18,10 +18,18 @@ export function Projects() {
   return window['go']['main']['App']['Projects']();
 }
 
+export function RemoveActivity(arg1) {
+  return window['go']['main']['App']['RemoveActivity'](arg1);
+}
+
 export function Start(arg1, arg2) {
   return window['go']['main']['App']['Start'](arg1, arg2);
 }
 
 export function Stop() {
   return window['go']['main']['App']['Stop']();
+}
+
+export function UpdateActivity(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateActivity'](arg1, arg2, arg3);
 }

@@ -10,6 +10,10 @@ export function ListToday():Promise<Array<models.Activity>>;
 
 export function Projects():Promise<Array<string>>;
 
+export function RemoveActivity(arg1:models.Activity):Promise<void>;
+
 export function Start(arg1:string,arg2:string):Promise<models.Activity>;
 
 export function Stop():Promise<models.Activity>;
+
+export function UpdateActivity(arg1:models.Activity,arg2:string,arg3:string):Promise<models.Activity>;

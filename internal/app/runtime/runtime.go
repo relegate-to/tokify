@@ -39,6 +39,7 @@ type contextKey struct{}
 
 type Runtime struct {
 	ActivityService ports.ActivityResolver
+	ActivityRepo    ports.ActivityRepository
 	NotesRepository ports.NotesRepository
 	Backend         string
 	DataPath        string
@@ -87,6 +88,7 @@ func Load(ctx context.Context, req Request) (*Runtime, error) {
 
 	rt := &Runtime{
 		ActivityService: activity.NewService(repo, notesRepo),
+		ActivityRepo:    repo,
 		NotesRepository: notesRepo,
 		Backend:         backend,
 		DataPath:        filePath,
