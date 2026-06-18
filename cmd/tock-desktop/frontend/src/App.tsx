@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import './App.css';
+import {
+    Pencil,
+    Play,
+    Search,
+    Square,
+    Trash2,
+    X,
+    Check,
+} from 'lucide-react';
+import { toast } from 'sonner';
+
 import {
     GetRunning,
     ListRecent,
@@ -12,7 +22,16 @@ import {
 } from '../wailsjs/go/main/App';
 import { models } from '../wailsjs/go/models';
 
-type Activity = models.Activity & { duration?: string };
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { Toaster } from '@/components/ui/sonner';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+type Activity = models.Activity;
 type View = 'now' | 'history';
 
 const REFRESH_MS = 30_000;
@@ -20,13 +39,23 @@ const TICK_MS = 1_000;
 const EARLIER_DAYS = 7;
 const HISTORY_LIMIT = 500;
 
+const dragStyle = {
+    // Wails draggable hint and webkit equivalent
+    ['--wails-draggable' as any]: 'drag',
+    WebkitAppRegion: 'drag',
+} as React.CSSProperties;
+
+const noDragStyle = {
+    ['--wails-draggable' as any]: 'no-drag',
+    WebkitAppRegion: 'no-drag',
+} as React.CSSProperties;
+
 function App() {
     const [view, setView] = useState<View>('now');
     const [running, setRunning] = useState<Activity | null>(null);
     const [today, setToday] = useState<Activity[]>([]);
     const [recent, setRecent] = useState<Activity[]>([]);
     const [projects, setProjects] = useState<string[]>([]);
-    const [error, setError] = useState<string | null>(null);
     const [, setTick] = useState(0);
 
     const refresh = () => {
@@ -41,9 +70,8 @@ function App() {
                 setToday((t as Activity[]) ?? []);
                 setRecent((all as Activity[]) ?? []);
                 setProjects(p ?? []);
-                setError(null);
             })
-            .catch((e) => setError(String(e)));
+            .catch((e) => toast.error(String(e)));
     };
 
     useEffect(() => {
@@ -58,55 +86,51 @@ function App() {
         return () => clearInterval(id);
     }, [running]);
 
+    const handleStart = (description: string, project: string) =>
+        Start(description, project).then(refresh).catch((e) => toast.error(String(e)));
+    const handleStop = () =>
+        Stop().then(refresh).catch((e) => toast.error(String(e)));
+    const handleUpdate = (orig: Activity, description: string, project: string) =>
+        UpdateActivity(orig, description, project)
+            .then(refresh)
+            .catch((e) => toast.error(String(e)));
+    const handleRemove = (orig: Activity) =>
+        RemoveActivity(orig).then(refresh).catch((e) => toast.error(String(e)));
+
     return (
-        <div className="app">
-            <div className="titlebar" aria-hidden />
+        <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
             <Masthead view={view} onView={setView} />
-
-            {error && <div className="notice">{error}</div>}
-
-            {view === 'now' ? (
-                <NowView
-                    running={running}
-                    today={today}
-                    recent={recent}
-                    projects={projects}
-                    onStart={(d, p) =>
-                        Start(d, p).then(refresh).catch((e) => setError(String(e)))
-                    }
-                    onStop={() =>
-                        Stop().then(refresh).catch((e) => setError(String(e)))
-                    }
-                />
-            ) : (
-                <HistoryView
-                    activities={recent}
-                    projects={projects}
-                    onUpdate={(orig, d, p) =>
-                        UpdateActivity(orig, d, p)
-                            .then(refresh)
-                            .catch((e) => setError(String(e)))
-                    }
-                    onRemove={(orig) =>
-                        RemoveActivity(orig)
-                            .then(refresh)
-                            .catch((e) => setError(String(e)))
-                    }
-                />
-            )}
+            <main className="flex-1 overflow-y-auto">
+                <div className="mx-auto w-full max-w-3xl px-8 pb-12 pt-6">
+                    {view === 'now' ? (
+                        <NowView
+                            running={running}
+                            today={today}
+                            recent={recent}
+                            projects={projects}
+                            onStart={handleStart}
+                            onStop={handleStop}
+                            onUpdate={handleUpdate}
+                            onRemove={handleRemove}
+                        />
+                    ) : (
+                        <HistoryView
+                            activities={recent}
+                            projects={projects}
+                            onUpdate={handleUpdate}
+                            onRemove={handleRemove}
+                        />
+                    )}
+                </div>
+            </main>
+            <Toaster position="bottom-right" richColors closeButton />
         </div>
     );
 }
 
 /* ── Masthead ──────────────────────────────────────────────────────────── */
 
-function Masthead({
-    view,
-    onView,
-}: {
-    view: View;
-    onView: (v: View) => void;
-}) {
+function Masthead({ view, onView }: { view: View; onView: (v: View) => void }) {
     const date = new Date()
         .toLocaleDateString(undefined, {
             weekday: 'short',
@@ -115,35 +139,32 @@ function Masthead({
         })
         .toLowerCase();
     return (
-        <header className="masthead">
-            <div className="masthead__left">
-                <h1 className="masthead__name">Toki</h1>
-                <nav className="masthead__nav" aria-label="Sections">
-                    <button
-                        className={`masthead__nav-item${
-                            view === 'now' ? ' masthead__nav-item--active' : ''
-                        }`}
-                        onClick={() => onView('now')}
-                    >
-                        Now
-                    </button>
-                    <span className="masthead__sep" aria-hidden>·</span>
-                    <button
-                        className={`masthead__nav-item${
-                            view === 'history' ? ' masthead__nav-item--active' : ''
-                        }`}
-                        onClick={() => onView('history')}
-                    >
-                        History
-                    </button>
-                </nav>
+        <header
+            className="flex shrink-0 items-center justify-between border-b bg-background/80 pb-2 pl-28 pr-4 pt-3 backdrop-blur"
+            style={dragStyle}
+        >
+            <div className="flex items-center gap-4" style={noDragStyle}>
+                <span className="text-sm font-semibold tracking-tight">
+                    Toki
+                </span>
+                <Tabs value={view} onValueChange={(v) => onView(v as View)}>
+                    <TabsList>
+                        <TabsTrigger value="now">Now</TabsTrigger>
+                        <TabsTrigger value="history">History</TabsTrigger>
+                    </TabsList>
+                </Tabs>
             </div>
-            <span className="masthead__date">{date}</span>
+            <span
+                className="text-xs tabular-nums text-muted-foreground"
+                style={noDragStyle}
+            >
+                {date}
+            </span>
         </header>
     );
 }
 
-/* ── Now view ─────────────────────────────────────────────────────────── */
+/* ── Now ──────────────────────────────────────────────────────────────── */
 
 function NowView({
     running,
@@ -152,6 +173,8 @@ function NowView({
     projects,
     onStart,
     onStop,
+    onUpdate,
+    onRemove,
 }: {
     running: Activity | null;
     today: Activity[];
@@ -159,133 +182,99 @@ function NowView({
     projects: string[];
     onStart: (description: string, project: string) => void;
     onStop: () => void;
+    onUpdate: (orig: Activity, description: string, project: string) => void;
+    onRemove: (orig: Activity) => void;
 }) {
     const todayTotal = useMemo(() => totalDuration(today), [today, running]);
 
-    // Limit the "earlier" rail to a finite window — the rest lives in History.
     const earlier = useMemo(() => {
-        const cutoff = startOfDay(new Date()).getTime() -
-            EARLIER_DAYS * 24 * 60 * 60 * 1000;
+        const cutoff =
+            startOfDay(new Date()).getTime() - EARLIER_DAYS * 24 * 60 * 60 * 1000;
+        const todayStart = startOfDay(new Date()).getTime();
         return recent.filter((a) => {
             const t = new Date(a.start_time as any).getTime();
-            return t < startOfDay(new Date()).getTime() && t >= cutoff;
+            return t < todayStart && t >= cutoff;
         });
     }, [recent]);
 
+    const earlierGroups = useMemo(
+        () => groupByLocalDate(earlier, false),
+        [earlier],
+    );
+
     return (
-        <>
+        <div className="flex flex-col gap-8">
             {running ? (
                 <NowRunning activity={running} onStop={onStop} />
             ) : (
                 <Starter projects={projects} onStart={onStart} />
             )}
 
-            <Logbook activities={today} totalMs={todayTotal} />
-
-            <EarlierLog
-                activities={earlier}
-                emptyHint={`Past ${EARLIER_DAYS} days. Go to History for the full archive.`}
-            />
-        </>
-    );
-}
-
-/* ── History view ─────────────────────────────────────────────────────── */
-
-function HistoryView({
-    activities,
-    projects,
-    onUpdate,
-    onRemove,
-}: {
-    activities: Activity[];
-    projects: string[];
-    onUpdate: (orig: Activity, description: string, project: string) => void;
-    onRemove: (orig: Activity) => void;
-}) {
-    const [query, setQuery] = useState('');
-    const finished = useMemo(
-        () => activities.filter((a) => a.end_time),
-        [activities],
-    );
-    const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        if (!q) return finished;
-        return finished.filter(
-            (a) =>
-                (a.description ?? '').toLowerCase().includes(q) ||
-                (a.project ?? '').toLowerCase().includes(q),
-        );
-    }, [finished, query]);
-
-    const groups = useMemo(() => groupByLocalDate(filtered, true), [filtered]);
-
-    return (
-        <section className="history" aria-label="History">
-            <HistorySearch
-                query={query}
-                onQuery={setQuery}
-                count={filtered.length}
-                total={finished.length}
-            />
-            {groups.length === 0 ? (
-                <p className="logbook__empty">
-                    {finished.length === 0
-                        ? 'No finished activities yet.'
-                        : 'No matches.'}
-                </p>
-            ) : (
-                groups.map((g) => (
-                    <DayGroup key={g.dateKey} day={g.date} activities={g.items}>
-                        {(a) => (
-                            <EditableLogRow
-                                key={`${a.start_time}-${a.description}`}
+            <section aria-label="Today">
+                <SectionHeader title="Today" right={
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                        {formatTotal(todayTotal)}
+                    </span>
+                } />
+                {today.length === 0 ? (
+                    <p className="px-3 py-6 text-sm text-muted-foreground">
+                        Nothing tracked today.
+                    </p>
+                ) : (
+                    <ul className="flex flex-col">
+                        {today.map((a, i) => (
+                            <ActivityRow
+                                key={`${a.start_time}-${i}`}
                                 activity={a}
                                 projects={projects}
                                 onUpdate={onUpdate}
                                 onRemove={onRemove}
+                                readOnly={!a.end_time}
                             />
-                        )}
-                    </DayGroup>
-                ))
-            )}
-        </section>
-    );
-}
+                        ))}
+                    </ul>
+                )}
+            </section>
 
-function HistorySearch({
-    query,
-    onQuery,
-    count,
-    total,
-}: {
-    query: string;
-    onQuery: (q: string) => void;
-    count: number;
-    total: number;
-}) {
-    return (
-        <div className="search">
-            <span className="search__caret" aria-hidden>⌕</span>
-            <input
-                className="search__input"
-                type="text"
-                value={query}
-                onChange={(e) => onQuery(e.target.value)}
-                placeholder="Search description or project"
-                autoComplete="off"
-                spellCheck={false}
-            />
-            <span className="search__count">
-                {query
-                    ? `${count} of ${total}`
-                    : `${total} ${total === 1 ? 'activity' : 'activities'}`}
-            </span>
+            {earlierGroups.length > 0 && (
+                <section aria-label="Earlier">
+                    <SectionHeader title="Earlier" />
+                    <div className="flex flex-col gap-6">
+                        {earlierGroups.map((g) => (
+                            <DayGroup
+                                key={g.dateKey}
+                                day={g.date}
+                                activities={g.items}
+                                projects={projects}
+                                onUpdate={onUpdate}
+                                onRemove={onRemove}
+                            />
+                        ))}
+                    </div>
+                </section>
+            )}
         </div>
     );
 }
 
-/* ── Now running headline ─────────────────────────────────────────────── */
+function SectionHeader({
+    title,
+    right,
+}: {
+    title: string;
+    right?: React.ReactNode;
+}) {
+    return (
+        <div className="mb-2 flex items-baseline justify-between px-3">
+            <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {title}
+            </h2>
+            {right}
+        </div>
+    );
+}
+
+/* ── Running card ─────────────────────────────────────────────────────── */
 
 function NowRunning({
     activity,
@@ -296,21 +285,46 @@ function NowRunning({
 }) {
     const since = new Date(activity.start_time as any);
     const ms = Date.now() - since.getTime();
+    const seconds = Math.floor(ms / 1000) % 60;
+    const minutePct = (seconds / 60) * 100;
     return (
-        <section className="now" aria-label="Currently running">
-            <p className={`now__eyebrow${activity.project ? '' : ' now__eyebrow--idle'}`}>
-                {activity.project || 'No project'}
-            </p>
-            <p className="now__desc">{activity.description || 'No description'}</p>
-            <div className="now__duration" aria-live="polite">
-                {formatDuration(ms)}
+        <section
+            aria-label="Currently running"
+            className="relative overflow-hidden rounded-xl border bg-card p-6 shadow-sm"
+        >
+            <div className="flex items-baseline justify-between gap-4">
+                <p className="min-w-0 flex-1 truncate text-xl font-medium leading-snug">
+                    {activity.description || 'No description'}
+                </p>
+                <div
+                    className="font-mono text-2xl leading-none tabular-nums"
+                    aria-live="polite"
+                >
+                    {formatDuration(ms)}
+                </div>
             </div>
-            <div className="now__meta">since {formatClock(since)}</div>
-            <div className="now__actions">
-                <button className="now__stop" onClick={onStop}>
-                    Stop
-                </button>
+            <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                    {activity.project && (
+                        <Badge variant="secondary">{activity.project}</Badge>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                        since {formatClock(since)}
+                    </span>
+                </div>
+                <Button onClick={onStop} variant="destructive" size="sm">
+                    <Square data-icon="inline-start" /> Stop
+                </Button>
             </div>
+            <div
+                className="absolute bottom-0 left-0 h-0.5 bg-foreground transition-[width] duration-1000 ease-linear"
+                style={{ width: `${minutePct}%` }}
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={60}
+                aria-valuenow={seconds}
+                aria-label="Progress through current minute"
+            />
         </section>
     );
 }
@@ -332,6 +346,8 @@ function Starter({
         inputRef.current?.focus();
     }, []);
 
+    const canStart = text.trim().length > 0;
+
     const submit = () => {
         const trimmed = text.trim();
         if (!trimmed) return;
@@ -340,204 +356,204 @@ function Starter({
     };
 
     return (
-        <section className="now starter" aria-label="Start a new activity">
-            <p className="now__eyebrow now__eyebrow--idle">Nothing running</p>
-
-            <div className="starter__field">
-                <span className="starter__caret" aria-hidden>→</span>
-                <input
-                    ref={inputRef}
-                    className="starter__input"
-                    type="text"
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') submit();
-                    }}
-                    placeholder="What are you working on?"
-                    autoComplete="off"
-                    spellCheck={false}
-                />
+        <section
+            aria-label="Start a new activity"
+            className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm"
+        >
+            <div className="flex items-center gap-2">
+                <InputGroup className="flex-1">
+                    <InputGroupAddon align="inline-start">
+                        <Play className="opacity-50" />
+                    </InputGroupAddon>
+                    <InputGroupInput
+                        ref={inputRef}
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') submit();
+                        }}
+                        placeholder="What are you working on?"
+                        autoComplete="off"
+                        spellCheck={false}
+                    />
+                </InputGroup>
+                <Button onClick={submit} disabled={!canStart} size="sm">
+                    Start
+                </Button>
             </div>
-
             <ProjectField
                 value={project}
                 onChange={setProject}
                 suggestions={projects}
                 onSubmit={submit}
             />
-
-            <div className="starter__row">
-                <span />
-                <span className="starter__hint">enter to start</span>
-            </div>
         </section>
     );
 }
 
-/* ── ProjectField — typeable input with chip shortcuts ────────────────── */
+/* ── Project Field — type freely, click a chip to set ─────────────────── */
 
 function ProjectField({
     value,
     onChange,
     suggestions,
     onSubmit,
+    placeholder = 'project (optional)',
+    size = 'sm',
 }: {
     value: string;
     onChange: (v: string) => void;
     suggestions: string[];
     onSubmit?: () => void;
+    placeholder?: string;
+    size?: 'sm' | 'xs';
 }) {
     return (
-        <div className="project-field">
-            <span className="project-field__label">in</span>
-            <input
-                className="project-field__input"
-                type="text"
+        <div className="flex flex-col gap-1.5">
+            <Input
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 onKeyDown={(e) => {
-                    if (e.key === 'Enter' && onSubmit) onSubmit();
+                    if (e.key === 'Enter' && onSubmit) {
+                        e.preventDefault();
+                        onSubmit();
+                    }
                 }}
-                placeholder="project (optional)"
+                placeholder={placeholder}
                 autoComplete="off"
                 spellCheck={false}
+                className={cn(size === 'xs' ? 'h-7' : 'h-8')}
             />
-            <div className="project-field__chips">
-                {suggestions.map((p) => (
-                    <button
-                        key={p}
-                        type="button"
-                        className={`project-field__chip${
-                            value === p ? ' project-field__chip--active' : ''
-                        }`}
-                        onClick={() => onChange(value === p ? '' : p)}
-                    >
-                        {p}
-                    </button>
-                ))}
-            </div>
+            {suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                    {suggestions.map((p) => {
+                        const active = value === p;
+                        return (
+                            <button
+                                key={p}
+                                type="button"
+                                onClick={() => onChange(active ? '' : p)}
+                                className={cn(
+                                    'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors',
+                                    active
+                                        ? 'border-foreground bg-foreground text-background'
+                                        : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground',
+                                )}
+                            >
+                                {active && <Check className="size-3" />}
+                                {p}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }
 
-/* ── Logbook (today, read-only) ───────────────────────────────────────── */
+/* ── Activity row (fixed height, swaps in inputs on edit) ─────────────── */
 
-function Logbook({
-    activities,
-    totalMs,
-}: {
-    activities: Activity[];
-    totalMs: number;
-}) {
-    const distinctProjects = new Set(
-        activities.map((a) => a.project).filter(Boolean),
-    ).size;
-    return (
-        <section className="logbook" aria-label="Today's logbook">
-            <header className="logbook__header">
-                <h2 className="logbook__title">Today</h2>
-                <span className="logbook__total">
-                    {formatTotal(totalMs)}
-                    {distinctProjects > 0 &&
-                        ` · ${distinctProjects} project${distinctProjects === 1 ? '' : 's'}`}
-                </span>
-            </header>
-            {activities.length === 0 ? (
-                <p className="logbook__empty">Nothing tracked today.</p>
-            ) : (
-                <ol className="logbook__list">
-                    {activities.map((a, i) => (
-                        <LogRow key={`${a.start_time}-${i}`} activity={a} />
-                    ))}
-                </ol>
-            )}
-        </section>
-    );
-}
+const ROW_HEIGHT = 'h-11';
+const ROW_GRID =
+    'grid grid-cols-[3rem_minmax(0,1fr)_5rem_auto] items-center gap-3 px-3';
 
-/* ── LogRow — read-only ───────────────────────────────────────────────── */
-
-function LogRow({ activity }: { activity: Activity }) {
-    const start = new Date(activity.start_time as any);
-    const end = activity.end_time ? new Date(activity.end_time as any) : null;
-    const ms = (end?.getTime() ?? Date.now()) - start.getTime();
-    const isRunning = !end;
-    return (
-        <li className="logbook__row">
-            <span className="logbook__time">{formatClock(start)}</span>
-            <div className="logbook__entry">
-                {activity.project && (
-                    <span
-                        className={`logbook__project${
-                            isRunning ? ' logbook__project--running' : ''
-                        }`}
-                    >
-                        {activity.project}
-                    </span>
-                )}
-                <span className="logbook__desc">
-                    {activity.description || 'No description'}
-                </span>
-            </div>
-            <span
-                className={`logbook__duration${
-                    isRunning ? ' logbook__duration--running' : ''
-                }`}
-            >
-                {formatDuration(ms)}
-            </span>
-        </li>
-    );
-}
-
-/* ── EditableLogRow — used by History ─────────────────────────────────── */
-
-function EditableLogRow({
+function ActivityRow({
     activity,
     projects,
     onUpdate,
     onRemove,
+    readOnly = false,
 }: {
     activity: Activity;
     projects: string[];
     onUpdate: (orig: Activity, description: string, project: string) => void;
     onRemove: (orig: Activity) => void;
+    readOnly?: boolean;
 }) {
     const [editing, setEditing] = useState(false);
     const [desc, setDesc] = useState(activity.description ?? '');
     const [project, setProject] = useState(activity.project ?? '');
-    const [confirmRemove, setConfirmRemove] = useState(false);
     const descRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (editing) descRef.current?.focus();
     }, [editing]);
 
+    useEffect(() => {
+        setDesc(activity.description ?? '');
+        setProject(activity.project ?? '');
+    }, [activity.description, activity.project]);
+
     const start = new Date(activity.start_time as any);
     const end = activity.end_time ? new Date(activity.end_time as any) : null;
     const ms = (end?.getTime() ?? Date.now()) - start.getTime();
+    const isRunning = !end;
 
     const save = () => {
-        if (!desc.trim()) return;
-        onUpdate(activity, desc, project);
+        const trimmed = desc.trim();
+        if (!trimmed) {
+            toast.error('Description cannot be empty');
+            return;
+        }
+        onUpdate(activity, trimmed, project.trim());
         setEditing(false);
     };
+
     const cancel = () => {
         setDesc(activity.description ?? '');
         setProject(activity.project ?? '');
         setEditing(false);
-        setConfirmRemove(false);
     };
 
-    if (editing) {
-        return (
-            <li className="logbook__row logbook__row--editing">
-                <span className="logbook__time">{formatClock(start)}</span>
-                <div className="logbook__entry">
-                    <input
+    const confirmRemove = () => {
+        toast('Remove this activity?', {
+            description: activity.description || '(no description)',
+            action: {
+                label: 'Remove',
+                onClick: () => {
+                    onRemove(activity);
+                    setEditing(false);
+                },
+            },
+        });
+    };
+
+    return (
+        <li
+            className={cn(
+                'group/row relative rounded-md border border-transparent',
+                ROW_HEIGHT,
+                ROW_GRID,
+                'transition-colors',
+                editing
+                    ? 'border-border bg-muted/40'
+                    : 'hover:bg-muted/40',
+            )}
+        >
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                {formatClock(start)}
+            </span>
+
+            {editing ? (
+                <div className="flex min-w-0 items-center gap-2">
+                    <Input
+                        value={project}
+                        onChange={(e) => setProject(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') save();
+                            if (e.key === 'Escape') cancel();
+                        }}
+                        placeholder="project"
+                        list={`projects-${start.getTime()}`}
+                        className="h-7 w-28 shrink-0"
+                    />
+                    <datalist id={`projects-${start.getTime()}`}>
+                        {projects.map((p) => (
+                            <option key={p} value={p} />
+                        ))}
+                    </datalist>
+                    <Input
                         ref={descRef}
-                        className="row-edit__desc"
                         value={desc}
                         onChange={(e) => setDesc(e.target.value)}
                         onKeyDown={(e) => {
@@ -545,118 +561,100 @@ function EditableLogRow({
                             if (e.key === 'Escape') cancel();
                         }}
                         placeholder="Description"
+                        className="h-7 flex-1"
                     />
-                    <ProjectField
-                        value={project}
-                        onChange={setProject}
-                        suggestions={projects}
-                    />
-                    <div className="row-edit__actions">
-                        <button className="row-edit__save" onClick={save}>
-                            Save
-                        </button>
-                        <button className="row-edit__cancel" onClick={cancel}>
-                            Cancel
-                        </button>
-                        {!confirmRemove ? (
-                            <button
-                                className="row-edit__remove"
-                                onClick={() => setConfirmRemove(true)}
-                            >
-                                Remove
-                            </button>
-                        ) : (
-                            <span className="row-edit__confirm">
-                                Remove this for good?
-                                <button
-                                    className="row-edit__remove row-edit__remove--confirm"
-                                    onClick={() => onRemove(activity)}
-                                >
-                                    Yes, remove
-                                </button>
-                                <button
-                                    className="row-edit__cancel"
-                                    onClick={() => setConfirmRemove(false)}
-                                >
-                                    Keep it
-                                </button>
-                            </span>
-                        )}
-                    </div>
                 </div>
-                <span className="logbook__duration">{formatDuration(ms)}</span>
-            </li>
-        );
-    }
+            ) : (
+                <div className="flex min-w-0 items-center gap-2">
+                    {activity.project && (
+                        <Badge
+                            variant={isRunning ? 'default' : 'secondary'}
+                            className="shrink-0"
+                        >
+                            {activity.project}
+                        </Badge>
+                    )}
+                    <span
+                        className={cn(
+                            'truncate text-sm',
+                            !activity.description && 'text-muted-foreground',
+                        )}
+                    >
+                        {activity.description || 'No description'}
+                    </span>
+                </div>
+            )}
 
-    return (
-        <li
-            className="logbook__row logbook__row--editable"
-            onClick={() => setEditing(true)}
-            tabIndex={0}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setEditing(true);
-                }
-            }}
-            role="button"
-            aria-label={`Edit ${activity.description}`}
-        >
-            <span className="logbook__time">{formatClock(start)}</span>
-            <div className="logbook__entry">
-                {activity.project && (
-                    <span className="logbook__project">{activity.project}</span>
+            <span
+                className={cn(
+                    'text-right font-mono text-xs tabular-nums',
+                    isRunning ? 'text-foreground' : 'text-muted-foreground',
                 )}
-                <span className="logbook__desc">
-                    {activity.description || 'No description'}
-                </span>
+            >
+                {formatDuration(ms)}
+            </span>
+
+            <div className="flex items-center gap-1">
+                {editing ? (
+                    <>
+                        <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={save}
+                            title="Save (enter)"
+                        >
+                            <Check />
+                        </Button>
+                        <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={cancel}
+                            title="Cancel (esc)"
+                        >
+                            <X />
+                        </Button>
+                        <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={confirmRemove}
+                            title="Remove"
+                            className="text-destructive"
+                        >
+                            <Trash2 />
+                        </Button>
+                    </>
+                ) : (
+                    !readOnly && (
+                        <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => setEditing(true)}
+                            className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+                            title="Edit"
+                        >
+                            <Pencil />
+                        </Button>
+                    )
+                )}
             </div>
-            <span className="logbook__duration">{formatDuration(ms)}</span>
         </li>
     );
 }
 
-/* ── EarlierLog and DayGroup (parameterized) ──────────────────────────── */
-
-function EarlierLog({
-    activities,
-    emptyHint,
-}: {
-    activities: Activity[];
-    emptyHint?: string;
-}) {
-    const groups = useMemo(() => groupByLocalDate(activities, false), [activities]);
-    if (groups.length === 0) {
-        return emptyHint ? (
-            <section className="earlier" aria-label="Earlier activities">
-                <header className="earlier__header">
-                    <h2 className="earlier__title">Earlier</h2>
-                </header>
-                <p className="logbook__empty">{emptyHint}</p>
-            </section>
-        ) : null;
-    }
-    return (
-        <section className="earlier" aria-label="Earlier activities">
-            <header className="earlier__header">
-                <h2 className="earlier__title">Earlier</h2>
-            </header>
-            {groups.map((g) => (
-                <DayGroup key={g.dateKey} day={g.date} activities={g.items} />
-            ))}
-        </section>
-    );
-}
+/* ── Day group ────────────────────────────────────────────────────────── */
 
 function DayGroup({
     day,
     activities,
-    children,
+    projects,
+    onUpdate,
+    onRemove,
 }: {
     day: Date;
     activities: Activity[];
-    children?: (a: Activity) => React.ReactNode;
+    projects: string[];
+    onUpdate: (orig: Activity, description: string, project: string) => void;
+    onRemove: (orig: Activity) => void;
 }) {
     const totalMs = activities.reduce((sum, a) => {
         const startMs = new Date(a.start_time as any).getTime();
@@ -666,18 +664,114 @@ function DayGroup({
         return sum + (endMs - startMs);
     }, 0);
     return (
-        <div className="day">
-            <header className="day__header">
-                <h3 className="day__label">{dayLabel(day)}</h3>
-                <span className="day__total">{formatTotal(totalMs)}</span>
-            </header>
-            <ol className="logbook__list">
-                {activities.map((a, i) =>
-                    children
-                        ? children(a)
-                        : <LogRow key={`${a.start_time}-${i}`} activity={a} />,
-                )}
-            </ol>
+        <div>
+            <div className="mb-1 flex items-baseline justify-between px-3">
+                <h3 className="text-xs font-medium text-muted-foreground">
+                    {dayLabel(day)}
+                </h3>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                    {formatTotal(totalMs)}
+                </span>
+            </div>
+            <ul className="flex flex-col">
+                {activities.map((a, i) => (
+                    <ActivityRow
+                        key={`${a.start_time}-${i}`}
+                        activity={a}
+                        projects={projects}
+                        onUpdate={onUpdate}
+                        onRemove={onRemove}
+                    />
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+/* ── History ──────────────────────────────────────────────────────────── */
+
+function HistoryView({
+    activities,
+    projects,
+    onUpdate,
+    onRemove,
+}: {
+    activities: Activity[];
+    projects: string[];
+    onUpdate: (orig: Activity, description: string, project: string) => void;
+    onRemove: (orig: Activity) => void;
+}) {
+    const [query, setQuery] = useState('');
+
+    const finished = useMemo(
+        () => activities.filter((a) => a.end_time),
+        [activities],
+    );
+    const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return finished;
+        return finished.filter(
+            (a) =>
+                (a.description ?? '').toLowerCase().includes(q) ||
+                (a.project ?? '').toLowerCase().includes(q),
+        );
+    }, [finished, query]);
+
+    const groups = useMemo(() => groupByLocalDate(filtered, true), [filtered]);
+
+    return (
+        <div className="flex flex-col gap-6">
+            <InputGroup>
+                <InputGroupAddon align="inline-start">
+                    <Search className="opacity-50" />
+                </InputGroupAddon>
+                <InputGroupInput
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search description or project"
+                    autoComplete="off"
+                    spellCheck={false}
+                />
+                <InputGroupAddon align="inline-end">
+                    <span className="text-xs text-muted-foreground">
+                        {query
+                            ? `${filtered.length} of ${finished.length}`
+                            : `${finished.length} ${
+                                  finished.length === 1 ? 'activity' : 'activities'
+                              }`}
+                    </span>
+                </InputGroupAddon>
+            </InputGroup>
+
+            {groups.length === 0 ? (
+                <Empty>
+                    <EmptyHeader>
+                        <EmptyTitle>
+                            {finished.length === 0
+                                ? 'No finished activities yet'
+                                : 'No matches'}
+                        </EmptyTitle>
+                        <EmptyDescription>
+                            {finished.length === 0
+                                ? 'Start tracking from the Now tab.'
+                                : 'Try a different search.'}
+                        </EmptyDescription>
+                    </EmptyHeader>
+                </Empty>
+            ) : (
+                <div className="flex flex-col gap-6">
+                    {groups.map((g) => (
+                        <DayGroup
+                            key={g.dateKey}
+                            day={g.date}
+                            activities={g.items}
+                            projects={projects}
+                            onUpdate={onUpdate}
+                            onRemove={onRemove}
+                        />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -719,15 +813,13 @@ function dayLabel(d: Date) {
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) {
-        return d.toLocaleDateString(undefined, { weekday: 'long' }).toLowerCase();
+        return d.toLocaleDateString(undefined, { weekday: 'long' });
     }
-    return d
-        .toLocaleDateString(undefined, {
-            weekday: 'short',
-            day: '2-digit',
-            month: 'short',
-        })
-        .toLowerCase();
+    return d.toLocaleDateString(undefined, {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+    });
 }
 
 function totalDuration(activities: Activity[]) {
@@ -748,11 +840,10 @@ function formatClock(d: Date) {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function formatDuration(ms: number) {
-    const total = Math.max(0, Math.floor(ms / 1000));
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    const total = Math.max(0, Math.floor(ms / 60_000));
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return `${pad(h)}:${pad(m)}`;
 }
 function formatTotal(ms: number) {
     const total = Math.max(0, Math.floor(ms / 60000));
