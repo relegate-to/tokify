@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Pencil,
+    Check,
     Play,
     Search,
     Square,
     Trash2,
-    X,
-    Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -38,6 +36,7 @@ const REFRESH_MS = 30_000;
 const TICK_MS = 1_000;
 const EARLIER_DAYS = 7;
 const HISTORY_LIMIT = 500;
+const REMOVE_ANIM_MS = 240;
 
 const dragStyle = {
     // Wails draggable hint and webkit equivalent
@@ -56,6 +55,7 @@ function App() {
     const [today, setToday] = useState<Activity[]>([]);
     const [recent, setRecent] = useState<Activity[]>([]);
     const [projects, setProjects] = useState<string[]>([]);
+    const [removingKeys, setRemovingKeys] = useState<Set<string>>(new Set());
     const [, setTick] = useState(0);
 
     const refresh = () => {
@@ -90,12 +90,38 @@ function App() {
         Start(description, project).then(refresh).catch((e) => toast.error(String(e)));
     const handleStop = () =>
         Stop().then(refresh).catch((e) => toast.error(String(e)));
-    const handleUpdate = (orig: Activity, description: string, project: string) =>
-        UpdateActivity(orig, description, project)
+    const handleUpdate = (
+        orig: Activity,
+        description: string,
+        project: string,
+        startISO: string,
+        endISO: string,
+    ) =>
+        UpdateActivity(orig, description, project, startISO, endISO)
             .then(refresh)
             .catch((e) => toast.error(String(e)));
-    const handleRemove = (orig: Activity) =>
-        RemoveActivity(orig).then(refresh).catch((e) => toast.error(String(e)));
+    const handleRemove = (orig: Activity) => {
+        const key = String(orig.start_time);
+        setRemovingKeys((s) => {
+            if (s.has(key)) return s;
+            const n = new Set(s);
+            n.add(key);
+            return n;
+        });
+        window.setTimeout(() => {
+            RemoveActivity(orig)
+                .then(refresh)
+                .catch((e) => toast.error(String(e)))
+                .finally(() => {
+                    setRemovingKeys((s) => {
+                        if (!s.has(key)) return s;
+                        const n = new Set(s);
+                        n.delete(key);
+                        return n;
+                    });
+                });
+        }, REMOVE_ANIM_MS);
+    };
 
     return (
         <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -108,6 +134,7 @@ function App() {
                             today={today}
                             recent={recent}
                             projects={projects}
+                            removingKeys={removingKeys}
                             onStart={handleStart}
                             onStop={handleStop}
                             onUpdate={handleUpdate}
@@ -117,6 +144,7 @@ function App() {
                         <HistoryView
                             activities={recent}
                             projects={projects}
+                            removingKeys={removingKeys}
                             onUpdate={handleUpdate}
                             onRemove={handleRemove}
                         />
@@ -171,6 +199,7 @@ function NowView({
     today,
     recent,
     projects,
+    removingKeys,
     onStart,
     onStop,
     onUpdate,
@@ -180,12 +209,20 @@ function NowView({
     today: Activity[];
     recent: Activity[];
     projects: string[];
+    removingKeys: Set<string>;
     onStart: (description: string, project: string) => void;
     onStop: () => void;
-    onUpdate: (orig: Activity, description: string, project: string) => void;
+    onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
 }) {
-    const todayTotal = useMemo(() => totalDuration(today), [today, running]);
+    const visibleToday = useMemo(
+        () => today.filter((a) => !removingKeys.has(String(a.start_time))),
+        [today, removingKeys],
+    );
+    const todayTotal = useMemo(
+        () => totalDuration(visibleToday),
+        [visibleToday, running],
+    );
 
     const earlier = useMemo(() => {
         const cutoff =
@@ -216,24 +253,34 @@ function NowView({
                         {formatTotal(todayTotal)}
                     </span>
                 } />
-                {today.length === 0 ? (
-                    <p className="px-3 py-6 text-sm text-muted-foreground">
+                <div className="relative min-h-11">
+                    {today.length > 0 && (
+                        <ul className="flex flex-col">
+                            {today.map((a) => (
+                                <ActivityRow
+                                    key={String(a.start_time)}
+                                    activity={a}
+                                    projects={projects}
+                                    isRemoving={removingKeys.has(String(a.start_time))}
+                                    onUpdate={onUpdate}
+                                    onRemove={onRemove}
+                                    readOnly={!a.end_time}
+                                />
+                            ))}
+                        </ul>
+                    )}
+                    <p
+                        className={cn(
+                            'pointer-events-none absolute inset-x-0 top-0 flex h-11 items-center px-3 text-sm text-muted-foreground transition-opacity duration-300 ease-out',
+                            visibleToday.length === 0
+                                ? 'opacity-100'
+                                : 'opacity-0',
+                        )}
+                        aria-hidden={visibleToday.length !== 0}
+                    >
                         Nothing tracked today.
                     </p>
-                ) : (
-                    <ul className="flex flex-col">
-                        {today.map((a, i) => (
-                            <ActivityRow
-                                key={`${a.start_time}-${i}`}
-                                activity={a}
-                                projects={projects}
-                                onUpdate={onUpdate}
-                                onRemove={onRemove}
-                                readOnly={!a.end_time}
-                            />
-                        ))}
-                    </ul>
-                )}
+                </div>
             </section>
 
             {earlierGroups.length > 0 && (
@@ -246,6 +293,7 @@ function NowView({
                                 day={g.date}
                                 activities={g.items}
                                 projects={projects}
+                                removingKeys={removingKeys}
                                 onUpdate={onUpdate}
                                 onRemove={onRemove}
                             />
@@ -276,6 +324,11 @@ function SectionHeader({
 
 /* ── Running card ─────────────────────────────────────────────────────── */
 
+// Spring-flavoured easings (back-out for "thunk" entry, ease-in for exit).
+const EASE_THUNK = 'cubic-bezier(0.34, 1.45, 0.55, 1)';
+const EASE_OUT = 'cubic-bezier(0.4, 0, 1, 1)';
+const STOP_ANIM_MS = 380;
+
 function NowRunning({
     activity,
     onStop,
@@ -287,10 +340,27 @@ function NowRunning({
     const ms = Date.now() - since.getTime();
     const seconds = Math.floor(ms / 1000) % 60;
     const minutePct = (seconds / 60) * 100;
+    const [stopping, setStopping] = useState(false);
+
+    const handleStop = () => {
+        if (stopping) return;
+        setStopping(true);
+        window.setTimeout(onStop, STOP_ANIM_MS);
+    };
+
     return (
         <section
             aria-label="Currently running"
-            className="relative overflow-hidden rounded-xl border bg-card p-6 shadow-sm"
+            className={cn(
+                'relative overflow-hidden rounded-xl border bg-card p-6 shadow-sm',
+                stopping
+                    ? 'animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-2 fill-mode-forwards'
+                    : 'animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-6',
+            )}
+            style={{
+                animationDuration: stopping ? `${STOP_ANIM_MS}ms` : '520ms',
+                animationTimingFunction: stopping ? EASE_OUT : EASE_THUNK,
+            }}
         >
             <div className="flex items-baseline justify-between gap-4">
                 <p className="min-w-0 flex-1 truncate text-xl font-medium leading-snug">
@@ -312,13 +382,22 @@ function NowRunning({
                         since {formatClock(since)}
                     </span>
                 </div>
-                <Button onClick={onStop} variant="destructive" size="sm">
+                <Button
+                    onClick={handleStop}
+                    variant="destructive"
+                    size="sm"
+                    disabled={stopping}
+                    className="transition-transform active:scale-95"
+                >
                     <Square data-icon="inline-start" /> Stop
                 </Button>
             </div>
             <div
-                className="absolute bottom-0 left-0 h-0.5 bg-foreground transition-[width] duration-1000 ease-linear"
-                style={{ width: `${minutePct}%` }}
+                className={cn(
+                    'absolute bottom-0 left-0 h-0.5 bg-foreground transition-[width] ease-linear',
+                    stopping ? 'duration-300' : 'duration-1000',
+                )}
+                style={{ width: stopping ? '100%' : `${minutePct}%` }}
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={60}
@@ -358,7 +437,8 @@ function Starter({
     return (
         <section
             aria-label="Start a new activity"
-            className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm"
+            className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-400"
+            style={{ animationTimingFunction: EASE_THUNK }}
         >
             <div className="flex items-center gap-2">
                 <InputGroup className="flex-1">
@@ -377,7 +457,12 @@ function Starter({
                         spellCheck={false}
                     />
                 </InputGroup>
-                <Button onClick={submit} disabled={!canStart} size="sm">
+                <Button
+                    onClick={submit}
+                    disabled={!canStart}
+                    size="sm"
+                    className="transition-transform active:scale-95"
+                >
                     Start
                 </Button>
             </div>
@@ -455,24 +540,33 @@ function ProjectField({
 
 const ROW_HEIGHT = 'h-11';
 const ROW_GRID =
-    'grid grid-cols-[3rem_minmax(0,1fr)_5rem_auto] items-center gap-3 px-3';
+    'grid grid-cols-[4rem_minmax(0,1fr)_5rem_auto] items-center gap-3 px-3';
 
 function ActivityRow({
     activity,
     projects,
+    isRemoving = false,
     onUpdate,
     onRemove,
     readOnly = false,
 }: {
     activity: Activity;
     projects: string[];
-    onUpdate: (orig: Activity, description: string, project: string) => void;
+    isRemoving?: boolean;
+    onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
     readOnly?: boolean;
 }) {
+    const start = new Date(activity.start_time as any);
+    const end = activity.end_time ? new Date(activity.end_time as any) : null;
+    const ms = (end?.getTime() ?? Date.now()) - start.getTime();
+    const isRunning = !end;
+
     const [editing, setEditing] = useState(false);
     const [desc, setDesc] = useState(activity.description ?? '');
     const [project, setProject] = useState(activity.project ?? '');
+    const [startStr, setStartStr] = useState(formatClock(start));
+    const [endStr, setEndStr] = useState(end ? formatClock(end) : '');
     const descRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -482,12 +576,10 @@ function ActivityRow({
     useEffect(() => {
         setDesc(activity.description ?? '');
         setProject(activity.project ?? '');
-    }, [activity.description, activity.project]);
-
-    const start = new Date(activity.start_time as any);
-    const end = activity.end_time ? new Date(activity.end_time as any) : null;
-    const ms = (end?.getTime() ?? Date.now()) - start.getTime();
-    const isRunning = !end;
+        setStartStr(formatClock(start));
+        setEndStr(end ? formatClock(end) : '');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activity.description, activity.project, activity.start_time, activity.end_time]);
 
     const save = () => {
         const trimmed = desc.trim();
@@ -495,44 +587,68 @@ function ActivityRow({
             toast.error('Description cannot be empty');
             return;
         }
-        onUpdate(activity, trimmed, project.trim());
+        const startISO = buildClockISO(start, startStr);
+        if (startISO === null) {
+            toast.error('Start must be HH:MM');
+            return;
+        }
+        let endISO = '';
+        if (end) {
+            const built = buildClockISO(end, endStr);
+            if (built === null) {
+                toast.error('End must be HH:MM');
+                return;
+            }
+            endISO = built;
+        }
+        onUpdate(activity, trimmed, project.trim(), startISO, endISO);
         setEditing(false);
     };
 
     const cancel = () => {
         setDesc(activity.description ?? '');
         setProject(activity.project ?? '');
+        setStartStr(formatClock(start));
+        setEndStr(end ? formatClock(end) : '');
         setEditing(false);
     };
 
-    const confirmRemove = () => {
-        toast('Remove this activity?', {
-            description: activity.description || '(no description)',
-            action: {
-                label: 'Remove',
-                onClick: () => {
-                    onRemove(activity);
-                    setEditing(false);
-                },
-            },
-        });
+    const remove = () => onRemove(activity);
+
+    const enterEdit = () => {
+        if (!readOnly) setEditing(true);
     };
 
     return (
         <li
+            onDoubleClick={enterEdit}
             className={cn(
-                'group/row relative rounded-md border border-transparent',
-                ROW_HEIGHT,
+                'group/row relative overflow-hidden rounded-md border border-transparent',
+                'transition-[height,opacity,transform,background-color,border-color] duration-200 ease-out',
+                isRemoving ? 'h-0 -translate-x-2 opacity-0' : ROW_HEIGHT,
                 ROW_GRID,
-                'transition-colors',
-                editing
-                    ? 'border-border bg-muted/40'
-                    : 'hover:bg-muted/40',
+                editing ? 'border-border bg-muted/40' : 'hover:bg-muted/40',
+                !readOnly && !editing && 'cursor-text',
+                !isRemoving &&
+                    'animate-in fade-in-0 slide-in-from-top-1 duration-300',
             )}
         >
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                {formatClock(start)}
-            </span>
+            {editing ? (
+                <Input
+                    value={startStr}
+                    onChange={(e) => setStartStr(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') save();
+                        if (e.key === 'Escape') cancel();
+                    }}
+                    placeholder="HH:MM"
+                    className="h-7 px-1.5 text-center font-mono text-xs tabular-nums"
+                />
+            ) : (
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                    {formatClock(start)}
+                </span>
+            )}
 
             {editing ? (
                 <div className="flex min-w-0 items-center gap-2">
@@ -585,54 +701,48 @@ function ActivityRow({
                 </div>
             )}
 
-            <span
-                className={cn(
-                    'text-right font-mono text-xs tabular-nums',
-                    isRunning ? 'text-foreground' : 'text-muted-foreground',
-                )}
-            >
-                {formatDuration(ms)}
-            </span>
+            {editing && end ? (
+                <Input
+                    value={endStr}
+                    onChange={(e) => setEndStr(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') save();
+                        if (e.key === 'Escape') cancel();
+                    }}
+                    placeholder="HH:MM"
+                    className="h-7 px-1.5 text-center font-mono text-xs tabular-nums"
+                />
+            ) : (
+                <span
+                    className={cn(
+                        'text-right font-mono text-xs tabular-nums',
+                        isRunning ? 'text-foreground' : 'text-muted-foreground',
+                    )}
+                >
+                    {formatDuration(ms)}
+                </span>
+            )}
 
             <div className="flex items-center gap-1">
                 {editing ? (
-                    <>
-                        <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={save}
-                            title="Save (enter)"
-                        >
-                            <Check />
-                        </Button>
-                        <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={cancel}
-                            title="Cancel (esc)"
-                        >
-                            <X />
-                        </Button>
-                        <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={confirmRemove}
-                            title="Remove"
-                            className="text-destructive"
-                        >
-                            <Trash2 />
-                        </Button>
-                    </>
+                    <Button
+                        size="icon-xs"
+                        variant="ghost"
+                        onClick={save}
+                        title="Save (enter) — esc to cancel"
+                    >
+                        <Check />
+                    </Button>
                 ) : (
                     !readOnly && (
                         <Button
                             size="icon-xs"
                             variant="ghost"
-                            onClick={() => setEditing(true)}
-                            className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
-                            title="Edit"
+                            onClick={remove}
+                            className="text-destructive opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+                            title="Remove"
                         >
-                            <Pencil />
+                            <Trash2 />
                         </Button>
                     )
                 )}
@@ -647,43 +757,65 @@ function DayGroup({
     day,
     activities,
     projects,
+    removingKeys,
     onUpdate,
     onRemove,
 }: {
     day: Date;
     activities: Activity[];
     projects: string[];
-    onUpdate: (orig: Activity, description: string, project: string) => void;
+    removingKeys: Set<string>;
+    onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
 }) {
-    const totalMs = activities.reduce((sum, a) => {
+    const visible = activities.filter(
+        (a) => !removingKeys.has(String(a.start_time)),
+    );
+    const totalMs = visible.reduce((sum, a) => {
         const startMs = new Date(a.start_time as any).getTime();
         const endMs = a.end_time
             ? new Date(a.end_time as any).getTime()
             : startMs;
         return sum + (endMs - startMs);
     }, 0);
+    const allRemoving = activities.length > 0 && visible.length === 0;
     return (
-        <div>
-            <div className="mb-1 flex items-baseline justify-between px-3">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                    {dayLabel(day)}
-                </h3>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                    {formatTotal(totalMs)}
-                </span>
+        <div
+            className="grid transition-[grid-template-rows,opacity] ease-out"
+            style={{
+                gridTemplateRows: allRemoving ? '0fr' : '1fr',
+                opacity: allRemoving ? 0 : 1,
+                transitionDuration: `${REMOVE_ANIM_MS}ms`,
+            }}
+        >
+            <div
+                className={cn(
+                    'min-h-0 overflow-hidden',
+                    !allRemoving &&
+                        'animate-in fade-in-0 slide-in-from-top-1 duration-300',
+                )}
+            >
+                <div className="mb-1 flex items-baseline justify-between px-3">
+                    <h3 className="text-xs font-medium text-muted-foreground">
+                        {dayLabel(day)}
+                    </h3>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                        {formatTotal(totalMs)}
+                    </span>
+                </div>
+                <ul className="flex flex-col">
+                    {activities.map((a) => (
+                        <ActivityRow
+                            key={String(a.start_time)}
+                            activity={a}
+                            projects={projects}
+                            isRemoving={removingKeys.has(String(a.start_time))}
+                            onUpdate={onUpdate}
+                            onRemove={onRemove}
+                        />
+                    ))}
+                </ul>
             </div>
-            <ul className="flex flex-col">
-                {activities.map((a, i) => (
-                    <ActivityRow
-                        key={`${a.start_time}-${i}`}
-                        activity={a}
-                        projects={projects}
-                        onUpdate={onUpdate}
-                        onRemove={onRemove}
-                    />
-                ))}
-            </ul>
         </div>
     );
 }
@@ -693,12 +825,14 @@ function DayGroup({
 function HistoryView({
     activities,
     projects,
+    removingKeys,
     onUpdate,
     onRemove,
 }: {
     activities: Activity[];
     projects: string[];
-    onUpdate: (orig: Activity, description: string, project: string) => void;
+    removingKeys: Set<string>;
+    onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
 }) {
     const [query, setQuery] = useState('');
@@ -766,6 +900,7 @@ function HistoryView({
                             day={g.date}
                             activities={g.items}
                             projects={projects}
+                            removingKeys={removingKeys}
                             onUpdate={onUpdate}
                             onRemove={onRemove}
                         />
@@ -838,6 +973,28 @@ function pad(n: number) {
 }
 function formatClock(d: Date) {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+// Parses "HH:MM" and combines it with the date portion of `base` to produce
+// an RFC3339 ISO string in the local timezone. Returns null on invalid input.
+function buildClockISO(base: Date, hhmm: string): string | null {
+    const m = /^\s*(\d{1,2})\s*:\s*(\d{2})\s*$/.exec(hhmm);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+    const next = new Date(base);
+    next.setHours(h, min, 0, 0);
+    // Local ISO with offset, e.g. 2026-06-18T09:42:00+01:00 — Go time.Parse
+    // RFC3339 accepts this.
+    const tz = -next.getTimezoneOffset();
+    const sign = tz >= 0 ? '+' : '-';
+    const tzAbs = Math.abs(tz);
+    const off = `${sign}${pad(Math.floor(tzAbs / 60))}:${pad(tzAbs % 60)}`;
+    return (
+        `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}` +
+        `T${pad(next.getHours())}:${pad(next.getMinutes())}:${pad(next.getSeconds())}` +
+        off
+    );
 }
 function formatDuration(ms: number) {
     const total = Math.max(0, Math.floor(ms / 60_000));

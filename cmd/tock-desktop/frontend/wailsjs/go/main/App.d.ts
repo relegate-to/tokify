@@ -16,4 +16,4 @@ export function Start(arg1:string,arg2:string):Promise<models.Activity>;
 
 export function Stop():Promise<models.Activity>;
 
-export function UpdateActivity(arg1:models.Activity,arg2:string,arg3:string):Promise<models.Activity>;
+export function UpdateActivity(arg1:models.Activity,arg2:string,arg3:string,arg4:string,arg5:string):Promise<models.Activity>;

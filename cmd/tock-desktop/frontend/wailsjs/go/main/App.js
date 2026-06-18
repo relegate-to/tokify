@@ -30,6 +30,6 @@ export function Stop() {
   return window['go']['main']['App']['Stop']();
 }
 
-export function UpdateActivity(arg1, arg2, arg3) {
-  return window['go']['main']['App']['UpdateActivity'](arg1, arg2, arg3);
+export function UpdateActivity(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['UpdateActivity'](arg1, arg2, arg3, arg4, arg5);
 }

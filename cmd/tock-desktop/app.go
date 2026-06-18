@@ -104,10 +104,12 @@ func (a *App) Stop() (*models.Activity, error) {
 	return a.rt.ActivityService.Stop(a.ctx, models.StopActivityRequest{})
 }
 
-// UpdateActivity edits an existing activity's description and project in
-// place. The activity is identified by its StartTime; the repo upserts by
-// the same key, so passing the original StartTime preserves identity.
-func (a *App) UpdateActivity(orig models.Activity, description, project string) (*models.Activity, error) {
+// UpdateActivity edits an existing activity. Description and project change
+// in place. Start and end times may also change: if startISO differs from the
+// original start, the activity is moved to the new start time (the repo's
+// key) by removing the original row and saving under the new key. End time
+// changes are applied in place.
+func (a *App) UpdateActivity(orig models.Activity, description, project, startISO, endISO string) (*models.Activity, error) {
 	if err := a.requireRuntime(); err != nil {
 		return nil, err
 	}
@@ -118,6 +120,37 @@ func (a *App) UpdateActivity(orig models.Activity, description, project string) 
 	updated := orig
 	updated.Description = description
 	updated.Project = strings.TrimSpace(project)
+
+	newStart := orig.StartTime
+	if s := strings.TrimSpace(startISO); s != "" {
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse start time")
+		}
+		newStart = t
+	}
+
+	newEnd := updated.EndTime
+	if s := strings.TrimSpace(endISO); s != "" {
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse end time")
+		}
+		newEnd = &t
+	}
+
+	if newEnd != nil && newStart.After(*newEnd) {
+		return nil, errors.New("start must not be after end")
+	}
+
+	if !newStart.Equal(orig.StartTime) {
+		if err := a.rt.ActivityService.Remove(a.ctx, orig); err != nil {
+			return nil, err
+		}
+		updated.StartTime = newStart
+	}
+	updated.EndTime = newEnd
+
 	if err := a.rt.ActivityRepo.Save(a.ctx, updated); err != nil {
 		return nil, err
 	}
