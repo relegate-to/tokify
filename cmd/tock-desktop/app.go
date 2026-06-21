@@ -96,6 +96,59 @@ func (a *App) Start(description, project string) (*models.Activity, error) {
 	})
 }
 
+// StartAt begins a new activity with an explicit start time — for when the
+// user forgot to start tracking earlier. Otherwise identical to Start.
+func (a *App) StartAt(description, project, startISO string) (*models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return nil, errors.New("describe what you're working on")
+	}
+	start, err := time.Parse(time.RFC3339, strings.TrimSpace(startISO))
+	if err != nil {
+		return nil, errors.Wrap(err, "parse start time")
+	}
+	if start.After(time.Now()) {
+		return nil, errors.New("start time must be in the past")
+	}
+	return a.rt.ActivityService.Start(a.ctx, models.StartActivityRequest{
+		Description: description,
+		Project:     strings.TrimSpace(project),
+		StartTime:   start,
+	})
+}
+
+// AddActivity creates a completed activity with arbitrary start and end times —
+// for back-filling tracked work that wasn't recorded live.
+func (a *App) AddActivity(description, project, startISO, endISO string) (*models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return nil, errors.New("describe what you were working on")
+	}
+	start, err := time.Parse(time.RFC3339, strings.TrimSpace(startISO))
+	if err != nil {
+		return nil, errors.Wrap(err, "parse start time")
+	}
+	end, err := time.Parse(time.RFC3339, strings.TrimSpace(endISO))
+	if err != nil {
+		return nil, errors.Wrap(err, "parse end time")
+	}
+	if !end.After(start) {
+		return nil, errors.New("end must be after start")
+	}
+	return a.rt.ActivityService.Add(a.ctx, models.AddActivityRequest{
+		Description: description,
+		Project:     strings.TrimSpace(project),
+		StartTime:   start,
+		EndTime:     end,
+	})
+}
+
 // Stop ends the running activity.
 func (a *App) Stop() (*models.Activity, error) {
 	if err := a.requireRuntime(); err != nil {

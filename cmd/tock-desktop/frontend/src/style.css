@@ -128,3 +128,19 @@
     @apply font-sans;
     }
 }
+
+@keyframes toki-nudge {
+  0%   { scale: 1; }
+  45%  { scale: 1.08; }
+  100% { scale: 1; }
+}
+
+/* Hide scrollbars by default; the `show-scrollbars` class on the root opts in. */
+:root:not(.show-scrollbars) ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+:root:not(.show-scrollbars) * {
+  scrollbar-width: none;
+}
