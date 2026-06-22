@@ -69,6 +69,32 @@ single input for what you're working on, a list of today's activities (and any
 earlier days you scroll back to), and an account/settings page reachable from
 the title bar.
 
+## Microsoft Teams status (optional)
+
+Toki can keep your Microsoft Teams **status message** in sync with whatever
+you're currently tracking — turn it on in Settings → Integrations.
+
+How it works:
+
+- You sign in once with the same Microsoft account you use for Teams. A
+  real Microsoft sign-in window opens (not a web view inside Toki) and the
+  access token is written to your macOS **Keychain**, never to a file.
+- You pick which projects the integration applies to. Activities under other
+  projects are left private — your Teams status doesn't change.
+- When you start an activity under a tracked project, its description
+  becomes your Teams status message. When you stop, the message is cleared.
+
+A few things to know:
+
+- The integration uses the standard Microsoft sign-in flow that the Teams
+  web client itself uses — no admin approval, no Azure AD app registration
+  required. Tenants with strict Conditional Access policies may still
+  block it.
+- On the sign-in prompt, you **must** choose **Yes** for "Stay signed in?"
+  — sign-in won't complete otherwise.
+- Toki only ever writes your status message. It does not read your Teams
+  messages, send messages, or access any other Teams data.
+
 ## Data and configuration
 
 Toki reads and writes the same files as the [tock CLI][tock]:

@@ -30,19 +30,45 @@ refresh-test-data:
 
 WAILS ?= wails
 DESKTOP_DIR := cmd/tock-desktop
+TEAMS_AUTH_DIR := cmd/tock-teams-auth
+BIN_DIR := bin
+
+# Build the Teams sign-in helper binary. Used in dev mode (found via the
+# parent directory of the dev binary) and copied into the .app bundle on
+# release builds. Built outside the Wails pipeline so we control the cgo
+# flags and architecture explicitly.
+teams-auth-build:
+	@mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/tock-teams-auth ./$(TEAMS_AUTH_DIR)
+	@echo "Built $(BIN_DIR)/tock-teams-auth"
+
+teams-auth-build-universal:
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
+		CC="clang -arch arm64" CXX="clang++ -arch arm64" \
+		go build -o $(BIN_DIR)/tock-teams-auth-arm64 ./$(TEAMS_AUTH_DIR)
+	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
+		CC="clang -arch x86_64" CXX="clang++ -arch x86_64" \
+		go build -o $(BIN_DIR)/tock-teams-auth-amd64 ./$(TEAMS_AUTH_DIR)
+	lipo -create -output $(BIN_DIR)/tock-teams-auth \
+		$(BIN_DIR)/tock-teams-auth-arm64 $(BIN_DIR)/tock-teams-auth-amd64
+	@rm $(BIN_DIR)/tock-teams-auth-arm64 $(BIN_DIR)/tock-teams-auth-amd64
+	@echo "Built universal $(BIN_DIR)/tock-teams-auth"
 
 # Build a .app for the host architecture (fastest).
-desktop-build:
+desktop-build: teams-auth-build
 	cd $(DESKTOP_DIR) && $(WAILS) build -clean
 	@rm -rf $(DESKTOP_DIR)/build/bin/Toki.app
 	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Toki.app
+	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Toki.app/Contents/MacOS/tock-teams-auth
 	@echo "Built $(DESKTOP_DIR)/build/bin/Toki.app"
 
 # Build a universal (arm64 + amd64) .app suitable for distribution.
-desktop-build-universal:
+desktop-build-universal: teams-auth-build-universal
 	cd $(DESKTOP_DIR) && $(WAILS) build -clean -platform darwin/universal
 	@rm -rf $(DESKTOP_DIR)/build/bin/Toki.app
 	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Toki.app
+	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Toki.app/Contents/MacOS/tock-teams-auth
 	@echo "Built $(DESKTOP_DIR)/build/bin/Toki.app"
 
 # Build and open the resulting .app.
@@ -50,7 +76,9 @@ desktop-run: desktop-build
 	open $(DESKTOP_DIR)/build/bin/Toki.app
 
 # Live-reload dev server with Go bindings exposed at http://localhost:34115.
-desktop-dev:
+# Builds the auth helper first so Connect works in dev. The desktop binary's
+# helper-lookup walks up to repo root and finds it under ./bin/.
+desktop-dev: teams-auth-build
 	cd $(DESKTOP_DIR) && $(WAILS) dev
 
 # Check that the Wails CLI and its prerequisites are installed.
@@ -62,4 +90,4 @@ desktop-doctor:
 notices:
 	./scripts/gen-notices.sh
 
-.PHONY: desktop-build desktop-build-universal desktop-run desktop-dev desktop-doctor notices
+.PHONY: desktop-build desktop-build-universal desktop-run desktop-dev desktop-doctor notices teams-auth-build teams-auth-build-universal

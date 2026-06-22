@@ -18,6 +18,7 @@ import (
 	exportapp "github.com/kriuchkov/tock/internal/app/export"
 	"github.com/kriuchkov/tock/internal/app/runtime"
 	"github.com/kriuchkov/tock/internal/core/models"
+	"github.com/kriuchkov/tock/internal/integrations/teams"
 	"github.com/kriuchkov/tock/internal/timeutil"
 )
 
@@ -25,8 +26,9 @@ import (
 // Runtime so the GUI talks to the same services and the same data file the
 // `tock` CLI does — there is no parallel implementation of any business rule.
 type App struct {
-	ctx context.Context
-	rt  *runtime.Runtime
+	ctx   context.Context
+	rt    *runtime.Runtime
+	teams *teams.Service
 
 	mu       sync.Mutex
 	trayStop chan struct{}
@@ -43,6 +45,13 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.rt = rt
+	// Teams integration is opt-in; we still construct the service eagerly so
+	// the settings page can render its disabled state without a round-trip
+	// failure. A construction error means we can't reach ~/Library, which
+	// would block far more than Teams — log and continue.
+	if t, err := teams.NewService(); err == nil {
+		a.teams = t
+	}
 }
 
 // trayOnReady builds the status bar menu. Called by systray on the main
@@ -197,6 +206,7 @@ func (a *App) Start(description, project string) (*models.Activity, error) {
 	})
 	if err == nil {
 		a.refreshTrayTitle()
+		a.pushTeamsStatus(description, strings.TrimSpace(project))
 	}
 	return act, err
 }
@@ -225,6 +235,7 @@ func (a *App) StartAt(description, project, startISO string) (*models.Activity, 
 	})
 	if err == nil {
 		a.refreshTrayTitle()
+		a.pushTeamsStatus(description, strings.TrimSpace(project))
 	}
 	return act, err
 }
@@ -266,6 +277,14 @@ func (a *App) Stop() (*models.Activity, error) {
 	act, err := a.rt.ActivityService.Stop(a.ctx, models.StopActivityRequest{})
 	if err == nil {
 		a.refreshTrayTitle()
+		// Empty description signals "clear my Teams status" — but we still
+		// need the just-stopped activity's project so the integration's
+		// allowlist check matches.
+		project := ""
+		if act != nil {
+			project = act.Project
+		}
+		a.pushTeamsStatus("", project)
 	}
 	return act, err
 }
@@ -433,6 +452,78 @@ func (a *App) Export(format, fromDate, toDate, project string) (string, error) {
 		return "", errors.Wrap(err, "write file")
 	}
 	return path, nil
+}
+
+// TeamsGetStatus returns connection + preference state for the settings UI.
+// Always returns a Status; absence is reported via Connected=false, never as
+// an error.
+func (a *App) TeamsGetStatus() teams.Status {
+	if a.teams == nil {
+		return teams.Status{}
+	}
+	return a.teams.Status()
+}
+
+// TeamsSetEnabled flips the master switch. Doesn't touch stored tokens — the
+// user can disable temporarily without re-doing the OAuth dance.
+func (a *App) TeamsSetEnabled(enabled bool) error {
+	if a.teams == nil {
+		return errors.New("teams integration unavailable")
+	}
+	return a.teams.SetEnabled(enabled)
+}
+
+// TeamsSetTrackedProjects replaces the project allowlist. Activities under
+// projects not in this list are never reflected in Teams status.
+func (a *App) TeamsSetTrackedProjects(projects []string) error {
+	if a.teams == nil {
+		return errors.New("teams integration unavailable")
+	}
+	return a.teams.SetTrackedProjects(projects)
+}
+
+// TeamsConnect runs the full sign-in flow by spawning the tock-teams-auth
+// helper subprocess for each audience. The helper opens a real WKWebView
+// window for the user and silently captures the redirect; this binding
+// resolves once all three tokens are in Keychain (or rejects on cancel /
+// failure). Blocks the calling goroutine for the duration; the frontend
+// should show a busy state while it runs.
+func (a *App) TeamsConnect() error {
+	if a.teams == nil {
+		return errors.New("teams integration unavailable")
+	}
+	// Bound the whole dance so a stuck sign-in can't pin a goroutine forever.
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
+	defer cancel()
+	return a.teams.Connect(ctx)
+}
+
+// TeamsDisconnect deletes all stored tokens. Preferences survive so the next
+// connect doesn't lose the project allowlist.
+func (a *App) TeamsDisconnect() error {
+	if a.teams == nil {
+		return errors.New("teams integration unavailable")
+	}
+	return a.teams.Disconnect()
+}
+
+// pushTeamsStatus fires the Teams status update off the activity-write path.
+// We never block the user's Start/Stop on a network call, and we never
+// surface a Teams failure as a Start/Stop failure — the time log is the
+// source of truth, the integration is decoration.
+func (a *App) pushTeamsStatus(description, project string) {
+	if a.teams == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := a.teams.PushActivityStatus(ctx, description, project); err != nil {
+			// Toast on the main window so the user sees Teams problems but
+			// doesn't conflate them with tracking problems.
+			wailsruntime.EventsEmit(a.ctx, "teams:error", err.Error())
+		}
+	}()
 }
 
 // Projects returns distinct project names seen recently — feeds the small-caps

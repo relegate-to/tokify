@@ -34,9 +34,15 @@ import {
     Start,
     StartAt,
     Stop,
+    TeamsConnect,
+    TeamsDisconnect,
+    TeamsGetStatus,
+    TeamsSetEnabled,
+    TeamsSetTrackedProjects,
     UpdateActivity,
 } from '../wailsjs/go/main/App';
-import { models } from '../wailsjs/go/models';
+import { EventsOn } from '../wailsjs/runtime/runtime';
+import { models, teams } from '../wailsjs/go/models';
 
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -158,7 +164,14 @@ function App() {
         readActivityView(),
     );
     const [theme, setTheme] = useState<Theme>(() => readTheme());
+    const [teamsStatus, setTeamsStatus] = useState<teams.Status | null>(null);
     const [, setTick] = useState(0);
+
+    const refreshTeams = () => {
+        TeamsGetStatus()
+            .then((s) => setTeamsStatus(s as teams.Status))
+            .catch(() => setTeamsStatus(null));
+    };
 
     useEffect(() => {
         try {
@@ -187,6 +200,20 @@ function App() {
             // ignore
         }
     }, [activityView]);
+
+    useEffect(() => {
+        refreshTeams();
+        const off = EventsOn('teams:error', (msg: string) => {
+            toast.error(`Teams: ${msg}`);
+        });
+        return () => {
+            try {
+                off();
+            } catch {
+                // ignore
+            }
+        };
+    }, []);
 
     useEffect(() => {
         try {
@@ -337,6 +364,9 @@ function App() {
                             onShowScrollbarsChange={setShowScrollbars}
                             theme={theme}
                             onThemeChange={setTheme}
+                            projects={projects}
+                            teamsStatus={teamsStatus}
+                            onTeamsRefresh={refreshTeams}
                             onBack={() => setView('now')}
                         />
                     )}
@@ -2169,6 +2199,9 @@ function SettingsView({
     onShowScrollbarsChange,
     theme,
     onThemeChange,
+    projects,
+    teamsStatus,
+    onTeamsRefresh,
     onBack,
 }: {
     showAccount: boolean;
@@ -2179,8 +2212,33 @@ function SettingsView({
     onShowScrollbarsChange: (v: boolean) => void;
     theme: Theme;
     onThemeChange: (v: Theme) => void;
+    projects: string[];
+    teamsStatus: teams.Status | null;
+    onTeamsRefresh: () => void;
     onBack: () => void;
 }) {
+    const teamsEnabled = !!teamsStatus?.enabled;
+    const teamsConnected = !!teamsStatus?.connected;
+    const teamsProjects = teamsStatus?.tracked_projects ?? [];
+
+    const handleTeamsEnabled = (v: boolean) => {
+        TeamsSetEnabled(v)
+            .then(onTeamsRefresh)
+            .catch((e) => toast.error(String(e)));
+    };
+    const handleTeamsProjects = (next: string[]) => {
+        TeamsSetTrackedProjects(next)
+            .then(onTeamsRefresh)
+            .catch((e) => toast.error(String(e)));
+    };
+    const handleTeamsDisconnect = () => {
+        TeamsDisconnect()
+            .then(() => {
+                toast.success('Disconnected from Teams');
+                onTeamsRefresh();
+            })
+            .catch((e) => toast.error(String(e)));
+    };
     return (
         <div
             className="flex flex-col gap-6 animate-in fade-in-0 slide-in-from-top-1 duration-300"
@@ -2234,6 +2292,159 @@ function SettingsView({
                     onChange={onShowAccountChange}
                 />
             </div>
+
+            <div className="flex flex-col gap-3">
+                <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Integrations
+                </h3>
+                <div className="flex flex-col divide-y rounded-xl border bg-card shadow-sm">
+                    <SettingRow
+                        title="Microsoft Teams status"
+                        description="Sets your Teams status message to the description of the activity you're currently tracking."
+                        value={teamsEnabled}
+                        onChange={handleTeamsEnabled}
+                    />
+                    {teamsEnabled && (
+                        <TeamsConnectionRow
+                            connected={teamsConnected}
+                            status={teamsStatus}
+                            onConnected={onTeamsRefresh}
+                            onDisconnect={handleTeamsDisconnect}
+                        />
+                    )}
+                    {teamsEnabled && teamsConnected && (
+                        <TeamsProjectsPicker
+                            projects={projects}
+                            selected={teamsProjects}
+                            onChange={handleTeamsProjects}
+                        />
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function TeamsConnectionRow({
+    connected,
+    status,
+    onConnected,
+    onDisconnect,
+}: {
+    connected: boolean;
+    status: teams.Status | null;
+    onConnected: () => void;
+    onDisconnect: () => void;
+}) {
+    const [busy, setBusy] = useState(false);
+    const handleConnect = () => {
+        setBusy(true);
+        const t = toast.loading('Opening Microsoft sign-in…');
+        TeamsConnect()
+            .then(() => {
+                toast.success('Connected to Teams', { id: t });
+                onConnected();
+            })
+            .catch((e) => toast.error(String(e), { id: t }))
+            .finally(() => setBusy(false));
+    };
+    if (connected) {
+        return (
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+                <div className="flex min-w-0 flex-col">
+                    <span className="text-sm">Connected</span>
+                    {status?.user_upn && (
+                        <span className="truncate text-xs text-muted-foreground">
+                            Signed in as {status.user_upn}
+                        </span>
+                    )}
+                </div>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onDisconnect}
+                >
+                    Disconnect
+                </Button>
+            </div>
+        );
+    }
+    return (
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="flex min-w-0 flex-col">
+                <span className="text-sm">Not connected</span>
+                <span className="text-xs text-muted-foreground">
+                    A Microsoft sign-in window will open. When prompted with
+                    “Stay signed in?”, choose <strong>Yes</strong> — sign-in
+                    won't complete otherwise. Tokens stay in your macOS
+                    Keychain.
+                </span>
+            </div>
+            <Button size="sm" onClick={handleConnect} disabled={busy}>
+                {busy ? 'Signing in…' : 'Connect'}
+            </Button>
+        </div>
+    );
+}
+
+function TeamsProjectsPicker({
+    projects,
+    selected,
+    onChange,
+}: {
+    projects: string[];
+    selected: string[];
+    onChange: (v: string[]) => void;
+}) {
+    const selectedSet = useMemo(() => new Set(selected), [selected]);
+    const toggle = (p: string) => {
+        const next = new Set(selectedSet);
+        if (next.has(p)) next.delete(p);
+        else next.add(p);
+        onChange(Array.from(next));
+    };
+    return (
+        <div className="flex flex-col gap-2 px-4 py-3 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+            <div className="flex items-baseline justify-between gap-4">
+                <span className="text-sm">Apply to projects</span>
+                <span className="text-xs text-muted-foreground">
+                    {selected.length === 0
+                        ? 'None selected'
+                        : `${selected.length} selected`}
+                </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+                Only activities under the selected projects will update your
+                Teams status. Other activities are left private.
+            </p>
+            {projects.length === 0 ? (
+                <p className="text-xs italic text-muted-foreground">
+                    No projects yet — start an activity with a project to add it
+                    here.
+                </p>
+            ) : (
+                <div className="flex flex-wrap gap-1">
+                    {projects.map((p) => {
+                        const active = selectedSet.has(p);
+                        return (
+                            <button
+                                key={p}
+                                type="button"
+                                onClick={() => toggle(p)}
+                                className={cn(
+                                    'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors',
+                                    active
+                                        ? 'border-foreground bg-foreground text-background'
+                                        : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground',
+                                )}
+                            >
+                                {active && <Check className="size-3" />}
+                                {p}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }

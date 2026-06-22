@@ -45,3 +45,32 @@ export namespace models {
 
 }
 
+export namespace teams {
+	
+	export class Status {
+	    connected: boolean;
+	    user_upn?: string;
+	    tenant_id?: string;
+	    expires_unix?: number;
+	    missing_tokens?: string[];
+	    enabled: boolean;
+	    tracked_projects: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connected = source["connected"];
+	        this.user_upn = source["user_upn"];
+	        this.tenant_id = source["tenant_id"];
+	        this.expires_unix = source["expires_unix"];
+	        this.missing_tokens = source["missing_tokens"];
+	        this.enabled = source["enabled"];
+	        this.tracked_projects = source["tracked_projects"];
+	    }
+	}
+
+}
+

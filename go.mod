@@ -17,6 +17,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wailsapp/wails/v2 v2.12.0
+	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	gopkg.in/yaml.v3 v3.0.1
 )
 

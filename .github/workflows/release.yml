@@ -52,6 +52,16 @@ jobs:
           fi
           ls -la
 
+      - name: Build Teams auth helper (universal) and embed in Toki.app
+        # The desktop app shells out to this helper to drive Microsoft
+        # sign-in in its own WKWebView window. Without it the Teams
+        # integration's Connect button fails with "helper not found".
+        run: |
+          make teams-auth-build-universal
+          cp bin/tock-teams-auth \
+            cmd/tock-desktop/build/bin/Toki.app/Contents/MacOS/tock-teams-auth
+          ls -la cmd/tock-desktop/build/bin/Toki.app/Contents/MacOS/
+
       - name: Install license-gathering tools
         run: |
           go install github.com/google/go-licenses@latest

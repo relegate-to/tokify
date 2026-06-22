@@ -42,6 +42,26 @@ export function Stop() {
   return window['go']['main']['App']['Stop']();
 }
 
+export function TeamsConnect() {
+  return window['go']['main']['App']['TeamsConnect']();
+}
+
+export function TeamsDisconnect() {
+  return window['go']['main']['App']['TeamsDisconnect']();
+}
+
+export function TeamsGetStatus() {
+  return window['go']['main']['App']['TeamsGetStatus']();
+}
+
+export function TeamsSetEnabled(arg1) {
+  return window['go']['main']['App']['TeamsSetEnabled'](arg1);
+}
+
+export function TeamsSetTrackedProjects(arg1) {
+  return window['go']['main']['App']['TeamsSetTrackedProjects'](arg1);
+}
+
 export function UpdateActivity(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['UpdateActivity'](arg1, arg2, arg3, arg4, arg5);
 }
