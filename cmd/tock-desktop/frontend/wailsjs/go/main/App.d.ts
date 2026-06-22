@@ -4,6 +4,8 @@ import {models} from '../models';
 
 export function AddActivity(arg1:string,arg2:string,arg3:string,arg4:string):Promise<models.Activity>;
 
+export function Export(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+
 export function GetRunning():Promise<models.Activity>;
 
 export function ListRecent(arg1:number):Promise<Array<models.Activity>>;

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -14,8 +15,10 @@ import (
 	"github.com/go-faster/errors"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	exportapp "github.com/kriuchkov/tock/internal/app/export"
 	"github.com/kriuchkov/tock/internal/app/runtime"
 	"github.com/kriuchkov/tock/internal/core/models"
+	"github.com/kriuchkov/tock/internal/timeutil"
 )
 
 // App is the Wails-bound surface for the Toki desktop window. It owns a tock
@@ -353,6 +356,83 @@ func (a *App) ListRecent(limit int) ([]models.Activity, error) {
 		acts = acts[:limit]
 	}
 	return acts, nil
+}
+
+// Export renders the activity log as txt, csv, or json, prompts the user for a
+// destination path via the native save dialog, and writes the file. Returns
+// the saved path, or an empty string if the user cancelled. fromDate and
+// toDate are YYYY-MM-DD strings (either may be empty for an open-ended range);
+// project filters by exact project name (empty means no project filter).
+// Reuses tock's own RenderOutput so the GUI and CLI produce byte-identical
+// exports.
+func (a *App) Export(format, fromDate, toDate, project string) (string, error) {
+	if err := a.requireRuntime(); err != nil {
+		return "", err
+	}
+	format = strings.ToLower(strings.TrimSpace(format))
+	switch format {
+	case "txt", "csv", "json":
+	default:
+		return "", errors.Errorf("unsupported format: %s", format)
+	}
+
+	opts := models.ActivityFilterOptions{
+		Now:     time.Now(),
+		Project: strings.TrimSpace(project),
+	}
+	if s := strings.TrimSpace(fromDate); s != "" {
+		t, err := time.ParseInLocation("2006-01-02", s, time.Local)
+		if err != nil {
+			return "", errors.Wrap(err, "invalid from date (use YYYY-MM-DD)")
+		}
+		opts.FromDate = &t
+	}
+	if s := strings.TrimSpace(toDate); s != "" {
+		t, err := time.ParseInLocation("2006-01-02", s, time.Local)
+		if err != nil {
+			return "", errors.Wrap(err, "invalid to date (use YYYY-MM-DD)")
+		}
+		_, end := timeutil.LocalDayBounds(t)
+		opts.ToDate = &end
+	}
+	if opts.FromDate != nil && opts.ToDate != nil && opts.FromDate.After(*opts.ToDate) {
+		return "", errors.New("from date must not be after to date")
+	}
+
+	filter, err := models.BuildActivityFilter(opts)
+	if err != nil {
+		return "", errors.Wrap(err, "build filter")
+	}
+	report, err := a.rt.ActivityService.GetReport(a.ctx, filter)
+	if err != nil {
+		return "", errors.Wrap(err, "generate report")
+	}
+	output, err := exportapp.RenderOutput(format, report, a.rt.TimeFormatter)
+	if err != nil {
+		return "", errors.Wrap(err, "render output")
+	}
+
+	defaultDir, _ := a.rt.DefaultExportDir()
+	defaultName := "toki-report-" + time.Now().Format("20060102-150405") + "." + format
+
+	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:            "Export Toki Activities",
+		DefaultDirectory: defaultDir,
+		DefaultFilename:  defaultName,
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: strings.ToUpper(format) + " (*." + format + ")", Pattern: "*." + format},
+		},
+	})
+	if err != nil {
+		return "", errors.Wrap(err, "save dialog")
+	}
+	if path == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(path, output, 0600); err != nil {
+		return "", errors.Wrap(err, "write file")
+	}
+	return path, nil
 }
 
 // Projects returns distinct project names seen recently — feeds the small-caps
