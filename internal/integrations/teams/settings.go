@@ -34,8 +34,8 @@ func loadSettings(path string) (Settings, error) {
 		return Settings{}, errors.Wrap(err, "read settings")
 	}
 	var s Settings
-	if err := json.Unmarshal(data, &s); err != nil {
-		return Settings{}, errors.Wrap(err, "unmarshal settings")
+	if uerr := json.Unmarshal(data, &s); uerr != nil {
+		return Settings{}, errors.Wrap(uerr, "unmarshal settings")
 	}
 	return s, nil
 }
@@ -49,8 +49,8 @@ func saveSettings(path string, s Settings) error {
 	if err != nil {
 		return errors.Wrap(err, "marshal settings")
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return errors.Wrap(err, "write settings")
+	if werr := os.WriteFile(path, data, 0o600); werr != nil {
+		return errors.Wrap(werr, "write settings")
 	}
 	return nil
 }

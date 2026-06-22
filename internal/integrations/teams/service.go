@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -69,14 +70,14 @@ func (s *Service) Status() Status {
 
 	out := Status{Enabled: enabled, TrackedProjects: projects}
 
-	tok, err := s.store.Load(string(AudiencePresence))
+	tok, err := s.store.Load(context.Background(), string(AudiencePresence))
 	if err != nil {
 		if errors.Is(err, errNotFound) {
 			out.MissingTokens = []string{string(AudiencePresence)}
 		}
 		return out
 	}
-	if claims, err := decodeClaims(tok); err == nil {
+	if claims, cerr := decodeClaims(tok); cerr == nil {
 		out.Connected = true
 		out.TenantID = claims.TenantID
 		out.UserUPN = claims.UPN
@@ -99,8 +100,8 @@ func (s *Service) Connect(ctx context.Context) error {
 	if err != nil {
 		return gerrors.Wrap(err, "sign-in")
 	}
-	if _, err := s.SubmitRedirect(raw); err != nil {
-		return gerrors.Wrap(err, "store token")
+	if _, serr := s.SubmitRedirect(ctx, raw); serr != nil {
+		return gerrors.Wrap(serr, "store token")
 	}
 	return nil
 }
@@ -108,7 +109,7 @@ func (s *Service) Connect(ctx context.Context) error {
 // SubmitRedirect ingests one redirect URL (typically from the auth helper,
 // but exposed for tests / manual recovery). Identifies the audience via JWT
 // claims and stores the token.
-func (s *Service) SubmitRedirect(rawURL string) (string, error) {
+func (s *Service) SubmitRedirect(ctx context.Context, rawURL string) (string, error) {
 	token, err := ParseRedirect(rawURL)
 	if err != nil {
 		return "", err
@@ -121,8 +122,8 @@ func (s *Service) SubmitRedirect(rawURL string) (string, error) {
 	if aud == "" {
 		return "", gerrors.Errorf("unrecognized token audience: %s", claims.Audience)
 	}
-	if err := s.store.Save(string(aud), token); err != nil {
-		return "", err
+	if serr := s.store.Save(ctx, string(aud), token); serr != nil {
+		return "", serr
 	}
 	return string(aud), nil
 }
@@ -144,10 +145,10 @@ func helperPath() (string, error) {
 	candidates := []string{
 		filepath.Join(filepath.Dir(self), name), // .app/Contents/MacOS/<binary>
 	}
-	if cwd, err := os.Getwd(); err == nil {
+	if cwd, cerr := os.Getwd(); cerr == nil {
 		// Walk up from cwd looking for go.mod; check bin/ at each level.
 		dir := cwd
-		for i := 0; i < 6; i++ {
+		for range 6 {
 			candidates = append(candidates, filepath.Join(dir, "bin", name))
 			parent := filepath.Dir(dir)
 			if parent == dir {
@@ -157,11 +158,11 @@ func helperPath() (string, error) {
 		}
 	}
 	for _, c := range candidates {
-		abs, err := filepath.Abs(c)
-		if err != nil {
+		abs, aerr := filepath.Abs(c)
+		if aerr != nil {
 			continue
 		}
-		if info, err := os.Stat(abs); err == nil && !info.IsDir() {
+		if info, serr := os.Stat(abs); serr == nil && !info.IsDir() {
 			return abs, nil
 		}
 	}
@@ -169,7 +170,8 @@ func helperPath() (string, error) {
 }
 
 func runHelper(ctx context.Context, bin string, aud Audience, tenant string) (string, error) {
-	cmd := exec.CommandContext(ctx, bin, string(aud), tenant)
+	// bin is resolved by helperPath() from a fixed search list, not user input.
+	cmd := exec.CommandContext(ctx, bin, string(aud), tenant) //nolint:gosec // G204
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -194,13 +196,12 @@ func runHelper(ctx context.Context, bin string, aud Audience, tenant string) (st
 	return out, nil
 }
 
-
 // Disconnect deletes all stored tokens. Settings (enabled, projects) are left
 // alone so re-connecting later doesn't lose the user's project allowlist.
-func (s *Service) Disconnect() error {
+func (s *Service) Disconnect(ctx context.Context) error {
 	var firstErr error
 	for _, aud := range AllAudiences() {
-		if err := s.store.Delete(string(aud)); err != nil && firstErr == nil {
+		if err := s.store.Delete(ctx, string(aud)); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -252,10 +253,10 @@ func (s *Service) PushActivityStatus(ctx context.Context, description, project s
 	if !enabled {
 		return nil
 	}
-	if !contains(tracked, project) {
+	if !slices.Contains(tracked, project) {
 		return nil
 	}
-	tok, err := s.store.Load(string(AudiencePresence))
+	tok, err := s.store.Load(ctx, string(AudiencePresence))
 	if err != nil {
 		if errors.Is(err, errNotFound) {
 			return nil
@@ -275,13 +276,4 @@ func audienceFromClaim(aud string) Audience {
 		return AudiencePresence
 	}
 	return ""
-}
-
-func contains(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

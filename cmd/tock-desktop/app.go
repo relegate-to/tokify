@@ -504,7 +504,7 @@ func (a *App) TeamsDisconnect() error {
 	if a.teams == nil {
 		return errors.New("teams integration unavailable")
 	}
-	return a.teams.Disconnect()
+	return a.teams.Disconnect(a.ctx)
 }
 
 // pushTeamsStatus fires the Teams status update off the activity-write path.

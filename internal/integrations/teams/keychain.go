@@ -2,6 +2,7 @@ package teams
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os/exec"
 	"strings"
@@ -21,9 +22,9 @@ func newKeychainStore() *keychainStore {
 	return &keychainStore{service: "Toki Teams Integration"}
 }
 
-func (k *keychainStore) Save(account, secret string) error {
+func (k *keychainStore) Save(ctx context.Context, account, secret string) error {
 	// `add-generic-password -U` updates if it exists, creates otherwise.
-	cmd := exec.Command(
+	cmd := exec.CommandContext(ctx,
 		"security", "add-generic-password",
 		"-a", account,
 		"-s", k.service,
@@ -38,8 +39,8 @@ func (k *keychainStore) Save(account, secret string) error {
 	return nil
 }
 
-func (k *keychainStore) Load(account string) (string, error) {
-	cmd := exec.Command(
+func (k *keychainStore) Load(ctx context.Context, account string) (string, error) {
+	cmd := exec.CommandContext(ctx,
 		"security", "find-generic-password",
 		"-a", account,
 		"-s", k.service,
@@ -60,8 +61,8 @@ func (k *keychainStore) Load(account string) (string, error) {
 	return strings.TrimRight(stdout.String(), "\n"), nil
 }
 
-func (k *keychainStore) Delete(account string) error {
-	cmd := exec.Command(
+func (k *keychainStore) Delete(ctx context.Context, account string) error {
+	cmd := exec.CommandContext(ctx,
 		"security", "delete-generic-password",
 		"-a", account,
 		"-s", k.service,

@@ -31,8 +31,8 @@ func decodeClaims(token string) (*Claims, error) {
 		return nil, errors.Wrap(err, "decode payload")
 	}
 	var c Claims
-	if err := json.Unmarshal(payload, &c); err != nil {
-		return nil, errors.Wrap(err, "unmarshal payload")
+	if uerr := json.Unmarshal(payload, &c); uerr != nil {
+		return nil, errors.Wrap(uerr, "unmarshal payload")
 	}
 	return &c, nil
 }

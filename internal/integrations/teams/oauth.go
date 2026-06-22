@@ -40,15 +40,15 @@ func LoginURL(aud Audience, tenantID string) (string, error) {
 	if tenantID == "" {
 		tenantID = "common"
 	}
-	state, err := randomHex(16)
+	state, err := randomHex()
 	if err != nil {
 		return "", err
 	}
-	nonce, err := randomHex(16)
+	nonce, err := randomHex()
 	if err != nil {
 		return "", err
 	}
-	reqID, err := randomHex(16)
+	reqID, err := randomHex()
 	if err != nil {
 		return "", err
 	}
@@ -82,7 +82,7 @@ func LoginURL(aud Audience, tenantID string) (string, error) {
 // after completing the auth flow. The token of interest lives in the URL
 // fragment. Returns an error if the URL is the wrong one or doesn't carry a
 // token (e.g. user pasted login.microsoftonline.com/error/...).
-func ParseRedirect(raw string) (token string, err error) {
+func ParseRedirect(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", errors.New("empty URL")
@@ -116,8 +116,8 @@ func ParseRedirect(raw string) (token string, err error) {
 	return "", errors.New("no token in redirect URL")
 }
 
-func randomHex(nBytes int) (string, error) {
-	b := make([]byte, nBytes)
+func randomHex() (string, error) {
+	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}

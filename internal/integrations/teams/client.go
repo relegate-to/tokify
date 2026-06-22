@@ -65,15 +65,15 @@ func (c *httpClient) PublishNote(ctx context.Context, presenceToken, message str
 	if err != nil {
 		return errors.Wrap(err, "new request")
 	}
-	corr, _ := randomHex(16)
+	corr, _ := randomHex()
 	req.Header.Set("Authorization", "Bearer "+presenceToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
-	req.Header.Set("behavioroverride", "redirectAs404")
-	req.Header.Set("x-ms-client-type", "cdlworker")
-	req.Header.Set("x-ms-client-user-agent", "Teams-V2-Web")
-	req.Header.Set("x-ms-client-version", "1415/26051416715")
-	req.Header.Set("x-ms-correlation-id", corr)
+	req.Header.Set("Behavioroverride", "redirectAs404")
+	req.Header.Set("X-Ms-Client-Type", "cdlworker")
+	req.Header.Set("X-Ms-Client-User-Agent", "Teams-V2-Web")
+	req.Header.Set("X-Ms-Client-Version", "1415/26051416715")
+	req.Header.Set("X-Ms-Correlation-Id", corr)
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -100,4 +100,3 @@ func (c *httpClient) PublishNote(ctx context.Context, presenceToken, message str
 func (c *httpClient) ClearNote(ctx context.Context, presenceToken string) error {
 	return c.PublishNote(ctx, presenceToken, "", time.Time{})
 }
-
