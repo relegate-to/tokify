@@ -108,7 +108,7 @@ func (s *Service) Connect(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	authURL, verifier, err := BuildAuthURL(AudiencePresence, "common", false)
+	authURL, verifier, err := BuildAuthURL(AudiencePresence, tenantCommon, false)
 	if err != nil {
 		return gerrors.Wrap(err, "build auth url")
 	}
@@ -120,12 +120,12 @@ func (s *Service) Connect(ctx context.Context) error {
 	if err != nil {
 		return gerrors.Wrap(err, "parse redirect")
 	}
-	tokens, err := ExchangeCode(ctx, s.tokenHTTP, "common", code, verifier, AudiencePresence)
+	tokens, err := ExchangeCode(ctx, s.tokenHTTP, tenantCommon, code, verifier, AudiencePresence)
 	if err != nil {
 		return gerrors.Wrap(err, "exchange code")
 	}
-	if err := s.saveTokens(ctx, tokens); err != nil {
-		return gerrors.Wrap(err, "persist tokens")
+	if serr := s.saveTokens(ctx, tokens); serr != nil {
+		return gerrors.Wrap(serr, "persist tokens")
 	}
 	return nil
 }
@@ -176,7 +176,7 @@ func runHelper(ctx context.Context, bin, authURL string, silent bool) (string, e
 		args = []string{"--silent", authURL}
 	}
 	// bin is resolved by helperPath() from a fixed search list, not user input.
-	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // G204
+	cmd := exec.CommandContext(ctx, bin, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -299,7 +299,7 @@ func (s *Service) accessToken(ctx context.Context) (string, error) {
 	if tok.ExpiresAt > time.Now().Add(60*time.Second).Unix() {
 		return tok.AccessToken, nil
 	}
-	tenant := "common"
+	tenant := tenantCommon
 	if claims, derr := decodeClaims(tok.AccessToken); derr == nil && claims.TenantID != "" {
 		tenant = claims.TenantID
 	}
@@ -318,8 +318,8 @@ func (s *Service) accessToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInteractionRequired, err)
 	}
-	if err := s.saveTokens(ctx, next); err != nil {
-		return "", gerrors.Wrap(err, "persist reauthed tokens")
+	if serr := s.saveTokens(ctx, next); serr != nil {
+		return "", gerrors.Wrap(serr, "persist reauthed tokens")
 	}
 	return next.AccessToken, nil
 }
@@ -354,7 +354,7 @@ func (s *Service) loadTokens(ctx context.Context) (TokenSet, error) {
 		return TokenSet{}, err
 	}
 	var tok TokenSet
-	if err := json.Unmarshal([]byte(raw), &tok); err != nil {
+	if uerr := json.Unmarshal([]byte(raw), &tok); uerr != nil {
 		// Pre-PKCE installs stored the raw access token. Treat that as "no
 		// tokens" so the UI prompts a reconnect.
 		return TokenSet{}, errNotFound
@@ -363,7 +363,9 @@ func (s *Service) loadTokens(ctx context.Context) (TokenSet, error) {
 }
 
 func (s *Service) saveTokens(ctx context.Context, tok TokenSet) error {
-	data, err := json.Marshal(tok)
+	// Serializing the token set for Keychain storage is the whole point here;
+	// the access/refresh tokens are meant to be persisted, not leaked.
+	data, err := json.Marshal(tok) //nolint:gosec // G117: tokens are intentionally serialized for Keychain
 	if err != nil {
 		return err
 	}

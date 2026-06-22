@@ -34,6 +34,10 @@ const (
 	// The Teams web client always lands here after auth. We can't change this
 	// because the redirect URI is bound to teamsAppID.
 	redirectURI = "https://teams.microsoft.com/go"
+
+	// tenantCommon is the multi-tenant AAD endpoint used until a successful
+	// sign-in reveals the user's actual tenant.
+	tenantCommon = "common"
 )
 
 // TokenSet is the full bag we persist per audience: the short-lived bearer
@@ -73,7 +77,7 @@ func resourceFor(aud Audience) (string, error) {
 // back to an interactive sign-in in the latter case.
 func BuildAuthURL(aud Audience, tenantID string, silent bool) (string, string, error) {
 	if tenantID == "" {
-		tenantID = "common"
+		tenantID = tenantCommon
 	}
 	resource, err := resourceFor(aud)
 	if err != nil {
@@ -158,7 +162,7 @@ func ParseRedirect(raw string) (string, error) {
 // fresh TokenSet.
 func ExchangeCode(ctx context.Context, hc *http.Client, tenantID, code, verifier string, aud Audience) (TokenSet, error) {
 	if tenantID == "" {
-		tenantID = "common"
+		tenantID = tenantCommon
 	}
 	resource, err := resourceFor(aud)
 	if err != nil {
@@ -179,7 +183,7 @@ func ExchangeCode(ctx context.Context, hc *http.Client, tenantID, code, verifier
 // the caller can keep using it.
 func RefreshTokens(ctx context.Context, hc *http.Client, tenantID, refreshToken string, aud Audience) (TokenSet, error) {
 	if tenantID == "" {
-		tenantID = "common"
+		tenantID = tenantCommon
 	}
 	resource, err := resourceFor(aud)
 	if err != nil {
@@ -226,8 +230,8 @@ func postToken(ctx context.Context, hc *http.Client, tenantID string, form url.V
 		ExpiresIn    json.Number `json:"expires_in"`
 		ExpiresOn    json.Number `json:"expires_on"`
 	}
-	if err := json.Unmarshal(body, &r); err != nil {
-		return TokenSet{}, errors.Wrap(err, "decode token response")
+	if uerr := json.Unmarshal(body, &r); uerr != nil {
+		return TokenSet{}, errors.Wrap(uerr, "decode token response")
 	}
 	if r.AccessToken == "" {
 		return TokenSet{}, errors.New("token response had no access_token")
