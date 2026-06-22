@@ -316,7 +316,7 @@ func (s *Service) accessToken(ctx context.Context) (string, error) {
 	}
 	next, err := s.silentReauth(ctx, tenant)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInteractionRequired, err)
+		return "", fmt.Errorf("%w: %w", ErrInteractionRequired, err)
 	}
 	if serr := s.saveTokens(ctx, next); serr != nil {
 		return "", gerrors.Wrap(serr, "persist reauthed tokens")
