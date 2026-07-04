@@ -20,6 +20,7 @@ import (
 	exportapp "github.com/kriuchkov/tock/internal/app/export"
 	"github.com/kriuchkov/tock/internal/app/runtime"
 	"github.com/kriuchkov/tock/internal/core/models"
+	"github.com/kriuchkov/tock/internal/integrations/neonauth"
 	"github.com/kriuchkov/tock/internal/integrations/teams"
 	"github.com/kriuchkov/tock/internal/timeutil"
 )
@@ -28,9 +29,10 @@ import (
 // Runtime so the GUI talks to the same services and the same data file the
 // `tock` CLI does — there is no parallel implementation of any business rule.
 type App struct {
-	ctx   context.Context
-	rt    *runtime.Runtime
-	teams *teams.Service
+	ctx      context.Context
+	rt       *runtime.Runtime
+	teams    *teams.Service
+	neonAuth *neonauth.Service
 
 	mu       sync.Mutex
 	trayStop chan struct{}
@@ -55,6 +57,12 @@ func (a *App) startup(ctx context.Context) {
 	// would block far more than Teams — log and continue.
 	if t, err := teams.NewService(); err == nil {
 		a.teams = t
+	}
+	// Neon Auth is optional and never gates core tracking; construct it eagerly
+	// so the Account view can render its signed-out / unconfigured state without
+	// a round-trip failure. A construction error means we can't reach ~/Library.
+	if n, err := neonauth.NewService(); err == nil {
+		a.neonAuth = n
 	}
 }
 
@@ -509,6 +517,47 @@ func (a *App) TeamsDisconnect() error {
 		return errors.New("teams integration unavailable")
 	}
 	return a.teams.Disconnect(a.ctx)
+}
+
+// AuthStatus returns the Neon Auth configuration + sign-in snapshot for the
+// Account view. Always returns a Status; absence of a session is reported via
+// SignedIn=false, never as an error.
+func (a *App) AuthStatus() neonauth.Status {
+	if a.neonAuth == nil {
+		return neonauth.Status{}
+	}
+	return a.neonAuth.Status()
+}
+
+// AuthSignIn authenticates with email + password and persists the session in
+// Keychain. Returns the resulting Status.
+func (a *App) AuthSignIn(email, password string) (neonauth.Status, error) {
+	if a.neonAuth == nil {
+		return neonauth.Status{}, errors.New("auth unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonAuth.SignIn(ctx, strings.TrimSpace(email), password)
+}
+
+// AuthSignUp creates an account with email + password and persists the session.
+func (a *App) AuthSignUp(email, password, name string) (neonauth.Status, error) {
+	if a.neonAuth == nil {
+		return neonauth.Status{}, errors.New("auth unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonAuth.SignUp(ctx, strings.TrimSpace(email), password, strings.TrimSpace(name))
+}
+
+// AuthSignOut revokes the session and clears the stored token.
+func (a *App) AuthSignOut() error {
+	if a.neonAuth == nil {
+		return errors.New("auth unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
+	defer cancel()
+	return a.neonAuth.SignOut(ctx)
 }
 
 // pushTeamsStatus fires the Teams status update off the activity-write path.

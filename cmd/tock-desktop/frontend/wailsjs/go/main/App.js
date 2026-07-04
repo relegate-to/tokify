@@ -6,6 +6,22 @@ export function AddActivity(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddActivity'](arg1, arg2, arg3, arg4);
 }
 
+export function AuthSignIn(arg1, arg2) {
+  return window['go']['main']['App']['AuthSignIn'](arg1, arg2);
+}
+
+export function AuthSignOut() {
+  return window['go']['main']['App']['AuthSignOut']();
+}
+
+export function AuthSignUp(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AuthSignUp'](arg1, arg2, arg3);
+}
+
+export function AuthStatus() {
+  return window['go']['main']['App']['AuthStatus']();
+}
+
 export function Export(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['Export'](arg1, arg2, arg3, arg4);
 }

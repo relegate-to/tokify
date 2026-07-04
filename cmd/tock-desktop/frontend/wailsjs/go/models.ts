@@ -45,6 +45,31 @@ export namespace models {
 
 }
 
+export namespace neonauth {
+	
+	export class Status {
+	    configured: boolean;
+	    signed_in: boolean;
+	    user_id?: string;
+	    email?: string;
+	    name?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.configured = source["configured"];
+	        this.signed_in = source["signed_in"];
+	        this.user_id = source["user_id"];
+	        this.email = source["email"];
+	        this.name = source["name"];
+	    }
+	}
+
+}
+
 export namespace teams {
 	
 	export class Status {

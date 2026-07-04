@@ -9,6 +9,8 @@ import {
     FolderKanban,
     Hourglass,
     ListChecks,
+    Loader2,
+    LogOut,
     Play,
     Plus,
     RotateCcw,
@@ -25,6 +27,10 @@ import { toast } from 'sonner';
 
 import {
     AddActivity,
+    AuthSignIn,
+    AuthSignOut,
+    AuthSignUp,
+    AuthStatus,
     Export,
     GetRunning,
     ListRecent,
@@ -42,7 +48,7 @@ import {
     UpdateActivity,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { models, teams } from '../wailsjs/go/models';
+import { models, neonauth, teams } from '../wailsjs/go/models';
 
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -89,8 +95,6 @@ const SHOW_ACCOUNT_KEY = 'toki.showAccount';
 const ACTIVITY_VIEW_KEY = 'toki.activityView';
 const SHOW_SCROLLBARS_KEY = 'toki.showScrollbars';
 const THEME_KEY = 'toki.theme';
-const DISPLAY_NAME_KEY = 'toki.displayName';
-const EMAIL_KEY = 'toki.email';
 
 type ActivityView = 'all' | 'today' | 'none';
 const ACTIVITY_VIEW_VALUES: ActivityView[] = ['all', 'today', 'none'];
@@ -1898,6 +1902,14 @@ function DatePickerField({
 
 /* ── Account ──────────────────────────────────────────────────────────── */
 
+// Wails rejects a binding promise with the Go error's message as a plain
+// string; normalize the other shapes so the form never shows "[object Object]".
+function authErrorText(err: unknown): string {
+    if (typeof err === 'string' && err.trim()) return err;
+    if (err instanceof Error && err.message) return err.message;
+    return 'Something went wrong. Try again.';
+}
+
 function AccountView({
     running,
     recent,
@@ -1909,36 +1921,65 @@ function AccountView({
     projects: string[];
     onBack: () => void;
 }) {
-    const [displayName, setDisplayName] = useState<string>(() => {
-        try {
-            return localStorage.getItem(DISPLAY_NAME_KEY) ?? '';
-        } catch {
-            return '';
-        }
-    });
-    const [email, setEmail] = useState<string>(() => {
-        try {
-            return localStorage.getItem(EMAIL_KEY) ?? '';
-        } catch {
-            return '';
-        }
-    });
+    const [status, setStatus] = useState<neonauth.Status | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
 
     useEffect(() => {
-        try {
-            localStorage.setItem(DISPLAY_NAME_KEY, displayName);
-        } catch {
-            // ignore
-        }
-    }, [displayName]);
+        let cancelled = false;
+        AuthStatus()
+            .then((s) => {
+                if (!cancelled) setStatus(s);
+            })
+            .catch(() => {
+                if (!cancelled) setStatus(null);
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
-    useEffect(() => {
+    const submitAuth = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (submitting) return;
+        setError('');
+        setSubmitting(true);
         try {
-            localStorage.setItem(EMAIL_KEY, email);
-        } catch {
-            // ignore
+            const next =
+                mode === 'signin'
+                    ? await AuthSignIn(email.trim(), password)
+                    : await AuthSignUp(email.trim(), password, name.trim());
+            setStatus(next);
+            setPassword('');
+        } catch (err) {
+            setError(authErrorText(err));
+        } finally {
+            setSubmitting(false);
         }
-    }, [email]);
+    };
+
+    const signOut = async () => {
+        if (submitting) return;
+        setError('');
+        setSubmitting(true);
+        try {
+            await AuthSignOut();
+            setStatus(await AuthStatus());
+            setPassword('');
+        } catch (err) {
+            setError(authErrorText(err));
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     const stats = useMemo(() => {
         const all: Activity[] = running ? [running, ...recent] : recent;
@@ -1974,8 +2015,10 @@ function AccountView({
         };
     }, [running, recent, projects]);
 
+    const signedInName = (status?.name ?? '').trim();
+    const signedInEmail = (status?.email ?? '').trim();
     const initials = useMemo(() => {
-        const source = displayName.trim() || email.trim();
+        const source = signedInName || signedInEmail;
         if (!source) return 'YOU';
         const parts = source
             .replace(/@.*$/, '')
@@ -1984,7 +2027,15 @@ function AccountView({
         if (parts.length === 0) return source.slice(0, 2).toUpperCase();
         if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
         return (parts[0][0] + parts[1][0]).toUpperCase();
-    }, [displayName, email]);
+    }, [signedInName, signedInEmail]);
+
+    const accountDescription = !status?.configured
+        ? 'Accounts are optional. Your time is always saved on this Mac.'
+        : status.signed_in
+          ? "You're signed in."
+          : mode === 'signin'
+            ? 'Sign in to your Toki account.'
+            : 'Create a Toki account.';
 
     return (
         <div className="flex flex-col gap-6 animate-in fade-in-0 slide-in-from-top-1 duration-300">
@@ -2004,64 +2055,175 @@ function AccountView({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Profile</CardTitle>
-                    <CardDescription>
-                        How you appear in Toki. Stored locally for now.
-                    </CardDescription>
+                    <CardTitle>Account</CardTitle>
+                    <CardDescription>{accountDescription}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                    <div className="flex items-center gap-4">
-                        <div
-                            aria-hidden
-                            className="flex size-14 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium tracking-wide text-foreground/80"
-                        >
-                            {initials}
+                    {loading ? (
+                        <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                            <Loader2 className="size-4 animate-spin" />
+                            Checking your account
                         </div>
-                        <div className="flex min-w-0 flex-col">
-                            <span className="truncate text-sm font-medium">
-                                {displayName.trim() || 'Unnamed'}
-                            </span>
-                            <span className="truncate text-xs text-muted-foreground">
-                                {email.trim() || 'No email set'}
+                    ) : !status?.configured ? (
+                        <div className="flex flex-col gap-1.5 py-1 text-sm text-muted-foreground">
+                            <span>No account service connected yet.</span>
+                            <span className="text-xs">
+                                Set a Neon Auth URL to sign in.
                             </span>
                         </div>
-                    </div>
-                    <Separator />
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="flex flex-col gap-1.5">
-                            <label
-                                htmlFor="account-name"
-                                className="text-xs text-muted-foreground"
+                    ) : status.signed_in ? (
+                        <div className="flex items-center gap-4">
+                            <div
+                                aria-hidden
+                                className="flex size-14 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium tracking-wide text-foreground/80"
                             >
-                                Display name
-                            </label>
-                            <Input
-                                id="account-name"
-                                value={displayName}
-                                onChange={(e) => setDisplayName(e.target.value)}
-                                placeholder="Your name"
-                                autoComplete="off"
-                                spellCheck={false}
-                            />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                            <label
-                                htmlFor="account-email"
-                                className="text-xs text-muted-foreground"
+                                {initials}
+                            </div>
+                            <div className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate text-sm font-medium">
+                                    {signedInName || 'Signed in'}
+                                </span>
+                                <span className="truncate text-xs text-muted-foreground">
+                                    {signedInEmail || 'No email'}
+                                </span>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={signOut}
+                                disabled={submitting}
                             >
-                                Email
-                            </label>
-                            <Input
-                                id="account-email"
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                placeholder="you@example.com"
-                                autoComplete="off"
-                                spellCheck={false}
-                            />
+                                {submitting ? (
+                                    <Loader2
+                                        data-icon="inline-start"
+                                        className="animate-spin"
+                                    />
+                                ) : (
+                                    <LogOut data-icon="inline-start" />
+                                )}
+                                Sign out
+                            </Button>
                         </div>
-                    </div>
+                    ) : (
+                        <>
+                            <Tabs
+                                value={mode}
+                                onValueChange={(v) => {
+                                    setMode(v as 'signin' | 'signup');
+                                    setError('');
+                                }}
+                            >
+                                <TabsList className="w-full">
+                                    <TabsTrigger
+                                        value="signin"
+                                        className="flex-1"
+                                    >
+                                        Sign in
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="signup"
+                                        className="flex-1"
+                                    >
+                                        Create account
+                                    </TabsTrigger>
+                                </TabsList>
+                            </Tabs>
+                            <form
+                                key={mode}
+                                onSubmit={submitAuth}
+                                className="flex flex-col gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-200"
+                            >
+                                {mode === 'signup' && (
+                                    <div className="flex flex-col gap-1.5">
+                                        <label
+                                            htmlFor="auth-name"
+                                            className="text-xs text-muted-foreground"
+                                        >
+                                            Name
+                                        </label>
+                                        <Input
+                                            id="auth-name"
+                                            value={name}
+                                            onChange={(e) =>
+                                                setName(e.target.value)
+                                            }
+                                            placeholder="Your name"
+                                            autoComplete="name"
+                                            spellCheck={false}
+                                        />
+                                    </div>
+                                )}
+                                <div className="flex flex-col gap-1.5">
+                                    <label
+                                        htmlFor="auth-email"
+                                        className="text-xs text-muted-foreground"
+                                    >
+                                        Email
+                                    </label>
+                                    <Input
+                                        id="auth-email"
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) =>
+                                            setEmail(e.target.value)
+                                        }
+                                        placeholder="you@example.com"
+                                        autoComplete="email"
+                                        spellCheck={false}
+                                        required
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label
+                                        htmlFor="auth-password"
+                                        className="text-xs text-muted-foreground"
+                                    >
+                                        Password
+                                    </label>
+                                    <Input
+                                        id="auth-password"
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) =>
+                                            setPassword(e.target.value)
+                                        }
+                                        placeholder={
+                                            mode === 'signin'
+                                                ? 'Your password'
+                                                : 'At least 8 characters'
+                                        }
+                                        autoComplete={
+                                            mode === 'signin'
+                                                ? 'current-password'
+                                                : 'new-password'
+                                        }
+                                        required
+                                    />
+                                </div>
+                                {error && (
+                                    <p className="text-xs text-destructive">
+                                        {error}
+                                    </p>
+                                )}
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    className="mt-1"
+                                    disabled={submitting}
+                                >
+                                    {submitting && (
+                                        <Loader2
+                                            data-icon="inline-start"
+                                            className="animate-spin"
+                                        />
+                                    )}
+                                    {mode === 'signin'
+                                        ? 'Sign in'
+                                        : 'Create account'}
+                                </Button>
+                            </form>
+                        </>
+                    )}
                 </CardContent>
             </Card>
 
