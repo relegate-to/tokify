@@ -98,7 +98,7 @@ func postCredentials(ctx context.Context, hc *http.Client, url string, body map[
 		return session{}, gerrors.Wrap(uerr, "decode auth response")
 	}
 	token := out.Token
-	if h := resp.Header.Get("set-auth-token"); h != "" {
+	if h := resp.Header.Get("Set-Auth-Token"); h != "" {
 		token = h
 	}
 	if token == "" {

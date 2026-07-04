@@ -157,7 +157,7 @@ func (s *Service) loadSession(ctx context.Context) (session, error) {
 func (s *Service) saveSession(ctx context.Context, sess session) error {
 	// Serializing the session for Keychain storage is the whole point here; the
 	// token is meant to be persisted, not leaked.
-	data, err := json.Marshal(sess) //nolint:gosec // G117: token is intentionally serialized for Keychain
+	data, err := json.Marshal(sess)
 	if err != nil {
 		return err
 	}
