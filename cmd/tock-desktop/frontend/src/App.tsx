@@ -13,9 +13,11 @@ import {
     LogOut,
     Play,
     Plus,
+    RefreshCw,
     RotateCcw,
     Search,
     Settings as SettingsIcon,
+    ShieldCheck,
     Square,
     Timer,
     Trash2,
@@ -40,6 +42,9 @@ import {
     Start,
     StartAt,
     Stop,
+    SyncNow,
+    SyncSetEnabled,
+    SyncStatus,
     TeamsConnect,
     TeamsDisconnect,
     TeamsGetStatus,
@@ -48,7 +53,7 @@ import {
     UpdateActivity,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { models, neonauth, teams } from '../wailsjs/go/models';
+import { models, neonauth, neonsync, teams } from '../wailsjs/go/models';
 
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -436,6 +441,8 @@ function Masthead({
 
     const showToki = introToki || hover || (open && openedAsToki);
     const [exportOpen, setExportOpen] = useState(false);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
 
     const handleOpenChange = (next: boolean) => {
         if (next) {
@@ -447,6 +454,24 @@ function Masthead({
         }
         setOpen(next);
     };
+
+    // Radix dismisses the menu on a bubble-phase document listener, which a
+    // child calling stopPropagation (e.g. a text input) can swallow — leaving
+    // the menu open and the label stuck on "Toki". A capture-phase listener
+    // runs before any child handler, so an outside press always closes it.
+    useEffect(() => {
+        if (!open) return;
+        const onPointerDown = (event: PointerEvent) => {
+            const target = event.target as Node | null;
+            if (!target) return;
+            if (triggerRef.current?.contains(target)) return;
+            if (contentRef.current?.contains(target)) return;
+            handleOpenChange(false);
+        };
+        document.addEventListener('pointerdown', onPointerDown, true);
+        return () =>
+            document.removeEventListener('pointerdown', onPointerDown, true);
+    }, [open]);
 
     return (
         <>
@@ -466,12 +491,13 @@ function Masthead({
                 <DropdownMenu open={open} onOpenChange={handleOpenChange}>
                     <DropdownMenuTrigger asChild>
                         <button
+                            ref={triggerRef}
                             type="button"
                             onMouseEnter={() => setHover(true)}
                             onMouseLeave={() => setHover(false)}
-                            className="relative grid select-none overflow-hidden rounded-md px-2 py-1 transition-colors hover:bg-muted data-[state=open]:bg-muted"
+                            className="relative grid select-none overflow-hidden rounded-md px-2 py-1 outline-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-0 data-[state=open]:bg-muted"
                         >
-                            <span className="invisible col-start-1 row-start-1 px-1 text-sm font-semibold tracking-tight">
+                            <span className="invisible col-start-1 row-start-1 px-1 text-xs font-medium uppercase tracking-[0.2em]">
                                 Toki
                             </span>
                             <span className="invisible col-start-1 row-start-1 px-1 text-xs tabular-nums">
@@ -480,7 +506,7 @@ function Masthead({
                             <span
                                 aria-hidden={!showToki}
                                 className={cn(
-                                    'absolute inset-0 flex items-center justify-center text-sm font-semibold tracking-tight transition-[translate,opacity] duration-300 ease-out',
+                                    'absolute inset-0 flex items-center justify-center pl-[0.2em] text-xs font-medium uppercase tracking-[0.2em] transition-[translate,opacity] duration-300 ease-out',
                                     showToki
                                         ? 'translate-x-0 opacity-100'
                                         : '-translate-x-full opacity-0',
@@ -510,7 +536,7 @@ function Masthead({
                             </span>
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent>
+                    <DropdownMenuContent ref={contentRef}>
                         <DropdownMenuItem onSelect={() => onView('settings')}>
                             <SettingsIcon className="size-4 opacity-70" />
                             Settings
@@ -2303,28 +2329,176 @@ function AccountView({
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Cloud className="size-4 opacity-70" />
-                        Sync
-                        <Badge variant="secondary" className="ml-1">
-                            Coming soon
-                        </Badge>
-                    </CardTitle>
-                    <CardDescription>
-                        Keep your activities in sync across devices. Until then,
-                        everything stays on this machine.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Button variant="outline" size="sm" disabled>
-                        <Cloud data-icon="inline-start" />
-                        Enable sync
-                    </Button>
-                </CardContent>
-            </Card>
+            <SyncCard signedIn={!!status?.signed_in} />
         </div>
+    );
+}
+
+function SyncCard({ signedIn }: { signedIn: boolean }) {
+    const [status, setStatus] = useState<neonsync.SyncStatus | null>(null);
+    const [toggling, setToggling] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+
+    useEffect(() => {
+        if (!signedIn) {
+            setStatus(null);
+            return;
+        }
+        let cancelled = false;
+        SyncStatus()
+            .then((s) => {
+                if (!cancelled) setStatus(s);
+            })
+            .catch(() => {
+                if (!cancelled) setStatus(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [signedIn]);
+
+    // Background auto-sync runs on a timer in Go; refresh the card when it fires
+    // so "Last synced" stays current without reopening the panel.
+    useEffect(() => {
+        if (!signedIn) return;
+        return EventsOn('sync:updated', (s: neonsync.SyncStatus) => setStatus(s));
+    }, [signedIn]);
+
+    const toggleEnabled = (v: boolean) => {
+        if (toggling) return;
+        setToggling(true);
+        SyncSetEnabled(v)
+            .then(setStatus)
+            .catch((e) => toast.error(authErrorText(e)))
+            .finally(() => setToggling(false));
+    };
+
+    const runSync = () => {
+        if (syncing) return;
+        setSyncing(true);
+        const t = toast.loading('Syncing…');
+        SyncNow()
+            .then((s) => {
+                setStatus(s);
+                toast.success('Synced', {
+                    id: t,
+                    description: `${s.entry_count} ${
+                        s.entry_count === 1 ? 'entry' : 'entries'
+                    } encrypted`,
+                });
+            })
+            .catch((e) => toast.error(authErrorText(e), { id: t }))
+            .finally(() => setSyncing(false));
+    };
+
+    const configured = !!status?.configured;
+    const enabled = !!status?.enabled;
+    const lastSyncLabel = status?.last_sync
+        ? format(new Date(status.last_sync), "d MMM yyyy 'at' HH:mm")
+        : 'Never';
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Cloud className="size-4 opacity-70" />
+                    Sync
+                </CardTitle>
+                <CardDescription className="flex items-center gap-1.5">
+                    <ShieldCheck className="size-3.5 shrink-0 opacity-70" />
+                    End-to-end encrypted. Only you can read your history.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+                {!signedIn ? (
+                    <p className="py-1 text-sm text-muted-foreground">
+                        Sign in above to sync your activities across devices.
+                    </p>
+                ) : !configured ? (
+                    <p className="py-1 text-sm text-muted-foreground">
+                        Set a Neon Data API URL to turn on encrypted sync.
+                    </p>
+                ) : (
+                    <>
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="flex min-w-0 flex-col">
+                                <span className="text-sm">
+                                    Sync across devices
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    Your local log stays the source of truth.
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={enabled}
+                                disabled={toggling}
+                                onClick={() => toggleEnabled(!enabled)}
+                                className={cn(
+                                    'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50',
+                                    enabled ? 'bg-foreground' : 'bg-muted',
+                                )}
+                            >
+                                <span
+                                    className={cn(
+                                        'inline-block size-4 rounded-full bg-background shadow transition-transform',
+                                        enabled
+                                            ? 'translate-x-[1.125rem]'
+                                            : 'translate-x-0.5',
+                                    )}
+                                />
+                            </button>
+                        </div>
+
+                        {enabled && (
+                            <div className="flex flex-col gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                                <Separator />
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-muted-foreground">
+                                        Last synced
+                                    </span>
+                                    <span className="tabular-nums">
+                                        {lastSyncLabel}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-muted-foreground">
+                                        Entries in the cloud
+                                    </span>
+                                    <span className="font-mono tabular-nums">
+                                        {status?.entry_count ?? 0}
+                                    </span>
+                                </div>
+                                {!status?.unlocked && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Sign in again to unlock your encryption
+                                        key on this device.
+                                    </p>
+                                )}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="self-start"
+                                    onClick={runSync}
+                                    disabled={syncing || !status?.unlocked}
+                                >
+                                    {syncing ? (
+                                        <Loader2
+                                            data-icon="inline-start"
+                                            className="animate-spin"
+                                        />
+                                    ) : (
+                                        <RefreshCw data-icon="inline-start" />
+                                    )}
+                                    Sync now
+                                </Button>
+                            </div>
+                        )}
+                    </>
+                )}
+            </CardContent>
+        </Card>
     );
 }
 

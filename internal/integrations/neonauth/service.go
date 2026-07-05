@@ -22,6 +22,12 @@ var ErrNotConfigured = errors.New("neonauth: no Auth URL configured")
 // account can be signed in at a time.
 const keychainAccount = "session"
 
+// DefaultAuthURL is the Neon Auth endpoint baked into release builds via
+// -ldflags (see the desktop-build Makefile targets). It's empty in source so
+// the package stays deployment-agnostic; local dev leaves it unset and relies
+// on TOKI_NEON_AUTH_URL or the settings file instead.
+var DefaultAuthURL string
+
 // Service is the public surface used by the desktop app. It owns the keychain
 // store, an HTTP client, and the cached Auth URL. All methods are safe to call
 // from any goroutine.
@@ -61,6 +67,8 @@ func NewService() (*Service, error) {
 	// JSON — handy in dev and on first run before the settings file exists.
 	if env := strings.TrimSpace(os.Getenv("TOKI_NEON_AUTH_URL")); env != "" {
 		s.AuthURL = env
+	} else if strings.TrimSpace(s.AuthURL) == "" {
+		s.AuthURL = DefaultAuthURL
 	}
 	return &Service{
 		store:    newKeychainStore(),
@@ -151,6 +159,24 @@ func (s *Service) SignOut(ctx context.Context) error {
 		}
 	}
 	return s.store.Delete(ctx, keychainAccount)
+}
+
+// Token returns a short-lived Data API JWT for callers that need to make
+// authenticated Data API requests (the neonsync integration). The stored
+// session token is opaque and rejected by the Data API, so this exchanges the
+// session cookie for a JWT at Neon Auth's /token endpoint on each call (the
+// JWTs are short-lived by design). Returns an error when signed out, so callers
+// can treat "no token" as "not signed in".
+func (s *Service) Token(ctx context.Context) (string, error) {
+	sess, err := s.loadSession(ctx)
+	if err != nil {
+		return "", err
+	}
+	base := s.authURL()
+	if base == "" {
+		return "", ErrNotConfigured
+	}
+	return mintJWT(ctx, s.http, base, sess.Cookie)
 }
 
 func (s *Service) loadSession(ctx context.Context) (session, error) {

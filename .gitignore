@@ -13,6 +13,9 @@ bin/
 .claude/
 .DS_Store
 
+# Local build secrets (Neon endpoints); commit .env.example instead.
+.env
+
 # Desktop app build artifacts
 /tock
 /tock-desktop

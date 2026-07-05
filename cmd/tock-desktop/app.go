@@ -21,6 +21,7 @@ import (
 	"github.com/kriuchkov/tock/internal/app/runtime"
 	"github.com/kriuchkov/tock/internal/core/models"
 	"github.com/kriuchkov/tock/internal/integrations/neonauth"
+	"github.com/kriuchkov/tock/internal/integrations/neonsync"
 	"github.com/kriuchkov/tock/internal/integrations/teams"
 	"github.com/kriuchkov/tock/internal/timeutil"
 )
@@ -33,12 +34,22 @@ type App struct {
 	rt       *runtime.Runtime
 	teams    *teams.Service
 	neonAuth *neonauth.Service
+	neonSync *neonsync.Service
 
 	mu       sync.Mutex
 	trayStop chan struct{}
 
 	teamsReconnecting atomic.Bool
+	syncing           atomic.Bool
 }
+
+// Encrypted sync runs on its own without the user clicking "Sync now": once
+// shortly after launch (to pull whatever other devices pushed while this one
+// was closed) and then on a steady interval.
+const (
+	syncStartupDelay = 5 * time.Second
+	syncInterval     = 5 * time.Minute
+)
 
 func NewApp() *App {
 	return &App{}
@@ -64,6 +75,61 @@ func (a *App) startup(ctx context.Context) {
 	if n, err := neonauth.NewService(); err == nil {
 		a.neonAuth = n
 	}
+	// Encrypted sync builds on Neon Auth (bearer token) and the tock runtime
+	// (the activity log it mirrors). Optional, so a construction error is
+	// non-fatal — the Account panel renders its unconfigured state.
+	if a.neonAuth != nil {
+		if sync, err := neonsync.NewService(rt.ActivityService, a.neonAuth); err == nil {
+			a.neonSync = sync
+			go a.autoSyncLoop()
+		}
+	}
+}
+
+// autoSyncLoop keeps the cloud mirror fresh in the background. Every fire is
+// best-effort and quiet: offline, locked, disabled, and signed-out states are
+// all skipped and errors never surface, matching how manual sync degrades. The
+// loop lives for the app's lifetime and unwinds when the Wails context is
+// cancelled on shutdown.
+func (a *App) autoSyncLoop() {
+	timer := time.NewTimer(syncStartupDelay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-timer.C:
+			a.autoSyncOnce()
+			timer.Reset(syncInterval)
+		}
+	}
+}
+
+// autoSyncOnce runs a single background sync if one is warranted. It shares the
+// syncing guard with manual SyncNow so background ticks never stack on each
+// other or collide with a user-initiated sync, and it emits sync:updated so the
+// Account card refreshes without the panel being reopened.
+func (a *App) autoSyncOnce() {
+	if a.neonSync == nil {
+		return
+	}
+	st := a.neonSync.Status()
+	if !st.Enabled || !st.Unlocked {
+		return
+	}
+	if !a.syncing.CompareAndSwap(false, true) {
+		return
+	}
+	defer a.syncing.Store(false)
+
+	ctx, cancel := context.WithTimeout(a.ctx, 90*time.Second)
+	defer cancel()
+	status, err := a.neonSync.SyncNow(ctx)
+	if err != nil {
+		return
+	}
+	a.refreshTrayTitle()
+	wailsruntime.EventsEmit(a.ctx, "sync:updated", status)
 }
 
 // trayOnReady builds the status bar menu. Called by systray on the main
@@ -531,33 +597,122 @@ func (a *App) AuthStatus() neonauth.Status {
 
 // AuthSignIn authenticates with email + password and persists the session in
 // Keychain. Returns the resulting Status.
+//
+// The raw password never reaches the server: Neon Auth receives a derived hash
+// (H_auth), while the raw password is used locally to unlock encrypted sync.
+// Sending the same value for both would hand the server the encryption key, so
+// the two derivations are deliberately domain-separated.
 func (a *App) AuthSignIn(email, password string) (neonauth.Status, error) {
 	if a.neonAuth == nil {
 		return neonauth.Status{}, errors.New("auth unavailable")
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	email = strings.TrimSpace(email)
+	authHash, err := neonsync.DeriveAuthHash(email, password)
+	if err != nil {
+		return neonauth.Status{}, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
-	return a.neonAuth.SignIn(ctx, strings.TrimSpace(email), password)
+	status, err := a.neonAuth.SignIn(ctx, email, authHash)
+	if err != nil {
+		return status, err
+	}
+	a.unlockSync(ctx, email, password, status.UserID)
+	return status, nil
 }
 
 // AuthSignUp creates an account with email + password and persists the session.
+// Like sign-in, Neon Auth gets the derived hash, not the raw password.
 func (a *App) AuthSignUp(email, password, name string) (neonauth.Status, error) {
 	if a.neonAuth == nil {
 		return neonauth.Status{}, errors.New("auth unavailable")
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	email = strings.TrimSpace(email)
+	authHash, err := neonsync.DeriveAuthHash(email, password)
+	if err != nil {
+		return neonauth.Status{}, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
-	return a.neonAuth.SignUp(ctx, strings.TrimSpace(email), password, strings.TrimSpace(name))
+	status, err := a.neonAuth.SignUp(ctx, email, authHash, strings.TrimSpace(name))
+	if err != nil {
+		return status, err
+	}
+	a.unlockSync(ctx, email, password, status.UserID)
+	return status, nil
 }
 
-// AuthSignOut revokes the session and clears the stored token.
+// unlockSync provisions or recovers the sync encryption key from the password.
+// Best-effort: a failure here (offline, sync unconfigured) must not fail an
+// otherwise-successful sign-in, so it is logged and swallowed.
+func (a *App) unlockSync(ctx context.Context, email, password, userID string) {
+	if a.neonSync == nil {
+		return
+	}
+	token, err := a.neonAuth.Token(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "neonsync: mint data-api token: %v\n", err)
+		return
+	}
+	if err := a.neonSync.Unlock(ctx, email, password, userID, token); err != nil {
+		fmt.Fprintf(os.Stderr, "neonsync: unlock: %v\n", err)
+	}
+}
+
+// AuthSignOut revokes the session, clears the stored token, and locks sync by
+// discarding the cached encryption key.
 func (a *App) AuthSignOut() error {
 	if a.neonAuth == nil {
 		return errors.New("auth unavailable")
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 	defer cancel()
+	if a.neonSync != nil {
+		_ = a.neonSync.Lock(ctx)
+	}
 	return a.neonAuth.SignOut(ctx)
+}
+
+// SyncStatus returns the encrypted-sync configuration + last-sync snapshot for
+// the Account panel. Always returns a status; never errors.
+func (a *App) SyncStatus() neonsync.SyncStatus {
+	if a.neonSync == nil {
+		return neonsync.SyncStatus{}
+	}
+	return a.neonSync.Status()
+}
+
+// SyncSetEnabled flips the sync master switch. Stored key and rows are left
+// intact so it can be turned back on without re-entering the password.
+func (a *App) SyncSetEnabled(enabled bool) (neonsync.SyncStatus, error) {
+	if a.neonSync == nil {
+		return neonsync.SyncStatus{}, errors.New("sync unavailable")
+	}
+	if err := a.neonSync.SetEnabled(enabled); err != nil {
+		return a.neonSync.Status(), err
+	}
+	return a.neonSync.Status(), nil
+}
+
+// SyncNow runs a push+pull cycle and returns the updated status.
+func (a *App) SyncNow() (neonsync.SyncStatus, error) {
+	if a.neonSync == nil {
+		return neonsync.SyncStatus{}, errors.New("sync unavailable")
+	}
+	// If a background sync is mid-flight, don't run a second one on top of it;
+	// the in-flight sync produces the same result, so report its current status.
+	if !a.syncing.CompareAndSwap(false, true) {
+		return a.neonSync.Status(), nil
+	}
+	defer a.syncing.Store(false)
+
+	ctx, cancel := context.WithTimeout(a.ctx, 90*time.Second)
+	defer cancel()
+	status, err := a.neonSync.SyncNow(ctx)
+	if err == nil {
+		a.refreshTrayTitle()
+	}
+	return status, err
 }
 
 // pushTeamsStatus fires the Teams status update off the activity-write path.

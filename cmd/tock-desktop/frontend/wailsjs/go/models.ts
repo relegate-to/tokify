@@ -70,6 +70,33 @@ export namespace neonauth {
 
 }
 
+export namespace neonsync {
+	
+	export class SyncStatus {
+	    configured: boolean;
+	    enabled: boolean;
+	    unlocked: boolean;
+	    last_sync?: string;
+	    entry_count: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.configured = source["configured"];
+	        this.enabled = source["enabled"];
+	        this.unlocked = source["unlocked"];
+	        this.last_sync = source["last_sync"];
+	        this.entry_count = source["entry_count"];
+	        this.error = source["error"];
+	    }
+	}
+
+}
+
 export namespace teams {
 	
 	export class Status {

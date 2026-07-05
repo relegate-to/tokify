@@ -23,11 +23,18 @@ type User struct {
 	Image string `json:"image"`
 }
 
-// session is what we persist to Keychain: the bearer session token plus the
-// identity it belongs to, so Status can render without a network round-trip.
+// session is what we persist to Keychain: the bearer session token, the raw
+// session cookie, and the identity it belongs to, so Status can render without
+// a network round-trip.
+//
+// Cookie is the signed `*.session_token` cookie Better Auth sets at sign-in. It
+// is the durable credential used to mint short-lived Data API JWTs at /token;
+// the bearer Token alone is rejected there (that endpoint authenticates by
+// cookie), and it can't be reconstructed from Token since it carries an HMAC.
 type session struct {
-	Token string `json:"token"`
-	User  User   `json:"user"`
+	Token  string `json:"token"`
+	User   User   `json:"user"`
+	Cookie string `json:"cookie,omitempty"`
 }
 
 func endpoint(base, path string) string {
@@ -114,7 +121,63 @@ func postCredentials(ctx context.Context, hc *http.Client, url string, body map[
 	if token == "" {
 		return session{}, gerrors.New("auth response contained no session token")
 	}
-	return session{Token: token, User: out.User}, nil
+	return session{Token: token, User: out.User, Cookie: sessionCookie(resp.Header)}, nil
+}
+
+// sessionCookie pulls the raw `name=value` of Better Auth's session-token cookie
+// out of the response's Set-Cookie headers, verbatim (still percent-encoded and
+// HMAC-signed), so it can be replayed as a Cookie header when minting a JWT.
+// Returns "" when absent; a session without it simply can't mint Data API JWTs.
+func sessionCookie(h http.Header) string {
+	for _, c := range h["Set-Cookie"] {
+		if !strings.Contains(c, "session_token=") {
+			continue
+		}
+		if i := strings.IndexByte(c, ';'); i >= 0 {
+			return c[:i]
+		}
+		return c
+	}
+	return ""
+}
+
+// mintJWT exchanges the session cookie for a short-lived Data API JWT via Better
+// Auth's /token endpoint. The Data API validates this JWT against the project's
+// JWKS and exposes its `sub` claim as auth.user_id(); the opaque session token
+// is not a JWT and is rejected there.
+func mintJWT(ctx context.Context, hc *http.Client, base, cookie string) (string, error) {
+	if strings.TrimSpace(cookie) == "" {
+		return "", gerrors.New("no session cookie; sign in again to enable sync")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint(base, "/token"), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Cookie", cookie)
+	if origin := originOf(base); origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", apiError(resp.StatusCode, data)
+	}
+	var out struct {
+		Token string `json:"token"`
+	}
+	if uerr := json.Unmarshal(data, &out); uerr != nil {
+		return "", gerrors.Wrap(uerr, "decode token response")
+	}
+	if out.Token == "" {
+		return "", gerrors.New("token response contained no JWT")
+	}
+	return out.Token, nil
 }
 
 // signOut revokes the session server-side. Best-effort: the caller deletes the

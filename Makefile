@@ -33,6 +33,16 @@ DESKTOP_DIR := cmd/tock-desktop
 TEAMS_AUTH_DIR := cmd/tock-teams-auth
 BIN_DIR := bin
 
+# Neon endpoints baked into distributable .app builds via -ldflags. They live in
+# a gitignored .env (copy .env.example) so the project URLs stay out of the repo;
+# override per-invocation to point a release at a different project. Only the
+# release build targets inject these — desktop-dev leaves them unset so local dev
+# falls back to the TOKI_NEON_*_URL env vars or the on-disk settings file.
+-include .env
+NEON_AUTH_URL ?=
+NEON_DATA_URL ?=
+DESKTOP_LDFLAGS := -X github.com/kriuchkov/tock/internal/integrations/neonauth.DefaultAuthURL=$(NEON_AUTH_URL) -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultDataURL=$(NEON_DATA_URL)
+
 # Build the Teams sign-in helper binary. Used in dev mode (found via the
 # parent directory of the dev binary) and copied into the .app bundle on
 # release builds. Built outside the Wails pipeline so we control the cgo
@@ -57,7 +67,7 @@ teams-auth-build-universal:
 
 # Build a .app for the host architecture (fastest).
 desktop-build: teams-auth-build
-	cd $(DESKTOP_DIR) && $(WAILS) build -clean
+	cd $(DESKTOP_DIR) && $(WAILS) build -clean -ldflags "$(DESKTOP_LDFLAGS)"
 	@rm -rf $(DESKTOP_DIR)/build/bin/Toki.app
 	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Toki.app
 	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Toki.app/Contents/MacOS/tock-teams-auth
@@ -65,7 +75,7 @@ desktop-build: teams-auth-build
 
 # Build a universal (arm64 + amd64) .app suitable for distribution.
 desktop-build-universal: teams-auth-build-universal
-	cd $(DESKTOP_DIR) && $(WAILS) build -clean -platform darwin/universal
+	cd $(DESKTOP_DIR) && $(WAILS) build -clean -platform darwin/universal -ldflags "$(DESKTOP_LDFLAGS)"
 	@rm -rf $(DESKTOP_DIR)/build/bin/Toki.app
 	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Toki.app
 	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Toki.app/Contents/MacOS/tock-teams-auth
@@ -79,7 +89,9 @@ desktop-run: desktop-build
 # Builds the auth helper first so Connect works in dev. The desktop binary's
 # helper-lookup walks up to repo root and finds it under ./bin/.
 desktop-dev: teams-auth-build
-	cd $(DESKTOP_DIR) && $(WAILS) dev
+	cd $(DESKTOP_DIR) && \
+		TOKI_NEON_AUTH_URL="$(NEON_AUTH_URL)" TOKI_NEON_DATA_URL="$(NEON_DATA_URL)" \
+		$(WAILS) dev
 
 # Check that the Wails CLI and its prerequisites are installed.
 desktop-doctor:

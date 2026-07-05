@@ -58,6 +58,18 @@ export function Stop() {
   return window['go']['main']['App']['Stop']();
 }
 
+export function SyncNow() {
+  return window['go']['main']['App']['SyncNow']();
+}
+
+export function SyncSetEnabled(arg1) {
+  return window['go']['main']['App']['SyncSetEnabled'](arg1);
+}
+
+export function SyncStatus() {
+  return window['go']['main']['App']['SyncStatus']();
+}
+
 export function TeamsConnect() {
   return window['go']['main']['App']['TeamsConnect']();
 }
