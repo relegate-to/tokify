@@ -11,6 +11,8 @@ import (
 	"time"
 
 	gerrors "github.com/go-faster/errors"
+
+	"github.com/kriuchkov/tock/internal/integrations/netcheck"
 )
 
 // ErrNotConfigured is returned by sign-in/sign-up when no Auth URL has been set.
@@ -105,6 +107,9 @@ func (s *Service) SignIn(ctx context.Context, email, password string) (Status, e
 	if base == "" {
 		return Status{}, ErrNotConfigured
 	}
+	if !netcheck.Online(ctx, hostOf(base)) {
+		return Status{}, netcheck.ErrOffline
+	}
 	sess, err := signInEmail(ctx, s.http, base, email, password)
 	if err != nil {
 		return Status{}, err
@@ -121,6 +126,9 @@ func (s *Service) SignUp(ctx context.Context, email, password, name string) (Sta
 	if base == "" {
 		return Status{}, ErrNotConfigured
 	}
+	if !netcheck.Online(ctx, hostOf(base)) {
+		return Status{}, netcheck.ErrOffline
+	}
 	sess, err := signUpEmail(ctx, s.http, base, email, password, name)
 	if err != nil {
 		return Status{}, err
@@ -135,7 +143,10 @@ func (s *Service) SignUp(ctx context.Context, email, password, name string) (Sta
 // token so the app returns to the signed-out state.
 func (s *Service) SignOut(ctx context.Context) error {
 	if sess, err := s.loadSession(ctx); err == nil {
-		if base := s.authURL(); base != "" {
+		// Revoking the session is best-effort; skip it entirely when offline so
+		// we don't stall on a dial. The local token is deleted below regardless,
+		// which is what actually signs the user out on this device.
+		if base := s.authURL(); base != "" && netcheck.Online(ctx, hostOf(base)) {
 			_ = signOut(ctx, s.http, base, sess.Token)
 		}
 	}

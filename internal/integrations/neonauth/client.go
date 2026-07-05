@@ -34,6 +34,16 @@ func endpoint(base, path string) string {
 	return strings.TrimRight(base, "/") + path
 }
 
+// hostOf returns the bare hostname of a URL, used for the offline reachability
+// probe. Empty when the URL is unparseable or hostless.
+func hostOf(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
 // originOf derives the scheme://host of a URL. Neon Auth (Better Auth) requires
 // an Origin header on sign-up and validates it against its trusted origins; a
 // request's own origin is trusted by default, so sending it needs no console

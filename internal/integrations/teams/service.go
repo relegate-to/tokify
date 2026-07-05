@@ -16,7 +16,13 @@ import (
 	"time"
 
 	gerrors "github.com/go-faster/errors"
+
+	"github.com/kriuchkov/tock/internal/integrations/netcheck"
 )
+
+// authHost is the Microsoft identity endpoint we probe to decide whether the
+// device is online before spawning the sign-in helper or refreshing a token.
+const authHost = "login.microsoftonline.com"
 
 // ErrInteractionRequired means we cannot get a working access token without
 // showing the user a real sign-in window. Returned when both the refresh
@@ -104,6 +110,9 @@ func (s *Service) Status() Status {
 // parse the code out of that URL, exchange it for an access+refresh token
 // pair, and persist the pair to Keychain.
 func (s *Service) Connect(ctx context.Context) error {
+	if !netcheck.Online(ctx, authHost) {
+		return netcheck.ErrOffline
+	}
 	helper, err := helperPath()
 	if err != nil {
 		return err
@@ -259,6 +268,13 @@ func (s *Service) PushActivityStatus(ctx context.Context, description, project s
 		return nil
 	}
 	if !slices.Contains(tracked, project) {
+		return nil
+	}
+	// Offline: silently do nothing. Publishing would fail, and a stale access
+	// token would drive accessToken into silent re-auth, popping a sign-in
+	// window the user can't complete without a connection. Teams auto-expires
+	// the note within 24h, so a skipped update self-heals on reconnect.
+	if !netcheck.Online(ctx, authHost) {
 		return nil
 	}
 	accessToken, err := s.accessToken(ctx)
