@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/go-faster/errors"
@@ -72,10 +73,8 @@ func (t *tombstoneStore) add(canonical []byte) error {
 		return err
 	}
 	enc := b64(canonical)
-	for _, e := range encoded {
-		if e == enc {
-			return nil
-		}
+	if slices.Contains(encoded, enc) {
+		return nil
 	}
 	return t.save(append(encoded, enc))
 }

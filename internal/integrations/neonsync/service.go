@@ -369,7 +369,13 @@ func (s *Service) push(ctx context.Context, base, token string, dek []byte, loca
 // mutated as rows are removed or merged. delIDs are this device's own pending
 // deletions, skipped so a just-deleted entry isn't re-added from a cloud row that
 // hasn't been marked deleted yet. Returns the resulting local entry count.
-func (s *Service) pull(ctx context.Context, base, token string, dek []byte, localByID map[string]models.Activity, delIDs map[string]struct{}) (int, error) {
+func (s *Service) pull(
+	ctx context.Context,
+	base, token string,
+	dek []byte,
+	localByID map[string]models.Activity,
+	delIDs map[string]struct{},
+) (int, error) {
 	cloud, err := getEntries(ctx, s.http, base, token)
 	if err != nil {
 		return 0, gerrors.Wrap(err, "pull entries")
