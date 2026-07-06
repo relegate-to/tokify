@@ -41,7 +41,17 @@ jobs:
 
       - name: Build universal .app
         working-directory: cmd/tock-desktop
-        run: wails build -clean -platform darwin/universal
+        env:
+          NEON_AUTH_URL: ${{ secrets.NEON_AUTH_URL }}
+          NEON_DATA_URL: ${{ secrets.NEON_DATA_URL }}
+        # Bake the Neon endpoints into the binary the same way
+        # `make desktop-build-universal` does via -ldflags. CI builds wails
+        # directly (not through the Makefile), so inject them here or the
+        # released .app ships with empty DefaultAuthURL/DefaultDataURL and
+        # Neon auth + sync are dead.
+        run: |
+          wails build -clean -platform darwin/universal \
+            -ldflags "-X github.com/kriuchkov/tock/internal/integrations/neonauth.DefaultAuthURL=${NEON_AUTH_URL} -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultDataURL=${NEON_DATA_URL}"
 
       - name: Rename bundle to Toki.app
         run: |
