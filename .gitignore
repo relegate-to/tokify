@@ -27,3 +27,6 @@ cmd/tock-desktop/frontend/node_modules/
 
 # Reference repos pulled in for audit / inspection only.
 teams-token/
+
+# headroom
+.tokensave/*
