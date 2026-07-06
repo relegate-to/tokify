@@ -38,6 +38,7 @@ type App struct {
 
 	mu       sync.Mutex
 	trayStop chan struct{}
+	syncKick chan struct{}
 
 	teamsReconnecting atomic.Bool
 	syncing           atomic.Bool
@@ -49,6 +50,9 @@ type App struct {
 const (
 	syncStartupDelay = 5 * time.Second
 	syncInterval     = 5 * time.Minute
+	// syncDebounce is how long syncSoon waits after the last mutation before
+	// syncing, so a burst of edits collapses into a single round-trip.
+	syncDebounce = 2 * time.Second
 )
 
 func NewApp() *App {
@@ -81,7 +85,9 @@ func (a *App) startup(ctx context.Context) {
 	if a.neonAuth != nil {
 		if sync, err := neonsync.NewService(rt.ActivityService, a.neonAuth); err == nil {
 			a.neonSync = sync
+			a.syncKick = make(chan struct{}, 1)
 			go a.autoSyncLoop()
+			go a.syncDebouncer()
 		}
 	}
 }
@@ -105,20 +111,61 @@ func (a *App) autoSyncLoop() {
 	}
 }
 
+// syncDebouncer coalesces mutation-driven sync requests. A kick (re)arms a short
+// window; when it elapses the app syncs once. If a sync was already in flight the
+// window re-arms so a mutation made mid-sync still propagates rather than waiting
+// for the next interval tick. Lives for the app's lifetime alongside
+// autoSyncLoop.
+func (a *App) syncDebouncer() {
+	var window <-chan time.Time
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-a.syncKick:
+			window = time.After(syncDebounce)
+		case <-window:
+			window = nil
+			if !a.autoSyncOnce() {
+				window = time.After(syncDebounce)
+			}
+		}
+	}
+}
+
+// syncSoon asks the debouncer to sync shortly after the current burst of
+// mutations settles. Best-effort and non-blocking: the buffered kick channel
+// coalesces rapid calls, and it no-ops before the debouncer exists (sync not
+// configured).
+func (a *App) syncSoon() {
+	if a.syncKick == nil {
+		return
+	}
+	select {
+	case a.syncKick <- struct{}{}:
+	default:
+	}
+}
+
 // autoSyncOnce runs a single background sync if one is warranted. It shares the
 // syncing guard with manual SyncNow so background ticks never stack on each
 // other or collide with a user-initiated sync, and it emits sync:updated so the
 // Account card refreshes without the panel being reopened.
-func (a *App) autoSyncOnce() {
+//
+// The bool reports whether the caller should try again shortly: false only when
+// a sync was already in flight (the debouncer re-arms so a mutation made during
+// that sync still propagates); true in every other case, including the quiet
+// skips (disabled, locked, offline) where retrying would be pointless.
+func (a *App) autoSyncOnce() bool {
 	if a.neonSync == nil {
-		return
+		return true
 	}
 	st := a.neonSync.Status()
 	if !st.Enabled || !st.Unlocked {
-		return
+		return true
 	}
 	if !a.syncing.CompareAndSwap(false, true) {
-		return
+		return false
 	}
 	defer a.syncing.Store(false)
 
@@ -126,10 +173,11 @@ func (a *App) autoSyncOnce() {
 	defer cancel()
 	status, err := a.neonSync.SyncNow(ctx)
 	if err != nil {
-		return
+		return true
 	}
 	a.refreshTrayTitle()
 	wailsruntime.EventsEmit(a.ctx, "sync:updated", status)
+	return true
 }
 
 // trayOnReady builds the status bar menu. Called by systray on the main
@@ -285,6 +333,7 @@ func (a *App) Start(description, project string) (*models.Activity, error) {
 	if err == nil {
 		a.refreshTrayTitle()
 		a.pushTeamsStatus(description, strings.TrimSpace(project))
+		a.syncSoon()
 	}
 	return act, err
 }
@@ -314,6 +363,7 @@ func (a *App) StartAt(description, project, startISO string) (*models.Activity, 
 	if err == nil {
 		a.refreshTrayTitle()
 		a.pushTeamsStatus(description, strings.TrimSpace(project))
+		a.syncSoon()
 	}
 	return act, err
 }
@@ -339,12 +389,16 @@ func (a *App) AddActivity(description, project, startISO, endISO string) (*model
 	if !end.After(start) {
 		return nil, errors.New("end must be after start")
 	}
-	return a.rt.ActivityService.Add(a.ctx, models.AddActivityRequest{
+	act, err := a.rt.ActivityService.Add(a.ctx, models.AddActivityRequest{
 		Description: description,
 		Project:     strings.TrimSpace(project),
 		StartTime:   start,
 		EndTime:     end,
 	})
+	if err == nil {
+		a.syncSoon()
+	}
+	return act, err
 }
 
 // Stop ends the running activity.
@@ -363,6 +417,7 @@ func (a *App) Stop() (*models.Activity, error) {
 			project = act.Project
 		}
 		a.pushTeamsStatus("", project)
+		a.syncSoon()
 	}
 	return act, err
 }
@@ -417,6 +472,13 @@ func (a *App) UpdateActivity(orig models.Activity, description, project, startIS
 	if err := a.rt.ActivityRepo.Save(a.ctx, updated); err != nil {
 		return nil, err
 	}
+	// An edit changes the entry's content id, orphaning the pre-edit row in the
+	// cloud. Tombstone the original so sync deletes it instead of resurrecting the
+	// stale copy; a no-op edit is dropped as a stale tombstone on the next sync.
+	if a.neonSync != nil {
+		_ = a.neonSync.RecordDeletion(orig)
+		a.syncSoon()
+	}
 	a.refreshTrayTitle()
 	return &updated, nil
 }
@@ -428,6 +490,10 @@ func (a *App) RemoveActivity(orig models.Activity) error {
 	}
 	if err := a.rt.ActivityService.Remove(a.ctx, orig); err != nil {
 		return err
+	}
+	if a.neonSync != nil {
+		_ = a.neonSync.RecordDeletion(orig)
+		a.syncSoon()
 	}
 	a.refreshTrayTitle()
 	return nil
