@@ -43,11 +43,13 @@ var DefaultDataURL string
 const syncTimeLayout = "2006-01-02 15:04"
 
 // ActivityStore is the slice of the tock activity service neonsync needs: read
-// every entry, and add a pulled one back. Satisfied by ports.ActivityResolver,
-// so the desktop app passes its runtime's service straight through.
+// every entry, add a pulled one back, and remove one the cloud has tombstoned.
+// Satisfied by ports.ActivityResolver, so the desktop app passes its runtime's
+// service straight through.
 type ActivityStore interface {
 	List(ctx context.Context, filter models.ActivityFilter) ([]models.Activity, error)
 	Add(ctx context.Context, req models.AddActivityRequest) (*models.Activity, error)
+	Remove(ctx context.Context, activity models.Activity) error
 }
 
 // TokenProvider yields the current Neon Auth bearer token. Satisfied by
@@ -65,9 +67,10 @@ type Service struct {
 	activities ActivityStore
 	tokens     TokenProvider
 
-	mu       sync.RWMutex
-	settings Settings
-	path     string
+	mu         sync.RWMutex
+	settings   Settings
+	path       string
+	tombstones *tombstoneStore
 }
 
 // SyncStatus is the snapshot the Account panel renders.
@@ -103,6 +106,7 @@ func NewService(activities ActivityStore, tokens TokenProvider) (*Service, error
 		tokens:     tokens,
 		settings:   s,
 		path:       path,
+		tombstones: newTombstoneStore(path),
 	}, nil
 }
 
@@ -265,11 +269,31 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 		return s.Status(), gerrors.Wrap(err, "read local activities")
 	}
 
-	haveLocal, err := s.push(ctx, base, token, dek, local)
+	// Index completed local entries by content id. Running (open) entries have no
+	// final content and are never synced.
+	localByID := make(map[string]models.Activity, len(local))
+	for _, act := range local {
+		if act.EndTime == nil {
+			continue
+		}
+		localByID[EntryID(dek, canonicalize(act))] = act
+	}
+
+	// Reconcile local tombstones into the ids to delete cloud-side. A tombstoned
+	// entry that exists locally again was recreated after deletion, so its
+	// tombstone is stale and dropped.
+	delIDs, err := s.pendingDeletions(dek, localByID)
 	if err != nil {
 		return s.Status(), err
 	}
-	merged, err := s.pull(ctx, base, token, dek, haveLocal)
+
+	if err = s.push(ctx, base, token, dek, localByID); err != nil {
+		return s.Status(), err
+	}
+	if err = markDeleted(ctx, s.http, base, token, mapKeys(delIDs)); err != nil {
+		return s.Status(), gerrors.Wrap(err, "propagate deletions")
+	}
+	merged, err := s.pull(ctx, base, token, dek, localByID, delIDs)
 	if err != nil {
 		return s.Status(), err
 	}
@@ -278,23 +302,43 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 	return s.Status(), nil
 }
 
-// push writes one encrypted row per completed local entry, keyed by content hash
-// so the upsert dedupes. Running (open) entries are skipped — they have no end
-// and their content isn't final. Returns the set of ids known locally so the
-// pull step can tell which cloud rows are missing.
-func (s *Service) push(ctx context.Context, base, token string, dek []byte, local []models.Activity) (map[string]struct{}, error) {
-	haveLocal := make(map[string]struct{}, len(local))
-	rows := make([]entryRow, 0, len(local))
-	for _, act := range local {
-		if act.EndTime == nil {
-			continue
+// pendingDeletions turns the local tombstone set into the ids to mark deleted in
+// the cloud. It drops (and rewrites away) any tombstone whose entry is present in
+// localByID — that entry was recreated after deletion, so its deletion no longer
+// stands.
+func (s *Service) pendingDeletions(dek []byte, localByID map[string]models.Activity) (map[string]struct{}, error) {
+	canon, err := s.tombstones.all()
+	if err != nil {
+		return nil, err
+	}
+	del := make(map[string]struct{})
+	keep := make([][]byte, 0, len(canon))
+	for _, c := range canon {
+		id := EntryID(dek, c)
+		if _, live := localByID[id]; live {
+			continue // recreated after deletion; stale tombstone
 		}
-		canonical := canonicalize(act)
-		id := EntryID(dek, canonical)
-		haveLocal[id] = struct{}{}
-		ct, nonce, encErr := EncryptEntry(dek, canonical)
+		del[id] = struct{}{}
+		keep = append(keep, c)
+	}
+	if len(keep) != len(canon) {
+		if rerr := s.tombstones.replace(keep); rerr != nil {
+			return nil, rerr
+		}
+	}
+	return del, nil
+}
+
+// push writes one encrypted row per completed local entry, keyed by content hash
+// so the upsert dedupes. The `deleted` column is deliberately not sent (see
+// entryRow) so re-pushing a live entry never clobbers a tombstone another device
+// set.
+func (s *Service) push(ctx context.Context, base, token string, dek []byte, localByID map[string]models.Activity) error {
+	rows := make([]entryRow, 0, len(localByID))
+	for id, act := range localByID {
+		ct, nonce, encErr := EncryptEntry(dek, canonicalize(act))
 		if encErr != nil {
-			return nil, encErr
+			return encErr
 		}
 		rows = append(rows, entryRow{
 			ID:         id,
@@ -308,32 +352,58 @@ func (s *Service) push(ctx context.Context, base, token string, dek []byte, loca
 	// caller-passed id.
 	owner, err := ownerFromKeys(ctx, s.http, base, token)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for i := range rows {
 		rows[i].UserID = owner
 	}
 	if err = upsertEntries(ctx, s.http, base, token, rows); err != nil {
-		return nil, gerrors.Wrap(err, "push entries")
+		return gerrors.Wrap(err, "push entries")
 	}
-	return haveLocal, nil
+	return nil
 }
 
-// pull decrypts the cloud set and adds any entry this device lacks back into the
-// local log, returning the merged entry count. haveLocal is mutated as rows are
-// merged so a duplicate cloud row is only added once.
-func (s *Service) pull(ctx context.Context, base, token string, dek []byte, haveLocal map[string]struct{}) (int, error) {
+// pull reconciles the cloud set against the local log: it removes local entries
+// the cloud has tombstoned (a deletion made on another device), then adds any
+// live entry this device lacks. localByID (completed local entries by id) is
+// mutated as rows are removed or merged. delIDs are this device's own pending
+// deletions, skipped so a just-deleted entry isn't re-added from a cloud row that
+// hasn't been marked deleted yet. Returns the resulting local entry count.
+func (s *Service) pull(ctx context.Context, base, token string, dek []byte, localByID map[string]models.Activity, delIDs map[string]struct{}) (int, error) {
 	cloud, err := getEntries(ctx, s.http, base, token)
 	if err != nil {
 		return 0, gerrors.Wrap(err, "pull entries")
 	}
-	merged := len(haveLocal)
+
+	// Remote tombstones win: drop any local entry the cloud reports deleted.
+	liveInCloud := make(map[string]struct{}, len(cloud))
+	for _, row := range cloud {
+		if !row.Deleted {
+			liveInCloud[row.ID] = struct{}{}
+			continue
+		}
+		if act, ok := localByID[row.ID]; ok {
+			if remErr := s.activities.Remove(ctx, act); remErr != nil {
+				return 0, gerrors.Wrap(remErr, "apply remote deletion")
+			}
+			delete(localByID, row.ID)
+		}
+	}
+
+	// Forget tombstones the cloud has accepted (marked deleted) or never held,
+	// keeping only ids still live server-side so a failed PATCH retries next sync.
+	s.pruneConfirmedTombstones(dek, liveInCloud)
+
+	// Merge down anything the cloud has that we lack and didn't just delete.
 	for _, row := range cloud {
 		if row.Deleted {
 			continue
 		}
-		if _, ok := haveLocal[row.ID]; ok {
+		if _, ok := localByID[row.ID]; ok {
 			continue
+		}
+		if _, ok := delIDs[row.ID]; ok {
+			continue // deleted on this device this cycle; don't resurrect
 		}
 		act, decErr := decodeRow(dek, row)
 		if decErr != nil {
@@ -348,10 +418,54 @@ func (s *Service) pull(ctx context.Context, base, token string, dek []byte, have
 		}); addErr != nil {
 			return 0, gerrors.Wrap(addErr, "merge pulled entry")
 		}
-		haveLocal[row.ID] = struct{}{}
-		merged++
+		localByID[row.ID] = act
 	}
-	return merged, nil
+	return len(localByID), nil
+}
+
+// pruneConfirmedTombstones drops tombstones whose cloud row is no longer live —
+// successfully marked deleted, or never present — keeping only ids the server
+// still reports live, so a PATCH that failed is retried on the next sync.
+func (s *Service) pruneConfirmedTombstones(dek []byte, liveInCloud map[string]struct{}) {
+	canon, err := s.tombstones.all()
+	if err != nil {
+		return
+	}
+	keep := make([][]byte, 0, len(canon))
+	for _, c := range canon {
+		if _, live := liveInCloud[EntryID(dek, c)]; live {
+			keep = append(keep, c)
+		}
+	}
+	if len(keep) != len(canon) {
+		_ = s.tombstones.replace(keep)
+	}
+}
+
+// RecordDeletion tombstones a locally removed (or edited-away) entry so the next
+// sync propagates the removal to the cloud and other devices instead of the pull
+// step resurrecting it. It only touches a local file — no network, no DEK — and
+// no-ops when sync was never configured. Pass the activity exactly as it existed
+// before the change so its canonical id matches the row that was pushed. Running
+// entries were never pushed, so they need no tombstone; a no-op edit is harmless
+// because the still-present local entry drops the stale tombstone next sync.
+func (s *Service) RecordDeletion(activity models.Activity) error {
+	if activity.EndTime == nil {
+		return nil
+	}
+	if s.dataURL() == "" {
+		return nil
+	}
+	return s.tombstones.add(canonicalize(activity))
+}
+
+// mapKeys returns the keys of a set as a slice.
+func mapKeys(m map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 func (s *Service) recordSync(count int) {

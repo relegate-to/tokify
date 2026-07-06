@@ -33,7 +33,11 @@ type entryRow struct {
 	UserID     string `json:"user_id"`
 	Ciphertext string `json:"ciphertext"`
 	Nonce      string `json:"nonce"`
-	Deleted    bool   `json:"deleted"`
+	// omitempty matters on writes: push upserts live entries and must never send
+	// deleted=false, or a merge-duplicates upsert would clobber a tombstone set
+	// by another device. Omitting the column leaves the existing value (or the
+	// DEFAULT false on insert) untouched. Reads still populate it normally.
+	Deleted bool `json:"deleted,omitempty"`
 }
 
 func endpoint(base, path string) string {
@@ -105,6 +109,21 @@ func upsertEntries(ctx context.Context, hc *http.Client, base, token string, row
 	}
 	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/entries"), token,
 		body, "resolution=merge-duplicates,return=minimal")
+	return err
+}
+
+// markDeleted flips the `deleted` tombstone flag to true on the caller's entry
+// rows whose id is in ids. The ciphertext row is intentionally kept (not hard
+// deleted) so other devices learn of the removal on their next pull instead of
+// resurrecting the entry from their still-live local copy. RLS scopes the PATCH
+// to the JWT owner. ids are hex content hashes, so they need no URL escaping.
+func markDeleted(ctx context.Context, hc *http.Client, base, token string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	path := "/entries?id=in.(" + strings.Join(ids, ",") + ")"
+	body := []byte(`{"deleted":true}`)
+	_, err := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
 	return err
 }
 
