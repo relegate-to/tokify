@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,10 @@ import (
 
 	gerrors "github.com/go-faster/errors"
 )
+
+// ErrNoUserKeys signals that the caller has never provisioned a user_keys row.
+// It's the cue to create one on first sign-up rather than an error to surface.
+var ErrNoUserKeys = errors.New("neonsync: no encrypted-sync key provisioned")
 
 // The wire rows mirror the schema.sql columns exactly. Every key/ciphertext
 // field is base64 text so it round-trips through JSON untouched; the server
@@ -45,8 +50,8 @@ func hostOf(rawURL string) string {
 }
 
 // getUserKeys fetches the caller's user_keys row. RLS scopes the result to the
-// JWT owner, so no filter is needed. Returns (nil, nil) when the user has never
-// provisioned a key — the signal to create one on first sign-up.
+// JWT owner, so no filter is needed. Returns ErrNoUserKeys when the user has
+// never provisioned a key — the signal to create one on first sign-up.
 func getUserKeys(ctx context.Context, hc *http.Client, base, token string) (*userKeysRow, error) {
 	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, "/user_keys?select=*"), token, nil, "")
 	if err != nil {
@@ -57,7 +62,7 @@ func getUserKeys(ctx context.Context, hc *http.Client, base, token string) (*use
 		return nil, gerrors.Wrap(uerr, "decode user_keys")
 	}
 	if len(rows) == 0 {
-		return nil, nil
+		return nil, ErrNoUserKeys
 	}
 	return &rows[0], nil
 }

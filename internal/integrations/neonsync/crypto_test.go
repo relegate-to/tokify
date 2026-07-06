@@ -94,7 +94,7 @@ func TestWrapUnwrapDEK(t *testing.T) {
 
 	// Wrong KEK (wrong password) must fail, not silently return garbage.
 	wrongKEK := DeriveKEK("not the password", salt)
-	if _, err := UnwrapDEK(wrapped, nonce, wrongKEK); err == nil {
+	if _, uerr := UnwrapDEK(wrapped, nonce, wrongKEK); uerr == nil {
 		t.Fatal("expected unwrap to fail with wrong KEK")
 	}
 }
@@ -129,18 +129,18 @@ func TestDecryptEntryTamperRejected(t *testing.T) {
 
 	tampered := bytes.Clone(ciphertext)
 	tampered[0] ^= 0xff
-	if _, err := DecryptEntry(dek, tampered, nonce); err == nil {
+	if _, derr := DecryptEntry(dek, tampered, nonce); derr == nil {
 		t.Fatal("expected tampered ciphertext to be rejected")
 	}
 
 	badNonce := bytes.Clone(nonce)
 	badNonce[0] ^= 0xff
-	if _, err := DecryptEntry(dek, ciphertext, badNonce); err == nil {
+	if _, derr := DecryptEntry(dek, ciphertext, badNonce); derr == nil {
 		t.Fatal("expected altered nonce to be rejected")
 	}
 
 	// Wrong-size nonce is rejected explicitly rather than panicking.
-	if _, err := DecryptEntry(dek, ciphertext, nonce[:8]); err == nil {
+	if _, derr := DecryptEntry(dek, ciphertext, nonce[:8]); derr == nil {
 		t.Fatal("expected wrong-size nonce to be rejected")
 	}
 }

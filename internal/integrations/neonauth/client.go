@@ -133,10 +133,8 @@ func sessionCookie(h http.Header) string {
 		if !strings.Contains(c, "session_token=") {
 			continue
 		}
-		if i := strings.IndexByte(c, ';'); i >= 0 {
-			return c[:i]
-		}
-		return c
+		nameValue, _, _ := strings.Cut(c, ";")
+		return nameValue
 	}
 	return ""
 }

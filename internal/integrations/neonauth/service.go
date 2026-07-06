@@ -26,6 +26,8 @@ const keychainAccount = "session"
 // -ldflags (see the desktop-build Makefile targets). It's empty in source so
 // the package stays deployment-agnostic; local dev leaves it unset and relies
 // on TOKI_NEON_AUTH_URL or the settings file instead.
+//
+//nolint:gochecknoglobals // ldflags injection target; must be a package var.
 var DefaultAuthURL string
 
 // Service is the public surface used by the desktop app. It owns the keychain

@@ -18,7 +18,7 @@ import (
 // and punctuated because the desktop UI renders it verbatim, matching the
 // frontend's own error copy.
 //
-//nolint:staticcheck // ST1005: user-facing display string, not a wrap-chain fragment.
+//nolint:staticcheck,revive // ST1005/error-strings: user-facing display string, not a wrap-chain fragment.
 var ErrOffline = errors.New("You appear to be offline. Check your connection and try again.")
 
 // probeTimeout bounds the reachability check. Short enough not to add

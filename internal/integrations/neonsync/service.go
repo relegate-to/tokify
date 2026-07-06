@@ -31,6 +31,8 @@ const dekAccount = "dek"
 // -ldflags (see the desktop-build Makefile targets). It's empty in source so
 // the package stays deployment-agnostic; local dev leaves it unset and relies
 // on TOKI_NEON_DATA_URL or the settings file instead.
+//
+//nolint:gochecknoglobals // ldflags injection target; must be a package var.
 var DefaultDataURL string
 
 // syncTimeLayout matches the text log's minute-precision, local-time format
@@ -156,7 +158,7 @@ func (s *Service) Status() SyncStatus {
 // No-ops silently when sync isn't configured or the device is offline: key
 // provisioning is not worth failing a sign-in over, and it will happen on the
 // next sign-in once reachable.
-func (s *Service) Unlock(ctx context.Context, email, password, userID, token string) error {
+func (s *Service) Unlock(ctx context.Context, _, password, userID, token string) error {
 	base := s.dataURL()
 	if base == "" || token == "" {
 		return nil
@@ -166,14 +168,13 @@ func (s *Service) Unlock(ctx context.Context, email, password, userID, token str
 	}
 
 	row, err := getUserKeys(ctx, s.http, base, token)
-	if err != nil {
-		return err
-	}
-
 	var dek []byte
-	if row == nil {
+	switch {
+	case errors.Is(err, ErrNoUserKeys):
 		dek, err = s.provision(ctx, base, token, userID, password)
-	} else {
+	case err != nil:
+		return err
+	default:
 		dek, err = unwrapFromRow(password, row)
 	}
 	if err != nil {
@@ -204,7 +205,7 @@ func (s *Service) provision(ctx context.Context, base, token, userID, password s
 		WrappedDEK: b64(wrapped),
 		WrapNonce:  b64(nonce),
 	}
-	if err := insertUserKeys(ctx, s.http, base, token, row); err != nil {
+	if err = insertUserKeys(ctx, s.http, base, token, row); err != nil {
 		return nil, gerrors.Wrap(err, "provision user key")
 	}
 	return dek, nil
@@ -264,9 +265,24 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 		return s.Status(), gerrors.Wrap(err, "read local activities")
 	}
 
-	// Push: one encrypted row per completed entry, keyed by content hash so the
-	// upsert dedupes. Running (open) entries are skipped — they have no end and
-	// their content isn't final.
+	haveLocal, err := s.push(ctx, base, token, dek, local)
+	if err != nil {
+		return s.Status(), err
+	}
+	merged, err := s.pull(ctx, base, token, dek, haveLocal)
+	if err != nil {
+		return s.Status(), err
+	}
+
+	s.recordSync(merged)
+	return s.Status(), nil
+}
+
+// push writes one encrypted row per completed local entry, keyed by content hash
+// so the upsert dedupes. Running (open) entries are skipped — they have no end
+// and their content isn't final. Returns the set of ids known locally so the
+// pull step can tell which cloud rows are missing.
+func (s *Service) push(ctx context.Context, base, token string, dek []byte, local []models.Activity) (map[string]struct{}, error) {
 	haveLocal := make(map[string]struct{}, len(local))
 	rows := make([]entryRow, 0, len(local))
 	for _, act := range local {
@@ -278,7 +294,7 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 		haveLocal[id] = struct{}{}
 		ct, nonce, encErr := EncryptEntry(dek, canonical)
 		if encErr != nil {
-			return s.Status(), encErr
+			return nil, encErr
 		}
 		rows = append(rows, entryRow{
 			ID:         id,
@@ -292,19 +308,24 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 	// caller-passed id.
 	owner, err := ownerFromKeys(ctx, s.http, base, token)
 	if err != nil {
-		return s.Status(), err
+		return nil, err
 	}
 	for i := range rows {
 		rows[i].UserID = owner
 	}
-	if err := upsertEntries(ctx, s.http, base, token, rows); err != nil {
-		return s.Status(), gerrors.Wrap(err, "push entries")
+	if err = upsertEntries(ctx, s.http, base, token, rows); err != nil {
+		return nil, gerrors.Wrap(err, "push entries")
 	}
+	return haveLocal, nil
+}
 
-	// Pull: decrypt cloud rows, add any this device lacks.
+// pull decrypts the cloud set and adds any entry this device lacks back into the
+// local log, returning the merged entry count. haveLocal is mutated as rows are
+// merged so a duplicate cloud row is only added once.
+func (s *Service) pull(ctx context.Context, base, token string, dek []byte, haveLocal map[string]struct{}) (int, error) {
 	cloud, err := getEntries(ctx, s.http, base, token)
 	if err != nil {
-		return s.Status(), gerrors.Wrap(err, "pull entries")
+		return 0, gerrors.Wrap(err, "pull entries")
 	}
 	merged := len(haveLocal)
 	for _, row := range cloud {
@@ -325,14 +346,12 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 			StartTime:   act.StartTime,
 			EndTime:     *act.EndTime,
 		}); addErr != nil {
-			return s.Status(), gerrors.Wrap(addErr, "merge pulled entry")
+			return 0, gerrors.Wrap(addErr, "merge pulled entry")
 		}
 		haveLocal[row.ID] = struct{}{}
 		merged++
 	}
-
-	s.recordSync(merged)
-	return s.Status(), nil
+	return merged, nil
 }
 
 func (s *Service) recordSync(count int) {
@@ -363,9 +382,6 @@ func ownerFromKeys(ctx context.Context, hc *http.Client, base, token string) (st
 	row, err := getUserKeys(ctx, hc, base, token)
 	if err != nil {
 		return "", err
-	}
-	if row == nil {
-		return "", errors.New("no encrypted-sync key provisioned; sign in again")
 	}
 	return row.UserID, nil
 }

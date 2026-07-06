@@ -49,7 +49,7 @@ const (
 
 // authInfo domain-separates the auth-salt HKDF from everything else. Versioned
 // so a future scheme can coexist.
-var authInfo = []byte("toki-sync-auth-salt-v1")
+const authInfo = "toki-sync-auth-salt-v1"
 
 // DeriveAuthHash produces the value the client sends to Neon Auth as the
 // "password". It is Argon2id over the real password with a salt deterministically
@@ -70,7 +70,7 @@ func DeriveAuthHash(email, password string) (string, error) {
 // separate secret, which is fine because this only salts a slow hash, it is not
 // itself a secret.
 func hkdfSalt(email string) []byte {
-	r := hkdf.New(sha256.New, []byte(email), nil, authInfo)
+	r := hkdf.New(sha256.New, []byte(email), nil, []byte(authInfo))
 	salt := make([]byte, saltEncLen)
 	// HKDF's reader cannot short-read for this small a length; treat any error as
 	// fatal misuse rather than propagating it up every call site.
@@ -101,8 +101,8 @@ func GenerateDEK() ([]byte, error) {
 	return randomBytes(keyLen)
 }
 
-// WrapDEK seals the DEK under the KEK, returning ciphertext and the nonce used.
-func WrapDEK(dek, kek []byte) (wrapped, nonce []byte, err error) {
+// WrapDEK seals the DEK under the KEK, returning the wrapped bytes and the nonce.
+func WrapDEK(dek, kek []byte) ([]byte, []byte, error) {
 	return seal(kek, dek)
 }
 
@@ -114,7 +114,7 @@ func UnwrapDEK(wrapped, nonce, kek []byte) ([]byte, error) {
 }
 
 // EncryptEntry seals one serialized entry under the DEK.
-func EncryptEntry(dek, plaintext []byte) (ciphertext, nonce []byte, err error) {
+func EncryptEntry(dek, plaintext []byte) ([]byte, []byte, error) {
 	return seal(dek, plaintext)
 }
 
@@ -136,12 +136,12 @@ func EntryID(dek, canonical []byte) string {
 // seal performs XChaCha20-Poly1305 with a fresh random 24-byte nonce, returning
 // the detached nonce alongside the ciphertext so callers can store them in
 // separate columns.
-func seal(key, plaintext []byte) (ciphertext, nonce []byte, err error) {
+func seal(key, plaintext []byte) ([]byte, []byte, error) {
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "new aead")
 	}
-	nonce, err = randomBytes(aead.NonceSize())
+	nonce, err := randomBytes(aead.NonceSize())
 	if err != nil {
 		return nil, nil, err
 	}
