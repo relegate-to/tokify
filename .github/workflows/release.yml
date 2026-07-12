@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-macos:
-    name: Build Toki.app (macOS universal)
+    name: Build Tokify.app (macOS universal)
     runs-on: macos-latest
     permissions:
       contents: write
@@ -34,7 +34,7 @@ jobs:
         # productVersion field, which gets baked into Info.plist.
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          echo "Building Toki ${VERSION}"
+          echo "Building Tokify ${VERSION}"
           # macOS sed needs an empty backup arg; -i '' is portable on darwin.
           sed -i '' -E "s/\"productVersion\": *\"[^\"]*\"/\"productVersion\": \"${VERSION}\"/" cmd/tock-desktop/wails.json
           grep productVersion cmd/tock-desktop/wails.json
@@ -53,24 +53,24 @@ jobs:
           wails build -clean -platform darwin/universal \
             -ldflags "-X github.com/kriuchkov/tock/internal/integrations/neonauth.DefaultAuthURL=${NEON_AUTH_URL} -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultDataURL=${NEON_DATA_URL}"
 
-      - name: Rename bundle to Toki.app
+      - name: Rename bundle to Tokify.app
         run: |
           cd cmd/tock-desktop/build/bin
           if [ -d tock-desktop.app ]; then
-            rm -rf Toki.app
-            mv tock-desktop.app Toki.app
+            rm -rf Tokify.app
+            mv tock-desktop.app Tokify.app
           fi
           ls -la
 
-      - name: Build Teams auth helper (universal) and embed in Toki.app
+      - name: Build Teams auth helper (universal) and embed in Tokify.app
         # The desktop app shells out to this helper to drive Microsoft
         # sign-in in its own WKWebView window. Without it the Teams
         # integration's Connect button fails with "helper not found".
         run: |
           make teams-auth-build-universal
           cp bin/tock-teams-auth \
-            cmd/tock-desktop/build/bin/Toki.app/Contents/MacOS/tock-teams-auth
-          ls -la cmd/tock-desktop/build/bin/Toki.app/Contents/MacOS/
+            cmd/tock-desktop/build/bin/Tokify.app/Contents/MacOS/tock-teams-auth
+          ls -la cmd/tock-desktop/build/bin/Tokify.app/Contents/MacOS/
 
       - name: Install license-gathering tools
         run: |
@@ -81,9 +81,9 @@ jobs:
       - name: Generate THIRD_PARTY_NOTICES.txt
         run: ./scripts/gen-notices.sh "$PWD/THIRD_PARTY_NOTICES.txt"
 
-      - name: Bundle license texts into Toki.app
+      - name: Bundle license texts into Tokify.app
         run: |
-          RES="cmd/tock-desktop/build/bin/Toki.app/Contents/Resources"
+          RES="cmd/tock-desktop/build/bin/Tokify.app/Contents/Resources"
           mkdir -p "$RES"
           cp LICENSE "$RES/LICENSE"
           cp THIRD_PARTY_NOTICES.txt "$RES/THIRD_PARTY_NOTICES.txt"
@@ -96,26 +96,26 @@ jobs:
             exit 1
           fi
 
-      - name: Zip Toki.app
+      - name: Zip Tokify.app
         run: |
           cd cmd/tock-desktop/build/bin
-          ASSET="Toki-${GITHUB_REF_NAME}-macos-universal.zip"
+          ASSET="Tokify-${GITHUB_REF_NAME}-macos-universal.zip"
           # `ditto` preserves macOS bundle attributes (resource forks,
           # extended attrs) better than plain `zip`.
-          ditto -c -k --sequesterRsrc --keepParent Toki.app "$ASSET"
+          ditto -c -k --sequesterRsrc --keepParent Tokify.app "$ASSET"
           shasum -a 256 "$ASSET" > "${ASSET}.sha256"
           ls -la
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
-          name: Toki ${{ github.ref_name }}
+          name: Tokify ${{ github.ref_name }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           files: |
-            cmd/tock-desktop/build/bin/Toki-${{ github.ref_name }}-macos-universal.zip
-            cmd/tock-desktop/build/bin/Toki-${{ github.ref_name }}-macos-universal.zip.sha256
+            cmd/tock-desktop/build/bin/Tokify-${{ github.ref_name }}-macos-universal.zip
+            cmd/tock-desktop/build/bin/Tokify-${{ github.ref_name }}-macos-universal.zip.sha256
             THIRD_PARTY_NOTICES.txt
           body: |
             ## Install
@@ -123,16 +123,16 @@ jobs:
             ### One-liner
 
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/finchett/toki/main/install.sh | sh
+            curl -fsSL https://raw.githubusercontent.com/finchett/tokify/main/install.sh | sh
             ```
 
             ### Manual
 
-            1. Download `Toki-${{ github.ref_name }}-macos-universal.zip` below.
-            2. Unzip and drag `Toki.app` into `/Applications`.
+            1. Download `Tokify-${{ github.ref_name }}-macos-universal.zip` below.
+            2. Unzip and drag `Tokify.app` into `/Applications`.
             3. First launch: right-click → **Open** → **Open**, or
-               `xattr -dr com.apple.quarantine /Applications/Toki.app`.
+               `xattr -dr com.apple.quarantine /Applications/Tokify.app`.
 
-            Toki releases are not yet signed with an Apple Developer ID;
-            see the [README](https://github.com/finchett/toki#install) for
+            Tokify releases are not yet signed with an Apple Developer ID;
+            see the [README](https://github.com/finchett/tokify#install) for
             details.

@@ -157,8 +157,8 @@ export function AccountView({
         : status.signed_in
           ? "You're signed in."
           : mode === 'signin'
-            ? 'Sign in to your Toki account.'
-            : 'Create a Toki account.';
+            ? 'Sign in to your Tokify account.'
+            : 'Create a Tokify account.';
 
     return (
         <div className="flex flex-col gap-6 animate-in fade-in-0 slide-in-from-top-1 duration-300">

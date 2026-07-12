@@ -37,7 +37,7 @@ BIN_DIR := bin
 # a gitignored .env (copy .env.example) so the project URLs stay out of the repo;
 # override per-invocation to point a release at a different project. Only the
 # release build targets inject these — desktop-dev leaves them unset so local dev
-# falls back to the TOKI_NEON_*_URL env vars or the on-disk settings file.
+# falls back to the TOKIFY_NEON_*_URL env vars or the on-disk settings file.
 -include .env
 NEON_AUTH_URL ?=
 NEON_DATA_URL ?=
@@ -68,29 +68,29 @@ teams-auth-build-universal:
 # Build a .app for the host architecture (fastest).
 desktop-build: teams-auth-build
 	cd $(DESKTOP_DIR) && $(WAILS) build -clean -ldflags "$(DESKTOP_LDFLAGS)"
-	@rm -rf $(DESKTOP_DIR)/build/bin/Toki.app
-	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Toki.app
-	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Toki.app/Contents/MacOS/tock-teams-auth
-	@echo "Built $(DESKTOP_DIR)/build/bin/Toki.app"
+	@rm -rf $(DESKTOP_DIR)/build/bin/Tokify.app
+	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Tokify.app
+	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Tokify.app/Contents/MacOS/tock-teams-auth
+	@echo "Built $(DESKTOP_DIR)/build/bin/Tokify.app"
 
 # Build a universal (arm64 + amd64) .app suitable for distribution.
 desktop-build-universal: teams-auth-build-universal
 	cd $(DESKTOP_DIR) && $(WAILS) build -clean -platform darwin/universal -ldflags "$(DESKTOP_LDFLAGS)"
-	@rm -rf $(DESKTOP_DIR)/build/bin/Toki.app
-	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Toki.app
-	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Toki.app/Contents/MacOS/tock-teams-auth
-	@echo "Built $(DESKTOP_DIR)/build/bin/Toki.app"
+	@rm -rf $(DESKTOP_DIR)/build/bin/Tokify.app
+	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Tokify.app
+	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Tokify.app/Contents/MacOS/tock-teams-auth
+	@echo "Built $(DESKTOP_DIR)/build/bin/Tokify.app"
 
 # Build and open the resulting .app.
 desktop-run: desktop-build
-	open $(DESKTOP_DIR)/build/bin/Toki.app
+	open $(DESKTOP_DIR)/build/bin/Tokify.app
 
 # Live-reload dev server with Go bindings exposed at http://localhost:34115.
 # Builds the auth helper first so Connect works in dev. The desktop binary's
 # helper-lookup walks up to repo root and finds it under ./bin/.
 desktop-dev: teams-auth-build
 	cd $(DESKTOP_DIR) && \
-		TOKI_NEON_AUTH_URL="$(NEON_AUTH_URL)" TOKI_NEON_DATA_URL="$(NEON_DATA_URL)" \
+		TOKIFY_NEON_AUTH_URL="$(NEON_AUTH_URL)" TOKIFY_NEON_DATA_URL="$(NEON_DATA_URL)" \
 		$(WAILS) dev
 
 # Check that the Wails CLI and its prerequisites are installed.

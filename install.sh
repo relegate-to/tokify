@@ -1,22 +1,22 @@
 #!/bin/sh
 set -e
 
-# Toki installer for macOS.
+# Tokify installer for macOS.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/finchett/toki/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/finchett/tokify/main/install.sh | sh
 #
 # Environment overrides:
 #   VERSION=v0.1.0   pin a specific tag instead of "latest"
 #   INSTALL_DIR=...  install destination (default: /Applications)
 
 OWNER="finchett"
-REPO="toki"
-APP_NAME="Toki.app"
+REPO="tokify"
+APP_NAME="Tokify.app"
 INSTALL_DIR="${INSTALL_DIR:-/Applications}"
 
 if [ "$(uname -s)" != "Darwin" ]; then
-    echo "Toki currently only ships a macOS build."
+    echo "Tokify currently only ships a macOS build."
     echo "On other platforms, build from source: https://github.com/${OWNER}/${REPO}#build-from-source"
     exit 1
 fi
@@ -28,15 +28,15 @@ if [ -z "$VERSION" ]; then
 fi
 
 if [ -z "$VERSION" ]; then
-    echo "Could not determine the latest Toki release."
+    echo "Could not determine the latest Tokify release."
     echo "Visit https://github.com/${OWNER}/${REPO}/releases to download manually."
     exit 1
 fi
 
-ASSET="Toki-${VERSION}-macos-universal.zip"
+ASSET="Tokify-${VERSION}-macos-universal.zip"
 DOWNLOAD_URL="https://github.com/${OWNER}/${REPO}/releases/download/${VERSION}/${ASSET}"
 
-echo "Installing Toki ${VERSION} to ${INSTALL_DIR}/${APP_NAME}"
+echo "Installing Tokify ${VERSION} to ${INSTALL_DIR}/${APP_NAME}"
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -66,11 +66,11 @@ fi
 
 $SUDO mv "$TMP_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME"
 
-# Toki releases are not (yet) signed with an Apple Developer ID. Strip the
+# Tokify releases are not (yet) signed with an Apple Developer ID. Strip the
 # quarantine attribute so Gatekeeper opens the app cleanly on first launch.
 $SUDO xattr -dr com.apple.quarantine "$INSTALL_DIR/$APP_NAME" || true
 
 echo ""
-echo "Toki ${VERSION} installed to ${INSTALL_DIR}/${APP_NAME}"
+echo "Tokify ${VERSION} installed to ${INSTALL_DIR}/${APP_NAME}"
 echo "Launch it from Spotlight, the Applications folder, or:"
 echo "  open '${INSTALL_DIR}/${APP_NAME}'"

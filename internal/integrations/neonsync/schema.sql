@@ -1,4 +1,4 @@
--- Toki end-to-end-encrypted cloud sync — Neon Data API schema.
+-- Tokify end-to-end-encrypted cloud sync — Neon Data API schema.
 --
 -- Zero-knowledge intent: the server (Neon/PostgREST) only ever stores
 -- ciphertext. Every user-content column below holds an opaque base64 blob.

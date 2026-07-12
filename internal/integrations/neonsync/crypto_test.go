@@ -101,7 +101,7 @@ func TestWrapUnwrapDEK(t *testing.T) {
 
 func TestEncryptDecryptEntry(t *testing.T) {
 	dek, _ := GenerateDEK()
-	plaintext := []byte(`{"description":"write tests","project":"toki"}`)
+	plaintext := []byte(`{"description":"write tests","project":"tokify"}`)
 
 	ciphertext, nonce, err := EncryptEntry(dek, plaintext)
 	if err != nil {

@@ -3,7 +3,7 @@
 // tock-teams-auth is a short-lived helper that drives one Microsoft sign-in
 // round-trip in a real WKWebView window so we can intercept the
 // teams.microsoft.com/go fragment redirect without asking the user to paste
-// anything. It's invoked as a subprocess by the main Toki app, runs the
+// anything. It's invoked as a subprocess by the main Tokify app, runs the
 // macOS run-loop in its own process so it doesn't fight with Wails' webview,
 // prints the captured redirect URL to stdout, and exits.
 //
@@ -81,12 +81,12 @@ func main() {
 		captured string
 	)
 
-	// __tokiURL is called from injected JS whenever the page URL changes.
+	// __tokifyURL is called from injected JS whenever the page URL changes.
 	// We can't observe navigation events from outside the webview, so we
 	// poll inside the document context. Cross-origin pages still see this
 	// script because Init uses WKUserScript which applies to all frames at
 	// document-start.
-	if err := w.Bind("__tokiURL", func(url string) {
+	if err := w.Bind("__tokifyURL", func(url string) {
 		if !strings.HasPrefix(url, redirectPrefix) {
 			return
 		}
@@ -119,7 +119,7 @@ func main() {
                 try {
                     if (location.href !== last) {
                         last = location.href;
-                        window.__tokiURL(location.href);
+                        window.__tokifyURL(location.href);
                     }
                 } catch (e) { /* binding not ready yet */ }
             }

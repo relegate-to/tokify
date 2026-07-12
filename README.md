@@ -1,24 +1,24 @@
-# Toki
+# Tokify
 
 > A calm desktop time tracker for macOS.
 
 <p align="center">
-  <img src="cmd/tock-desktop/build/appicon.png" width="128" alt="Toki app icon" />
+  <img src="cmd/tock-desktop/build/appicon.png" width="128" alt="Tokify app icon" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/finchett/toki/releases">
-    <img src="https://img.shields.io/github/v/release/finchett/toki?style=flat-square" alt="Release" />
+  <a href="https://github.com/finchett/tokify/releases">
+    <img src="https://img.shields.io/github/v/release/finchett/tokify?style=flat-square" alt="Release" />
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/finchett/toki?style=flat-square" alt="License" />
+    <img src="https://img.shields.io/github/license/finchett/tokify?style=flat-square" alt="License" />
   </a>
   <img src="https://img.shields.io/badge/platform-macOS%2011%2B-lightgrey?style=flat-square" alt="Platform" />
 </p>
 
-Toki is a small, focused time tracker that lives in your menu bar. Start an
+Tokify is a small, focused time tracker that lives in your menu bar. Start an
 activity, get on with your work, glance at the bar to see how long you've been
-at it. Close the window and Toki keeps tracking from the menu bar; click it to
+at it. Close the window and Tokify keeps tracking from the menu bar; click it to
 bring the window back, or quit when you're done.
 
 Activities are stored as a plain-text log in your home directory — the same
@@ -30,21 +30,21 @@ can read, grep, edit, or back up your data with anything that handles text.
 ### macOS — one-liner
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/finchett/toki/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/finchett/tokify/main/install.sh | sh
 ```
 
-This downloads the latest release, unpacks `Toki.app` into `/Applications`, and
+This downloads the latest release, unpacks `Tokify.app` into `/Applications`, and
 clears the macOS quarantine flag so it opens cleanly the first time.
 
 ### macOS — manual
 
-1. Grab `Toki-<version>-macos-universal.zip` from the
-   [Releases page](https://github.com/finchett/toki/releases/latest).
-2. Unzip and drag `Toki.app` into `/Applications`.
+1. Grab `Tokify-<version>-macos-universal.zip` from the
+   [Releases page](https://github.com/finchett/tokify/releases/latest).
+2. Unzip and drag `Tokify.app` into `/Applications`.
 3. On first launch macOS may warn that the app is from an unidentified
-   developer (Toki is not yet signed with an Apple Developer ID). Either:
-   - Right-click `Toki.app` → **Open** → **Open** in the confirmation dialog, or
-   - Run `xattr -dr com.apple.quarantine /Applications/Toki.app` once.
+   developer (Tokify is not yet signed with an Apple Developer ID). Either:
+   - Right-click `Tokify.app` → **Open** → **Open** in the confirmation dialog, or
+   - Run `xattr -dr com.apple.quarantine /Applications/Tokify.app` once.
 
 ### Build from source
 
@@ -52,10 +52,10 @@ You'll need Go (matching `go.mod`), Node 18+, and the [Wails CLI][wails]:
 
 ```sh
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
-git clone https://github.com/finchett/toki
-cd toki
+git clone https://github.com/finchett/tokify
+cd tokify
 make desktop-build-universal
-open cmd/tock-desktop/build/bin/Toki.app
+open cmd/tock-desktop/build/bin/Tokify.app
 ```
 
 `make desktop-doctor` will verify the toolchain is ready.
@@ -63,11 +63,11 @@ open cmd/tock-desktop/build/bin/Toki.app
 ## What it looks like
 
 <p align="center">
-  <img src="screenshots/Now-Light.png" alt="Toki — tracking an activity" width="720" />
+  <img src="screenshots/Now-Light.png" alt="Tokify — tracking an activity" width="720" />
 </p>
 
 <p align="center">
-  <img src="screenshots/History-Dark.png" alt="Toki — activity history (dark)" width="720" />
+  <img src="screenshots/History-Dark.png" alt="Tokify — activity history (dark)" width="720" />
 </p>
 
 The menu bar shows `● 0:42` while tracking, `○` when idle. The window has a
@@ -77,13 +77,13 @@ the title bar.
 
 ## Microsoft Teams status (optional)
 
-Toki can keep your Microsoft Teams **status message** in sync with whatever
+Tokify can keep your Microsoft Teams **status message** in sync with whatever
 you're currently tracking — turn it on in Settings → Integrations.
 
 How it works:
 
 - You sign in once with the same Microsoft account you use for Teams. A
-  real Microsoft sign-in window opens (not a web view inside Toki) and the
+  real Microsoft sign-in window opens (not a web view inside Tokify) and the
   access token is written to your macOS **Keychain**, never to a file.
 - You pick which projects the integration applies to. Activities under other
   projects are left private — your Teams status doesn't change.
@@ -98,7 +98,7 @@ A few things to know:
   block it.
 - On the sign-in prompt, you **must** choose **Yes** for "Stay signed in?"
   — sign-in won't complete otherwise.
-- Toki only ever writes your status message. It does not read your Teams
+- Tokify only ever writes your status message. It does not read your Teams
   messages, send messages, or access any other Teams data.
 
 ## Export
@@ -110,26 +110,26 @@ handy for invoicing, reporting, or piping into a spreadsheet.
 
 ## Data and configuration
 
-Toki reads and writes the same files as the [tock CLI][tock]:
+Tokify reads and writes the same files as the [tock CLI][tock]:
 
 - Activity log: `~/.tock.txt` (plain-text, one entry per line)
 - Configuration: `~/.config/tock/tock.yaml` (optional — defaults are fine)
 
-This means you can use Toki and `tock` side by side, sync the log file with any
+This means you can use Tokify and `tock` side by side, sync the log file with any
 tool that handles text, or move to a different backend (TimeWarrior, TodoTXT,
 SQLite) by editing the config. See [`tock.yaml.example`](tock.yaml.example) for
 the full list of options.
 
 ## Relationship to tock
 
-Toki is a desktop frontend built as a respectful fork of
+Tokify is a desktop frontend built as a respectful fork of
 [**tock**][tock] by [Vladimir Kriuchkov][kriuchkov].
 The fork adds `cmd/tock-desktop/` (a Wails app) and reuses tock's domain
 services so the CLI and GUI stay behaviorally identical. The Go module path is
 kept as `github.com/kriuchkov/tock` so upstream merges apply cleanly.
 
 The upstream tock README is preserved verbatim at
-[`docs/tock.md`](docs/tock.md). See [`TOKI.md`](TOKI.md) for how the fork
+[`docs/tock.md`](docs/tock.md). See [`TOKIFY.md`](TOKIFY.md) for how the fork
 relates to upstream.
 
 ## Development

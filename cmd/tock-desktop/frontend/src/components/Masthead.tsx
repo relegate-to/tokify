@@ -46,19 +46,19 @@ export function Masthead({
         })
         .toLowerCase();
     const tabsValue = view === 'now' || view === 'history' ? view : '';
-    const [introToki, setIntroToki] = useState(false);
+    const [introTokify, setIntroTokify] = useState(false);
     const [hover, setHover] = useState(false);
     const [open, setOpen] = useState(false);
-    const [openedAsToki, setOpenedAsToki] = useState(false);
+    const [openedAsTokify, setOpenedAsTokify] = useState(false);
     const [nudgeKey, setNudgeKey] = useState(0);
 
     useEffect(() => {
         const showId = window.setTimeout(
-            () => setIntroToki(true),
+            () => setIntroTokify(true),
             MASTHEAD_INTRO_SHOW_MS,
         );
         const hideId = window.setTimeout(
-            () => setIntroToki(false),
+            () => setIntroTokify(false),
             MASTHEAD_INTRO_HIDE_MS,
         );
         return () => {
@@ -67,25 +67,25 @@ export function Masthead({
         };
     }, []);
 
-    const showToki = introToki || hover || (open && openedAsToki);
+    const showTokify = introTokify || hover || (open && openedAsTokify);
     const [exportOpen, setExportOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
 
     const handleOpenChange = (next: boolean) => {
         if (next) {
-            const tokiNow = introToki || hover;
-            setOpenedAsToki(tokiNow);
-            if (tokiNow) setNudgeKey((k) => k + 1);
+            const tokifyNow = introTokify || hover;
+            setOpenedAsTokify(tokifyNow);
+            if (tokifyNow) setNudgeKey((k) => k + 1);
         } else {
-            setOpenedAsToki(false);
+            setOpenedAsTokify(false);
         }
         setOpen(next);
     };
 
     // Radix dismisses the menu on a bubble-phase document listener, which a
     // child calling stopPropagation (e.g. a text input) can swallow — leaving
-    // the menu open and the label stuck on "Toki". A capture-phase listener
+    // the menu open and the label stuck on "Tokify". A capture-phase listener
     // runs before any child handler, so an outside press always closes it.
     useEffect(() => {
         if (!open) return;
@@ -126,16 +126,16 @@ export function Masthead({
                             className="relative grid select-none overflow-hidden rounded-md px-2 py-1 outline-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-0 data-[state=open]:bg-muted"
                         >
                             <span className="invisible col-start-1 row-start-1 px-1 text-xs font-medium uppercase tracking-[0.2em]">
-                                Toki
+                                Tokify
                             </span>
                             <span className="invisible col-start-1 row-start-1 px-1 text-xs tabular-nums">
                                 {date}
                             </span>
                             <span
-                                aria-hidden={!showToki}
+                                aria-hidden={!showTokify}
                                 className={cn(
                                     'absolute inset-0 flex items-center justify-center pl-[0.2em] text-xs font-medium uppercase tracking-[0.2em] transition-[translate,opacity] duration-300 ease-out',
-                                    showToki
+                                    showTokify
                                         ? 'translate-x-0 opacity-100'
                                         : '-translate-x-full opacity-0',
                                 )}
@@ -145,17 +145,17 @@ export function Masthead({
                                     className={cn(
                                         'inline-block',
                                         nudgeKey > 0 &&
-                                            'animate-[toki-nudge_240ms_ease-out]',
+                                            'animate-[tokify-nudge_240ms_ease-out]',
                                     )}
                                 >
-                                    Toki
+                                    Tokify
                                 </span>
                             </span>
                             <span
-                                aria-hidden={showToki}
+                                aria-hidden={showTokify}
                                 className={cn(
                                     'absolute inset-0 flex items-center justify-center text-xs tabular-nums text-muted-foreground transition-[translate,opacity] duration-300 ease-out',
-                                    showToki
+                                    showTokify
                                         ? 'translate-x-full opacity-0'
                                         : 'translate-x-0 opacity-100',
                                 )}

@@ -26,10 +26,10 @@ import { HistoryView } from '@/components/HistoryView';
 import { SettingsView } from '@/components/SettingsView';
 import { AccountView } from '@/components/AccountView';
 
-const SHOW_ACCOUNT_KEY = 'toki.showAccount';
-const ACTIVITY_VIEW_KEY = 'toki.activityView';
-const SHOW_SCROLLBARS_KEY = 'toki.showScrollbars';
-const THEME_KEY = 'toki.theme';
+const SHOW_ACCOUNT_KEY = 'tokify.showAccount';
+const ACTIVITY_VIEW_KEY = 'tokify.activityView';
+const SHOW_SCROLLBARS_KEY = 'tokify.showScrollbars';
+const THEME_KEY = 'tokify.theme';
 const ACTIVITY_VIEW_VALUES: ActivityView[] = ['all', 'today', 'none'];
 
 const THEME_VALUES: Theme[] = ['auto', 'light', 'dark'];

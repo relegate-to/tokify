@@ -25,7 +25,7 @@ const keychainAccount = "session"
 // DefaultAuthURL is the Neon Auth endpoint baked into release builds via
 // -ldflags (see the desktop-build Makefile targets). It's empty in source so
 // the package stays deployment-agnostic; local dev leaves it unset and relies
-// on TOKI_NEON_AUTH_URL or the settings file instead.
+// on TOKIFY_NEON_AUTH_URL or the settings file instead.
 //
 //nolint:gochecknoglobals // ldflags injection target; must be a package var.
 var DefaultAuthURL string
@@ -65,9 +65,9 @@ func NewService() (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TOKI_NEON_AUTH_URL lets you point at a Neon project without editing the
+	// TOKIFY_NEON_AUTH_URL lets you point at a Neon project without editing the
 	// JSON — handy in dev and on first run before the settings file exists.
-	if env := strings.TrimSpace(os.Getenv("TOKI_NEON_AUTH_URL")); env != "" {
+	if env := strings.TrimSpace(os.Getenv("TOKIFY_NEON_AUTH_URL")); env != "" {
 		s.AuthURL = env
 	} else if strings.TrimSpace(s.AuthURL) == "" {
 		s.AuthURL = DefaultAuthURL

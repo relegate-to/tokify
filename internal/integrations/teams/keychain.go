@@ -19,7 +19,7 @@ type keychainStore struct {
 }
 
 func newKeychainStore() *keychainStore {
-	return &keychainStore{service: "Toki Teams Integration"}
+	return &keychainStore{service: "Tokify Teams Integration"}
 }
 
 func (k *keychainStore) Save(ctx context.Context, account, secret string) error {

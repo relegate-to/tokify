@@ -10,7 +10,7 @@ import (
 )
 
 // Settings are the user-controlled preferences for the Teams integration.
-// Stored as JSON at ~/Library/Application Support/Toki/teams.json so they
+// Stored as JSON at ~/Library/Application Support/Tokify/teams.json so they
 // don't pollute the upstream tock data file.
 type Settings struct {
 	Enabled         bool     `json:"enabled"`
@@ -22,7 +22,7 @@ func defaultSettingsPath() (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "home dir")
 	}
-	return filepath.Join(home, "Library", "Application Support", "Toki", "teams.json"), nil
+	return filepath.Join(home, "Library", "Application Support", "Tokify", "teams.json"), nil
 }
 
 func loadSettings(path string) (Settings, error) {

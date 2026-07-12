@@ -48,8 +48,9 @@ const (
 )
 
 // authInfo domain-separates the auth-salt HKDF from everything else. Versioned
-// so a future scheme can coexist.
-const authInfo = "toki-sync-auth-salt-v1"
+// so a future scheme can coexist. Changing it changes every existing user's
+// auth hash — treat it as frozen once accounts exist.
+const authInfo = "tokify-sync-auth-salt-v1"
 
 // DeriveAuthHash produces the value the client sends to Neon Auth as the
 // "password". It is Argon2id over the real password with a salt deterministically

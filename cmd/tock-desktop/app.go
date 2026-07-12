@@ -26,7 +26,7 @@ import (
 	"github.com/kriuchkov/tock/internal/timeutil"
 )
 
-// App is the Wails-bound surface for the Toki desktop window. It owns a tock
+// App is the Wails-bound surface for the Tokify desktop window. It owns a tock
 // Runtime so the GUI talks to the same services and the same data file the
 // `tock` CLI does — there is no parallel implementation of any business rule.
 type App struct {
@@ -186,11 +186,11 @@ func (a *App) autoSyncOnce() bool {
 // surface "show" and "quit" — no toggle state to keep in sync.
 func (a *App) trayOnReady() {
 	systray.SetTitle(" ○")
-	systray.SetTooltip("Toki")
+	systray.SetTooltip("Tokify")
 
-	show := systray.AddMenuItem("Show Toki", "Bring the Toki window to the front")
+	show := systray.AddMenuItem("Show Tokify", "Bring the Tokify window to the front")
 	systray.AddSeparator()
-	quit := systray.AddMenuItem("Quit Toki", "Quit Toki")
+	quit := systray.AddMenuItem("Quit Tokify", "Quit Tokify")
 
 	a.mu.Lock()
 	a.trayStop = make(chan struct{})
@@ -271,7 +271,7 @@ func formatElapsed(d time.Duration) string {
 
 func (a *App) requireRuntime() error {
 	if a.rt == nil {
-		return errors.New("toki couldn't reach the tock data file")
+		return errors.New("tokify couldn't reach the tock data file")
 	}
 	return nil
 }
@@ -576,10 +576,10 @@ func (a *App) Export(format, fromDate, toDate, project string) (string, error) {
 	}
 
 	defaultDir, _ := a.rt.DefaultExportDir()
-	defaultName := "toki-report-" + time.Now().Format("20060102-150405") + "." + format
+	defaultName := "tokify-report-" + time.Now().Format("20060102-150405") + "." + format
 
 	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
-		Title:            "Export Toki Activities",
+		Title:            "Export Tokify Activities",
 		DefaultDirectory: defaultDir,
 		DefaultFilename:  defaultName,
 		Filters: []wailsruntime.FileFilter{

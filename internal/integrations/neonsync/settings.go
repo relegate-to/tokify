@@ -9,7 +9,7 @@ import (
 )
 
 // Settings are the user-controlled preferences for the Neon sync integration.
-// Stored as JSON at ~/Library/Application Support/Toki/neonsync.json, alongside
+// Stored as JSON at ~/Library/Application Support/Tokify/neonsync.json, alongside
 // the neonauth settings, so they don't pollute the upstream tock data file.
 //
 // DataURL is the Neon Data API (PostgREST) base URL; find it in the Neon
@@ -31,7 +31,7 @@ func defaultSettingsPath() (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "home dir")
 	}
-	return filepath.Join(home, "Library", "Application Support", "Toki", "neonsync.json"), nil
+	return filepath.Join(home, "Library", "Application Support", "Tokify", "neonsync.json"), nil
 }
 
 func loadSettings(path string) (Settings, error) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate THIRD_PARTY_NOTICES.txt by concatenating license texts of the
-# Go and npm dependencies that get bundled into the Toki binary.
+# Go and npm dependencies that get bundled into the Tokify binary.
 #
 # Requires:
 #   - go-licenses          (go install github.com/google/go-licenses@latest)
@@ -26,11 +26,11 @@ for tool in go-licenses license-checker-rseidelsohn jq; do
 done
 
 {
-    echo "Toki — Third-party notices"
+    echo "Tokify — Third-party notices"
     echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo ""
-    echo "Toki itself is licensed under GPL-3.0-or-later (see LICENSE)."
-    echo "This file lists the third-party software bundled into the Toki binary"
+    echo "Tokify itself is licensed under GPL-3.0-or-later (see LICENSE)."
+    echo "This file lists the third-party software bundled into the Tokify binary"
     echo "and reproduces their license texts as required by those licenses."
     echo ""
     echo "================================================================"

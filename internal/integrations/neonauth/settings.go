@@ -9,7 +9,7 @@ import (
 )
 
 // Settings are the user-controlled preferences for the Neon Auth integration.
-// Stored as JSON at ~/Library/Application Support/Toki/neonauth.json so they
+// Stored as JSON at ~/Library/Application Support/Tokify/neonauth.json so they
 // don't pollute the upstream tock data file. The Auth URL is the single value
 // Neon Auth (Better Auth) needs; find it in the Neon Console under
 // Auth -> Configuration.
@@ -22,7 +22,7 @@ func defaultSettingsPath() (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "home dir")
 	}
-	return filepath.Join(home, "Library", "Application Support", "Toki", "neonauth.json"), nil
+	return filepath.Join(home, "Library", "Application Support", "Tokify", "neonauth.json"), nil
 }
 
 func loadSettings(path string) (Settings, error) {

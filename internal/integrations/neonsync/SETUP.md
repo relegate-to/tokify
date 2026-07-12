@@ -1,6 +1,6 @@
 # Neon sync setup
 
-Sets up the Postgres side of Toki's end-to-end-encrypted activity sync. The
+Sets up the Postgres side of Tokify's end-to-end-encrypted activity sync. The
 server holds only ciphertext: `schema.sql` defines two tables of opaque base64
 blobs and Row-Level Security that scopes every row to the user who wrote it.
 Neon never sees plaintext activities or their timestamps.
@@ -29,7 +29,7 @@ The script is idempotent, so re-running it to pick up changes is safe.
 
 In the Neon console, open the project and go to the Data API section. Copy the
 Data API base URL (the PostgREST endpoint for the project). The app reads it
-from settings, or from the `TOKI_NEON_DATA_URL` environment variable.
+from settings, or from the `TOKIFY_NEON_DATA_URL` environment variable.
 
 ## How auth wiring fits together
 
@@ -46,7 +46,7 @@ Sign in as two different users and grab each JWT. With user A's rows present,
 call the Data API as user B:
 
 ```sh
-curl -s "$TOKI_NEON_DATA_URL/entries" \
+curl -s "$TOKIFY_NEON_DATA_URL/entries" \
   -H "Authorization: Bearer $USER_B_JWT"
 ```
 

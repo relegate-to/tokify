@@ -1,6 +1,6 @@
-# Toki desktop
+# Tokify desktop
 
-Wails (Go + WebKit) shell wrapping the Toki time tracker, with a React + TypeScript frontend.
+Wails (Go + WebKit) shell wrapping the Tokify time tracker, with a React + TypeScript frontend.
 
 ## Prerequisites
 
@@ -22,10 +22,10 @@ From the repo root:
 ```sh
 make desktop-build              # host architecture, ~7s incremental
 make desktop-build-universal    # arm64 + amd64 fat binary
-make desktop-run                # build, then `open Toki.app`
+make desktop-run                # build, then `open Tokify.app`
 ```
 
-The packaged app lands at `cmd/tock-desktop/build/bin/Toki.app` (rename happens after Wails packaging because Wails derives the bundle directory from the project name).
+The packaged app lands at `cmd/tock-desktop/build/bin/Tokify.app` (rename happens after Wails packaging because Wails derives the bundle directory from the project name).
 
 ## Develop
 
@@ -37,10 +37,10 @@ Runs `wails dev` with Vite hot reload. Go methods are reachable from a browser a
 
 ## Menu bar
 
-Toki lives in the macOS menu bar while it's running. The status item shows `●`
+Tokify lives in the macOS menu bar while it's running. The status item shows `●`
 plus the elapsed time of the running activity (or `○` when nothing is tracked).
-Closing the window leaves Toki in the menu bar — click **Show Toki** there to
-bring the window back, or **Quit Toki** to fully exit.
+Closing the window leaves Tokify in the menu bar — click **Show Tokify** there to
+bring the window back, or **Quit Tokify** to fully exit.
 
 ## Configuration
 

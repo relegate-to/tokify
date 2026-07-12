@@ -22,8 +22,8 @@
         {
           "fill" : "automatic",
           "glass" : true,
-          "image-name" : "toki-appicon-k3.png",
-          "name" : "toki-appicon-k3"
+          "image-name" : "tokify-appicon-k3.png",
+          "name" : "tokify-appicon-k3"
         }
       ],
       "shadow" : {

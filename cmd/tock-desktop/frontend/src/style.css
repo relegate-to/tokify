@@ -129,7 +129,7 @@
     }
 }
 
-@keyframes toki-nudge {
+@keyframes tokify-nudge {
   0%   { scale: 1; }
   45%  { scale: 1.08; }
   100% { scale: 1; }

@@ -142,11 +142,11 @@ func (s *Service) Connect(ctx context.Context) error {
 // helperPath locates the tock-teams-auth binary. In a packaged .app it lives
 // next to the main binary in Contents/MacOS/. In Wails dev mode the binary
 // runs from a temp directory, so we also walk the cwd upwards looking for a
-// `bin/tock-teams-auth` next to a go.mod. The TOKI_TEAMS_AUTH_BIN env var
+// `bin/tock-teams-auth` next to a go.mod. The TOKIFY_TEAMS_AUTH_BIN env var
 // short-circuits everything for debugging or alternative install layouts.
 func helperPath() (string, error) {
 	const name = "tock-teams-auth"
-	if env := strings.TrimSpace(os.Getenv("TOKI_TEAMS_AUTH_BIN")); env != "" {
+	if env := strings.TrimSpace(os.Getenv("TOKIFY_TEAMS_AUTH_BIN")); env != "" {
 		return env, nil
 	}
 	self, err := os.Executable()
@@ -287,7 +287,7 @@ func (s *Service) PushActivityStatus(ctx context.Context, description, project s
 	if description == "" {
 		return s.http.ClearNote(ctx, accessToken)
 	}
-	// Generous expiry; Teams will auto-clear it tomorrow if Toki crashes
+	// Generous expiry; Teams will auto-clear it tomorrow if Tokify crashes
 	// mid-session.
 	return s.http.PublishNote(ctx, accessToken, description, time.Now().Add(24*time.Hour))
 }
@@ -296,7 +296,7 @@ func (s *Service) PushActivityStatus(ctx context.Context, description, project s
 // access token is expired or near expiry:
 //
 //  1. Refresh-token grant. SPA refresh tokens cap at ~24h absolute lifetime,
-//     so this covers "Toki was closed overnight" but not "Toki sat idle for
+//     so this covers "Tokify was closed overnight" but not "Tokify sat idle for
 //     a weekend".
 //  2. Silent re-auth via the helper with prompt=none. Reuses the persistent
 //     WKWebView cookie jar from the prior interactive sign-in; the

@@ -30,7 +30,7 @@ const dekAccount = "dek"
 // DefaultDataURL is the Neon Data API endpoint baked into release builds via
 // -ldflags (see the desktop-build Makefile targets). It's empty in source so
 // the package stays deployment-agnostic; local dev leaves it unset and relies
-// on TOKI_NEON_DATA_URL or the settings file instead.
+// on TOKIFY_NEON_DATA_URL or the settings file instead.
 //
 //nolint:gochecknoglobals // ldflags injection target; must be a package var.
 var DefaultDataURL string
@@ -92,9 +92,9 @@ func NewService(activities ActivityStore, tokens TokenProvider) (*Service, error
 	if err != nil {
 		return nil, err
 	}
-	// TOKI_NEON_DATA_URL points at a project's Data API without editing JSON —
+	// TOKIFY_NEON_DATA_URL points at a project's Data API without editing JSON —
 	// handy in dev and before the settings file exists.
-	if env := strings.TrimSpace(os.Getenv("TOKI_NEON_DATA_URL")); env != "" {
+	if env := strings.TrimSpace(os.Getenv("TOKIFY_NEON_DATA_URL")); env != "" {
 		s.DataURL = env
 	} else if strings.TrimSpace(s.DataURL) == "" {
 		s.DataURL = DefaultDataURL

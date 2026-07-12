@@ -21,7 +21,7 @@ type keychainStore struct {
 }
 
 func newKeychainStore() *keychainStore {
-	return &keychainStore{service: "Toki Neon Sync"}
+	return &keychainStore{service: "Tokify Neon Sync"}
 }
 
 func (k *keychainStore) Save(ctx context.Context, account, secret string) error {
