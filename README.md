@@ -62,13 +62,13 @@ open cmd/tock-desktop/build/bin/Tokify.app
 
 ## What it looks like
 
-<p align="center">
+<!-- <p align="center">
   <img src="screenshots/Now-Light.png" alt="Tokify — tracking an activity" width="720" />
 </p>
 
 <p align="center">
   <img src="screenshots/History-Dark.png" alt="Tokify — activity history (dark)" width="720" />
-</p>
+</p> -->
 
 The menu bar shows `● 0:42` while tracking, `○` when idle. The window has a
 single input for what you're working on, a list of today's activities (and any
