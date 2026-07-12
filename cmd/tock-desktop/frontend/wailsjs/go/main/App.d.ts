@@ -7,6 +7,8 @@ import {teams} from '../models';
 
 export function AddActivity(arg1:string,arg2:string,arg3:string,arg4:string):Promise<models.Activity>;
 
+export function AuthResendVerification(arg1:string):Promise<void>;
+
 export function AuthSignIn(arg1:string,arg2:string):Promise<neonauth.Status>;
 
 export function AuthSignOut():Promise<void>;
@@ -14,6 +16,8 @@ export function AuthSignOut():Promise<void>;
 export function AuthSignUp(arg1:string,arg2:string,arg3:string):Promise<neonauth.Status>;
 
 export function AuthStatus():Promise<neonauth.Status>;
+
+export function AuthVerifyEmail(arg1:string,arg2:string,arg3:string):Promise<neonauth.Status>;
 
 export function Export(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 

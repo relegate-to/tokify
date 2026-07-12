@@ -704,8 +704,46 @@ func (a *App) AuthSignUp(email, password, name string) (neonauth.Status, error) 
 	if err != nil {
 		return status, err
 	}
-	a.unlockSync(ctx, email, password, status.UserID)
+	// When email verification is required, sign-up yields no session yet; there
+	// is nothing to unlock until AuthVerifyEmail establishes one.
+	if status.SignedIn {
+		a.unlockSync(ctx, email, password, status.UserID)
+	}
 	return status, nil
+}
+
+// AuthVerifyEmail confirms the code Neon Auth emailed after sign-up and, on
+// success, signs in to establish the session. Sync is then unlocked with the
+// raw password exactly as in AuthSignIn.
+func (a *App) AuthVerifyEmail(email, password, code string) (neonauth.Status, error) {
+	if a.neonAuth == nil {
+		return neonauth.Status{}, errors.New("auth unavailable")
+	}
+	email = strings.TrimSpace(email)
+	authHash, err := neonsync.DeriveAuthHash(email, password)
+	if err != nil {
+		return neonauth.Status{}, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	status, err := a.neonAuth.VerifyEmail(ctx, email, authHash, strings.TrimSpace(code))
+	if err != nil {
+		return status, err
+	}
+	if status.SignedIn {
+		a.unlockSync(ctx, email, password, status.UserID)
+	}
+	return status, nil
+}
+
+// AuthResendVerification asks Neon Auth to email a fresh verification code.
+func (a *App) AuthResendVerification(email string) error {
+	if a.neonAuth == nil {
+		return errors.New("auth unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonAuth.ResendVerification(ctx, strings.TrimSpace(email))
 }
 
 // unlockSync provisions or recovers the sync encryption key from the password.

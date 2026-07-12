@@ -6,6 +6,10 @@ export function AddActivity(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddActivity'](arg1, arg2, arg3, arg4);
 }
 
+export function AuthResendVerification(arg1) {
+  return window['go']['main']['App']['AuthResendVerification'](arg1);
+}
+
 export function AuthSignIn(arg1, arg2) {
   return window['go']['main']['App']['AuthSignIn'](arg1, arg2);
 }
@@ -20,6 +24,10 @@ export function AuthSignUp(arg1, arg2, arg3) {
 
 export function AuthStatus() {
   return window['go']['main']['App']['AuthStatus']();
+}
+
+export function AuthVerifyEmail(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AuthVerifyEmail'](arg1, arg2, arg3);
 }
 
 export function Export(arg1, arg2, arg3, arg4) {

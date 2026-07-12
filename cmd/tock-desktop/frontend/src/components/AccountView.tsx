@@ -6,14 +6,17 @@ import {
     ListChecks,
     Loader2,
     LogOut,
+    MailCheck,
     Timer,
 } from 'lucide-react';
 
 import {
+    AuthResendVerification,
     AuthSignIn,
     AuthSignOut,
     AuthSignUp,
     AuthStatus,
+    AuthVerifyEmail,
 } from '../../wailsjs/go/main/App';
 import { neonauth } from '../../wailsjs/go/models';
 
@@ -52,6 +55,11 @@ export function AccountView({
     const [password, setPassword] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    // Set to the pending email after a sign-up that requires verification; while
+    // present the card shows the code-entry step instead of the sign-in tabs.
+    const [pendingEmail, setPendingEmail] = useState('');
+    const [code, setCode] = useState('');
+    const [notice, setNotice] = useState('');
 
     useEffect(() => {
         let cancelled = false;
@@ -80,6 +88,14 @@ export function AccountView({
                 mode === 'signin'
                     ? await AuthSignIn(email.trim(), password)
                     : await AuthSignUp(email.trim(), password, name.trim());
+            if (next.pending_verification) {
+                // Account created; Neon Auth emailed a code. Hold the password so
+                // verifyEmail can sign in once the code is confirmed.
+                setPendingEmail(next.email || email.trim());
+                setCode('');
+                setNotice('');
+                return;
+            }
             setStatus(next);
             setPassword('');
         } catch (err) {
@@ -87,6 +103,52 @@ export function AccountView({
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const verifyEmail = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (submitting) return;
+        setError('');
+        setSubmitting(true);
+        try {
+            const next = await AuthVerifyEmail(
+                pendingEmail,
+                password,
+                code.trim(),
+            );
+            setStatus(next);
+            setPassword('');
+            setCode('');
+            setPendingEmail('');
+            setNotice('');
+        } catch (err) {
+            setError(authErrorText(err));
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const resendCode = async () => {
+        if (submitting) return;
+        setError('');
+        setNotice('');
+        setSubmitting(true);
+        try {
+            await AuthResendVerification(pendingEmail);
+            setNotice('A new code is on its way.');
+        } catch (err) {
+            setError(authErrorText(err));
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const cancelPending = () => {
+        if (submitting) return;
+        setPendingEmail('');
+        setCode('');
+        setError('');
+        setNotice('');
     };
 
     const signOut = async () => {
@@ -156,9 +218,11 @@ export function AccountView({
         ? 'Accounts are optional. Your time is always saved on this Mac.'
         : status.signed_in
           ? "You're signed in."
-          : mode === 'signin'
-            ? 'Sign in to your Tokify account.'
-            : 'Create a Tokify account.';
+          : pendingEmail
+            ? `Enter the code we emailed to ${pendingEmail}.`
+            : mode === 'signin'
+              ? 'Sign in to your Tokify account.'
+              : 'Create a Tokify account.';
 
     return (
         <div className="flex flex-col gap-6 animate-in fade-in-0 slide-in-from-top-1 duration-300">
@@ -227,6 +291,89 @@ export function AccountView({
                                 Sign out
                             </Button>
                         </div>
+                    ) : pendingEmail ? (
+                        <form
+                            onSubmit={verifyEmail}
+                            className="flex flex-col gap-4 animate-in fade-in-0 slide-in-from-top-1 duration-200"
+                        >
+                            <div className="flex items-start gap-3">
+                                <div
+                                    aria-hidden
+                                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground/70"
+                                >
+                                    <MailCheck className="size-4" />
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    We emailed a verification code to{' '}
+                                    <span className="font-medium text-foreground">
+                                        {pendingEmail}
+                                    </span>
+                                    . Enter it below to finish setting up your
+                                    account.
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <label
+                                    htmlFor="auth-code"
+                                    className="text-xs text-muted-foreground"
+                                >
+                                    Verification code
+                                </label>
+                                <Input
+                                    id="auth-code"
+                                    value={code}
+                                    onChange={(e) => setCode(e.target.value)}
+                                    placeholder="123456"
+                                    autoComplete="one-time-code"
+                                    inputMode="numeric"
+                                    autoFocus
+                                    spellCheck={false}
+                                    className="font-mono tracking-[0.3em]"
+                                    required
+                                />
+                            </div>
+                            {error && (
+                                <p className="text-xs text-destructive">
+                                    {error}
+                                </p>
+                            )}
+                            {notice && (
+                                <p className="text-xs text-muted-foreground">
+                                    {notice}
+                                </p>
+                            )}
+                            <Button
+                                type="submit"
+                                size="sm"
+                                disabled={submitting || !code.trim()}
+                            >
+                                {submitting && (
+                                    <Loader2
+                                        data-icon="inline-start"
+                                        className="animate-spin"
+                                    />
+                                )}
+                                Verify email
+                            </Button>
+                            <div className="flex items-center justify-between">
+                                <button
+                                    type="button"
+                                    onClick={cancelPending}
+                                    disabled={submitting}
+                                    className="text-xs text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={resendCode}
+                                    disabled={submitting}
+                                    className="text-xs text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"
+                                >
+                                    Resend code
+                                </button>
+                            </div>
+                        </form>
                     ) : (
                         <>
                             <Tabs

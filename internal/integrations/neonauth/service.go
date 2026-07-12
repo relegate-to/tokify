@@ -54,6 +54,10 @@ type Status struct {
 	UserID     string `json:"user_id,omitempty"`
 	Email      string `json:"email,omitempty"`
 	Name       string `json:"name,omitempty"`
+	// PendingVerification is set when sign-up succeeded but the project requires
+	// email verification: the account exists and a code was emailed, but no
+	// session is issued until VerifyEmail confirms it.
+	PendingVerification bool `json:"pending_verification,omitempty"`
 }
 
 func NewService() (*Service, error) {
@@ -143,10 +147,52 @@ func (s *Service) SignUp(ctx context.Context, email, password, name string) (Sta
 	if err != nil {
 		return Status{}, err
 	}
+	if sess.Token == "" {
+		// The project requires email verification: the account was created and a
+		// code emailed, but no session is issued yet. Report it so the UI prompts
+		// for the code instead of treating this as a failure.
+		return Status{Configured: true, PendingVerification: true, Email: email, Name: name}, nil
+	}
 	if serr := s.saveSession(ctx, sess); serr != nil {
 		return Status{}, gerrors.Wrap(serr, "persist session")
 	}
 	return s.Status(), nil
+}
+
+// VerifyEmail confirms the emailed OTP and then signs in to obtain a session.
+// Sign-up withholds the session pending verification, so a fresh sign-in is the
+// deterministic way to establish one once the email is confirmed.
+func (s *Service) VerifyEmail(ctx context.Context, email, password, otp string) (Status, error) {
+	base := s.authURL()
+	if base == "" {
+		return Status{}, ErrNotConfigured
+	}
+	if !netcheck.Online(ctx, hostOf(base)) {
+		return Status{}, netcheck.ErrOffline
+	}
+	if err := verifyEmailOTP(ctx, s.http, base, email, otp); err != nil {
+		return Status{}, err
+	}
+	sess, err := signInEmail(ctx, s.http, base, email, password)
+	if err != nil {
+		return Status{}, err
+	}
+	if serr := s.saveSession(ctx, sess); serr != nil {
+		return Status{}, gerrors.Wrap(serr, "persist session")
+	}
+	return s.Status(), nil
+}
+
+// ResendVerification asks Neon Auth to email a fresh verification code.
+func (s *Service) ResendVerification(ctx context.Context, email string) error {
+	base := s.authURL()
+	if base == "" {
+		return ErrNotConfigured
+	}
+	if !netcheck.Online(ctx, hostOf(base)) {
+		return netcheck.ErrOffline
+	}
+	return sendVerificationOTP(ctx, s.http, base, email)
 }
 
 // SignOut revokes the session server-side (best-effort) and deletes the local

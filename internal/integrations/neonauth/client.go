@@ -63,6 +63,10 @@ func originOf(rawURL string) string {
 	return u.Scheme + "://" + u.Host
 }
 
+// signUpEmail creates the account. When the project requires email
+// verification the response carries a user but no session token; that is not an
+// error here (the caller treats an empty token as "verification pending"), so
+// unlike sign-in it does not guard against a missing token.
 func signUpEmail(ctx context.Context, hc *http.Client, base, email, password, name string) (session, error) {
 	return postCredentials(ctx, hc, endpoint(base, "/sign-up/email"), map[string]string{
 		"email":    email,
@@ -72,9 +76,34 @@ func signUpEmail(ctx context.Context, hc *http.Client, base, email, password, na
 }
 
 func signInEmail(ctx context.Context, hc *http.Client, base, email, password string) (session, error) {
-	return postCredentials(ctx, hc, endpoint(base, "/sign-in/email"), map[string]string{
+	sess, err := postCredentials(ctx, hc, endpoint(base, "/sign-in/email"), map[string]string{
 		"email":    email,
 		"password": password,
+	})
+	if err != nil {
+		return session{}, err
+	}
+	if sess.Token == "" {
+		return session{}, gerrors.New("auth response contained no session token")
+	}
+	return sess, nil
+}
+
+// verifyEmailOTP confirms the one-time code Neon Auth emails when email
+// verification is required. On success the account's email is marked verified;
+// it does not reliably return a session, so callers sign in afterwards.
+func verifyEmailOTP(ctx context.Context, hc *http.Client, base, email, otp string) error {
+	return postJSON(ctx, hc, endpoint(base, "/email-otp/verify-email"), map[string]string{
+		"email": email,
+		"otp":   otp,
+	})
+}
+
+// sendVerificationOTP asks Neon Auth to (re)send the email-verification code.
+func sendVerificationOTP(ctx context.Context, hc *http.Client, base, email string) error {
+	return postJSON(ctx, hc, endpoint(base, "/email-otp/send-verification-otp"), map[string]string{
+		"email": email,
+		"type":  "email-verification",
 	})
 }
 
@@ -118,10 +147,39 @@ func postCredentials(ctx context.Context, hc *http.Client, url string, body map[
 	if h := resp.Header.Get("Set-Auth-Token"); h != "" {
 		token = h
 	}
-	if token == "" {
-		return session{}, gerrors.New("auth response contained no session token")
-	}
+	// An empty token is a valid outcome for sign-up when email verification is
+	// required; sign-in guards against it separately.
 	return session{Token: token, User: out.User, Cookie: sessionCookie(resp.Header)}, nil
+}
+
+// postJSON drives endpoints that return no session (the email-OTP verification
+// calls). It surfaces Better Auth's error body on non-2xx and otherwise reports
+// success, sharing the Origin handling and body cap with postCredentials.
+func postJSON(ctx context.Context, hc *http.Client, url string, body map[string]string) error {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if origin := originOf(url); origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+
+	resp, err := hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return apiError(resp.StatusCode, data)
+	}
+	return nil
 }
 
 // sessionCookie pulls the raw `name=value` of Better Auth's session-token cookie

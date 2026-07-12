@@ -53,6 +53,7 @@ export namespace neonauth {
 	    user_id?: string;
 	    email?: string;
 	    name?: string;
+	    pending_verification?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -65,6 +66,7 @@ export namespace neonauth {
 	        this.user_id = source["user_id"];
 	        this.email = source["email"];
 	        this.name = source["name"];
+	        this.pending_verification = source["pending_verification"];
 	    }
 	}
 
