@@ -14,6 +14,7 @@ import (
 	gerrors "github.com/go-faster/errors"
 
 	"github.com/kriuchkov/tock/internal/core/models"
+	"github.com/kriuchkov/tock/internal/integrations/neonsync/sharing"
 	"github.com/kriuchkov/tock/internal/integrations/netcheck"
 )
 
@@ -71,6 +72,7 @@ type Service struct {
 	settings   Settings
 	path       string
 	tombstones *tombstoneStore
+	pins       *PinStore
 }
 
 // SyncStatus is the snapshot the Account panel renders.
@@ -107,6 +109,7 @@ func NewService(activities ActivityStore, tokens TokenProvider) (*Service, error
 		settings:   s,
 		path:       path,
 		tombstones: newTombstoneStore(path),
+		pins:       newPinStore(path),
 	}, nil
 }
 
@@ -172,36 +175,50 @@ func (s *Service) Unlock(ctx context.Context, _, password, userID, token string)
 	}
 
 	row, err := getUserKeys(ctx, s.http, base, token)
-	var dek []byte
+	var (
+		dek []byte
+		kek []byte
+	)
 	switch {
 	case errors.Is(err, ErrNoUserKeys):
-		dek, err = s.provision(ctx, base, token, userID, password)
+		dek, kek, err = s.provision(ctx, base, token, userID, password)
+		row = nil // fresh row has no wrapped_identity yet
 	case err != nil:
 		return err
 	default:
-		dek, err = unwrapFromRow(password, row)
+		dek, kek, err = unwrapFromRow(password, row)
 	}
 	if err != nil {
 		return err
 	}
-	return s.saveDEK(ctx, dek)
+	if serr := s.saveDEK(ctx, dek); serr != nil {
+		return serr
+	}
+	// Provision (or recover) the sharing identity here — the one place the KEK
+	// exists. Failure to set up sharing must not fail a sign-in that already has
+	// a working DEK, so it is best-effort: sharing simply stays locked until the
+	// next successful Unlock.
+	if perr := s.provisionIdentity(ctx, base, token, userID, kek, row); perr != nil {
+		return nil //nolint:nilerr // sharing setup is best-effort; DEK unlock already succeeded
+	}
+	return nil
 }
 
 // provision creates a fresh user_keys row: a random DEK wrapped by a KEK derived
 // from the password and a fresh random salt. Only ciphertext leaves the device.
-func (s *Service) provision(ctx context.Context, base, token, userID, password string) ([]byte, error) {
+func (s *Service) provision(ctx context.Context, base, token, userID, password string) ([]byte, []byte, error) {
 	salt, err := GenerateSalt()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	dek, err := GenerateDEK()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	kek := DeriveKEK(password, salt)
 	wrapped, nonce, err := WrapDEK(dek, kek)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	row := userKeysRow{
 		UserID:     userID,
@@ -210,34 +227,37 @@ func (s *Service) provision(ctx context.Context, base, token, userID, password s
 		WrapNonce:  b64(nonce),
 	}
 	if err = insertUserKeys(ctx, s.http, base, token, row); err != nil {
-		return nil, gerrors.Wrap(err, "provision user key")
+		return nil, nil, gerrors.Wrap(err, "provision user key")
 	}
-	return dek, nil
+	return dek, kek, nil
 }
 
-func unwrapFromRow(password string, row *userKeysRow) ([]byte, error) {
+// unwrapFromRow recovers the DEK and returns the KEK alongside it (the caller
+// needs the KEK to unwrap or provision the sharing identity in the same step).
+func unwrapFromRow(password string, row *userKeysRow) ([]byte, []byte, error) {
 	salt, err := unb64(row.SaltEnc)
 	if err != nil {
-		return nil, gerrors.Wrap(err, "decode salt")
+		return nil, nil, gerrors.Wrap(err, "decode salt")
 	}
 	wrapped, err := unb64(row.WrappedDEK)
 	if err != nil {
-		return nil, gerrors.Wrap(err, "decode wrapped key")
+		return nil, nil, gerrors.Wrap(err, "decode wrapped key")
 	}
 	nonce, err := unb64(row.WrapNonce)
 	if err != nil {
-		return nil, gerrors.Wrap(err, "decode wrap nonce")
+		return nil, nil, gerrors.Wrap(err, "decode wrap nonce")
 	}
 	kek := DeriveKEK(password, salt)
 	dek, err := UnwrapDEK(wrapped, nonce, kek)
 	if err != nil {
-		return nil, errors.New("wrong password for encrypted sync")
+		return nil, nil, errors.New("wrong password for encrypted sync")
 	}
-	return dek, nil
+	return dek, kek, nil
 }
 
-// Lock clears the cached DEK. Called on sign-out.
+// Lock clears the cached DEK and the cached sharing identity. Called on sign-out.
 func (s *Service) Lock(ctx context.Context) error {
+	s.clearIdentity(ctx)
 	return s.store.Delete(ctx, dekAccount)
 }
 
@@ -287,18 +307,39 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 		return s.Status(), err
 	}
 
-	if err = s.push(ctx, base, token, dek, localByID); err != nil {
+	// A sharing session exists only once the identity is provisioned+unlocked.
+	// When present, push entries in their v2 form (AAD-bound, author-signed) so
+	// audience members can read them, then reconcile grants after the push (the
+	// grants FK requires entries to exist first). When absent, fall back to the
+	// legacy account-DEK push; sharing stays dormant.
+	sess, sessErr := s.session(ctx)
+	if sessErr == nil {
+		if err = s.pushSharedEntries(ctx, sess, localByID); err != nil {
+			return s.Status(), err
+		}
+	} else if err = s.push(ctx, base, token, dek, localByID); err != nil {
 		return s.Status(), err
 	}
 	if err = markDeleted(ctx, s.http, base, token, mapKeys(delIDs)); err != nil {
 		return s.Status(), gerrors.Wrap(err, "propagate deletions")
 	}
-	merged, err := s.pull(ctx, base, token, dek, localByID, delIDs)
-	if err != nil {
-		return s.Status(), err
+	if sessErr == nil {
+		// Reconcile-on-write across my audiences. Per-audience failures (e.g. an
+		// unverifiable epoch chain, §2b) are collected and must not abort the sync
+		// of everything else; they surface via the status error line.
+		if rerrs := s.reconcileAudiences(ctx, sess, localByID, time.Now()); len(rerrs) > 0 {
+			err = rerrs[0]
+		}
+	}
+	merged, perr := s.pull(ctx, base, token, dek, localByID, delIDs)
+	if perr != nil {
+		return s.Status(), perr
 	}
 
 	s.recordSync(merged)
+	if err != nil {
+		return s.Status(), err
+	}
 	return s.Status(), nil
 }
 
@@ -380,6 +421,9 @@ func (s *Service) pull(
 	if err != nil {
 		return 0, gerrors.Wrap(err, "pull entries")
 	}
+	// owner is needed for the v2 (AAD-bound) decode of the caller's own rows; a
+	// blank owner just means the v2 attempt fails and the legacy path is used.
+	owner, _ := ownerFromKeys(ctx, s.http, base, token)
 
 	// Remote tombstones win: drop any local entry the cloud reports deleted.
 	liveInCloud := make(map[string]struct{}, len(cloud))
@@ -411,7 +455,7 @@ func (s *Service) pull(
 		if _, ok := delIDs[row.ID]; ok {
 			continue // deleted on this device this cycle; don't resurrect
 		}
-		act, decErr := decodeRow(dek, row)
+		act, decErr := s.decodeOwnRow(dek, owner, row)
 		if decErr != nil {
 			// A row we can't decrypt is not fatal to the whole sync; skip it.
 			continue
@@ -533,6 +577,9 @@ func canonicalize(a models.Activity) []byte {
 	return b
 }
 
+// decodeRow decrypts a legacy entry row (account-DEK, no AAD) into an activity.
+// The v2 shared read path decrypts differently (per-entry derived DEK + AAD);
+// see decodeSharedRow, which falls back here for old rows.
 func decodeRow(dek []byte, row entryRow) (models.Activity, error) {
 	ct, err := unb64(row.Ciphertext)
 	if err != nil {
@@ -546,6 +593,50 @@ func decodeRow(dek []byte, row entryRow) (models.Activity, error) {
 	if err != nil {
 		return models.Activity{}, err
 	}
+	return activityFromCanonical(plain)
+}
+
+// decodeOwnRow decrypts one of the caller's own cloud entry rows, trying the v2
+// format first (per-entry derived DEK + EntryAAD bound to entry id / version 1 /
+// owner) and falling back to the legacy account-DEK-no-AAD format for rows
+// written by an older client (§ v2 entry push). ownerID may be empty, in which
+// case only the legacy path can succeed.
+func (s *Service) decodeOwnRow(dek []byte, ownerID string, row entryRow) (models.Activity, error) {
+	if ownerID != "" {
+		if act, err := decodeV2OwnRow(dek, ownerID, row); err == nil {
+			return act, nil
+		}
+	}
+	return decodeRow(dek, row)
+}
+
+// decodeV2OwnRow decrypts a v2-format own row: the DEK is derived from the
+// account DEK and the row id, and EntryAAD binds (id, version 1, owner).
+func decodeV2OwnRow(dek []byte, ownerID string, row entryRow) (models.Activity, error) {
+	entryDEK, err := sharing.DeriveEntryDEK(dek, row.ID)
+	if err != nil {
+		return models.Activity{}, err
+	}
+	ct, err := unb64(row.Ciphertext)
+	if err != nil {
+		return models.Activity{}, err
+	}
+	nonce, err := unb64(row.Nonce)
+	if err != nil {
+		return models.Activity{}, err
+	}
+	plain, err := sharing.DecryptEntryPayload(entryDEK, ct, nonce, sharing.EntryAAD{
+		EntryID: row.ID, Version: entryVersion, AuthorID: ownerID,
+	})
+	if err != nil {
+		return models.Activity{}, err
+	}
+	return activityFromCanonical(plain)
+}
+
+// activityFromCanonical parses the log-faithful canonical bytes (the shared
+// encryption plaintext and content-hash preimage) back into an Activity.
+func activityFromCanonical(plain []byte) (models.Activity, error) {
 	var c canonicalEntry
 	if uerr := json.Unmarshal(plain, &c); uerr != nil {
 		return models.Activity{}, uerr

@@ -25,6 +25,37 @@ Run `schema.sql` once against the project's database, either way:
 
 The script is idempotent, so re-running it to pick up changes is safe.
 
+## Apply the sharing schema (E2EE live sharing)
+
+`sharing_schema.sql` layers the epoched-audience sharing feature on top of the
+sync core: audiences, signed epoch announcements, per-`(entry × audience)`
+grants, and the Row-Level Security that makes the visibility plane agree with
+the wrapped-key readability plane. Apply it **after** `schema.sql`, the same way
+(SQL Editor or `psql "$NEON_CONNECTION_STRING" -f sharing_schema.sql`). It is
+idempotent and safe to re-run, and it extends — never rewrites — `schema.sql`
+(it does replace the `entries` FOR ALL policy with per-verb policies, in the
+same idempotent DROP-then-CREATE style).
+
+The server still holds only ciphertext: every key, wrapped DEK, and signature
+column is opaque base64, and no filter is ever evaluated by the database. The
+consciously accepted metadata leakage (the sharing graph and grant time-window
+bounds) is documented in the file's header comment.
+
+### Test the sharing RLS
+
+`scripts/sharing-rls-test.sh` is a self-contained harness that spins up an
+ephemeral Postgres container, stubs the Neon environment (the `authenticated`
+role and `auth.user_id()`), applies `schema.sql` + `sharing_schema.sql` twice
+(idempotency check), and runs `scripts/sharing-rls-test.sql` — a suite that
+drives the policies as three users (author/admin, member, non-member) and
+asserts forgery prevention, the epoch-bump race guard, three-tier read
+visibility, the approval gate, admin-only membership/epoch writes, and the
+grant-revoke column guard. It requires Docker and exits non-zero on any failure:
+
+```sh
+scripts/sharing-rls-test.sh
+```
+
 ## Find the Data API base URL
 
 In the Neon console, open the project and go to the Data API section. Copy the

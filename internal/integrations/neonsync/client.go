@@ -26,6 +26,10 @@ type userKeysRow struct {
 	SaltEnc    string `json:"salt_enc"`
 	WrappedDEK string `json:"wrapped_dek"`
 	WrapNonce  string `json:"wrap_nonce"`
+	// Sharing identity (sharing_schema.sql adds these columns). Empty until an
+	// account is provisioned for sharing; populated by patchIdentityColumns.
+	WrappedIdentity string `json:"wrapped_identity,omitempty"`
+	IdentityNonce   string `json:"identity_nonce,omitempty"`
 }
 
 type entryRow struct {
