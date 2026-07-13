@@ -35,7 +35,7 @@ export function HistoryView({
     onRemove: (orig: Activity) => void;
     onResume: (orig: Activity) => void;
     onAddPast: (description: string, project: string, startISO: string, endISO: string) => void;
-    onOpenSharing: () => void;
+    onOpenSharing: (project?: string) => void;
 }) {
     const [query, setQuery] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
@@ -111,7 +111,12 @@ export function HistoryView({
                 <span className="text-xs tabular-nums text-muted-foreground">
                     {filtered.length} {filtered.length === 1 ? 'activity' : 'activities'}
                 </span>
-                <Button type="button" variant="ghost" size="sm" onClick={onOpenSharing}>
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onOpenSharing(projectFilter || undefined)}
+                >
                     <Share2 data-icon="inline-start" />
                     Share this view
                 </Button>

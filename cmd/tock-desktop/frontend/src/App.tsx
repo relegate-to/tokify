@@ -65,6 +65,7 @@ const HISTORY_LIMIT = 500;
 
 function App() {
     const [view, setView] = useState<View>('now');
+    const [sharingProject, setSharingProject] = useState<string | undefined>();
     const [running, setRunning] = useState<Activity | null>(null);
     const [today, setToday] = useState<Activity[]>([]);
     const [recent, setRecent] = useState<Activity[]>([]);
@@ -240,11 +241,17 @@ function App() {
         }, REMOVE_ANIM_MS);
     };
 
+    const handleView = (next: View) => {
+        if (next === 'sharing') setSharingProject(undefined);
+        setView(next);
+    };
+
     return (
         <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
             <Masthead
                 view={view}
-                onView={setView}
+                onView={handleView}
+                running={running}
                 showAccount={showAccount}
                 projects={projects}
             />
@@ -276,7 +283,10 @@ function App() {
                             onRemove={handleRemove}
                             onResume={handleResume}
                             onAddPast={handleAddPast}
-                            onOpenSharing={() => setView('sharing')}
+                            onOpenSharing={(project) => {
+                                setSharingProject(project);
+                                setView('sharing');
+                            }}
                         />
                     )}
                     {view === 'settings' && (
@@ -296,7 +306,11 @@ function App() {
                         />
                     )}
                     {view === 'sharing' && (
-                        <SharingView projects={projects} onBack={() => setView('history')} />
+                        <SharingView
+                            projects={projects}
+                            initialProject={sharingProject}
+                            onBack={() => setView('history')}
+                        />
                     )}
                     {view === 'account' && (
                         <AccountView
