@@ -25,6 +25,7 @@ import { NowView } from '@/components/NowView';
 import { HistoryView } from '@/components/HistoryView';
 import { SettingsView } from '@/components/SettingsView';
 import { AccountView } from '@/components/AccountView';
+import { SharingView } from '@/components/SharingView';
 
 const SHOW_ACCOUNT_KEY = 'tokify.showAccount';
 const ACTIVITY_VIEW_KEY = 'tokify.activityView';
@@ -275,6 +276,7 @@ function App() {
                             onRemove={handleRemove}
                             onResume={handleResume}
                             onAddPast={handleAddPast}
+                            onOpenSharing={() => setView('sharing')}
                         />
                     )}
                     {view === 'settings' && (
@@ -292,6 +294,9 @@ function App() {
                             onTeamsRefresh={refreshTeams}
                             onBack={() => setView('now')}
                         />
+                    )}
+                    {view === 'sharing' && (
+                        <SharingView projects={projects} onBack={() => setView('history')} />
                     )}
                     {view === 'account' && (
                         <AccountView

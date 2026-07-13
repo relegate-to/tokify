@@ -819,6 +819,42 @@ func (a *App) SyncNow() (neonsync.SyncStatus, error) {
 	return status, err
 }
 
+// SharingCreateLink creates a capability link over a project/time filter.
+func (a *App) SharingCreateLink(projects []string, sinceDays, validForHours int) (neonsync.LinkShare, error) {
+	if a.neonSync == nil {
+		return neonsync.LinkShare{}, errors.New("sharing unavailable")
+	}
+	if sinceDays < 0 {
+		return neonsync.LinkShare{}, errors.New("since days must be non-negative")
+	}
+	if validForHours < 0 {
+		return neonsync.LinkShare{}, errors.New("valid-for hours must be non-negative")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 90*time.Second)
+	defer cancel()
+	return a.neonSync.CreateLinkShare(ctx, projects, sinceDays, time.Duration(validForHours)*time.Hour)
+}
+
+// SharingListLinks returns active capability links owned by the signed-in user.
+func (a *App) SharingListLinks() ([]neonsync.LinkShareInfo, error) {
+	if a.neonSync == nil {
+		return nil, errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonSync.ListLinkShares(ctx)
+}
+
+// SharingRevokeLink revokes a capability link and deletes its backing audience.
+func (a *App) SharingRevokeLink(audienceID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonSync.RevokeLinkShare(ctx, strings.TrimSpace(audienceID))
+}
+
 // pushTeamsStatus fires the Teams status update off the activity-write path.
 // We never block the user's Start/Stop on a network call, and we never
 // surface a Teams failure as a Start/Stop failure — the time log is the
