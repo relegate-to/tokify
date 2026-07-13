@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Share2 } from 'lucide-react';
 
 import type { Activity } from '@/types';
 import { formatTotal, groupByLocalDate, totalDuration } from '@/lib/time';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/input-group';
 import { DayGroup } from '@/components/DayGroup';
 import { AddPastButton } from '@/components/AddPastDialog';
+import { Button } from '@/components/ui/button';
 
 export function HistoryView({
     activities,
@@ -25,6 +26,7 @@ export function HistoryView({
     onRemove,
     onResume,
     onAddPast,
+    onOpenSharing,
 }: {
     activities: Activity[];
     projects: string[];
@@ -33,8 +35,10 @@ export function HistoryView({
     onRemove: (orig: Activity) => void;
     onResume: (orig: Activity) => void;
     onAddPast: (description: string, project: string, startISO: string, endISO: string) => void;
+    onOpenSharing: () => void;
 }) {
     const [query, setQuery] = useState('');
+    const [projectFilter, setProjectFilter] = useState('');
 
     const finished = useMemo(
         () => activities.filter((a) => a.end_time),
@@ -42,13 +46,16 @@ export function HistoryView({
     );
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
-        if (!q) return finished;
-        return finished.filter(
+        const scoped = projectFilter
+            ? finished.filter((a) => (a.project ?? '') === projectFilter)
+            : finished;
+        if (!q) return scoped;
+        return scoped.filter(
             (a) =>
                 (a.description ?? '').toLowerCase().includes(q) ||
                 (a.project ?? '').toLowerCase().includes(q),
         );
-    }, [finished, query]);
+    }, [finished, projectFilter, query]);
 
     const groups = useMemo(() => groupByLocalDate(filtered, true), [filtered]);
     const filteredTotal = useMemo(() => totalDuration(filtered), [filtered]);
@@ -79,6 +86,36 @@ export function HistoryView({
                     </span>
                 </InputGroupAddon>
             </InputGroup>
+
+            <div className="flex flex-wrap items-center gap-2">
+                <Button
+                    type="button"
+                    variant={projectFilter === '' ? 'secondary' : 'outline'}
+                    size="sm"
+                    onClick={() => setProjectFilter('')}
+                >
+                    All
+                </Button>
+                {projects.map((p) => (
+                    <Button
+                        key={p}
+                        type="button"
+                        variant={projectFilter === p ? 'secondary' : 'outline'}
+                        size="sm"
+                        onClick={() => setProjectFilter(p)}
+                    >
+                        {p}
+                    </Button>
+                ))}
+                <div className="flex-1" />
+                <span className="text-xs tabular-nums text-muted-foreground">
+                    {filtered.length} {filtered.length === 1 ? 'activity' : 'activities'}
+                </span>
+                <Button type="button" variant="ghost" size="sm" onClick={onOpenSharing}>
+                    <Share2 data-icon="inline-start" />
+                    Share this view
+                </Button>
+            </div>
 
             {groups.length === 0 ? (
                 <Empty>

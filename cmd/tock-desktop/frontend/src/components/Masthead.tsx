@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, Settings as SettingsIcon, User } from 'lucide-react';
+import { Download, Settings as SettingsIcon, Share2, User } from 'lucide-react';
 
 import type { View } from '@/types';
 import { cn } from '@/lib/utils';
@@ -181,6 +181,10 @@ export function Masthead({
                             </>
                         )}
                         <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => onView('sharing')}>
+                            <Share2 className="size-4 opacity-70" />
+                            Sharing
+                        </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => setExportOpen(true)}>
                             <Download className="size-4 opacity-70" />
                             Export…

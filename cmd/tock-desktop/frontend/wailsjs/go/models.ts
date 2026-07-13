@@ -74,6 +74,38 @@ export namespace neonauth {
 
 export namespace neonsync {
 	
+	export class LinkShare {
+	    AudienceID: string;
+	    Secret: string;
+
+	    static createFrom(source: any = {}) {
+	        return new LinkShare(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.AudienceID = source["AudienceID"];
+	        this.Secret = source["Secret"];
+	    }
+	}
+	export class LinkShareInfo {
+	    AudienceID: string;
+	    ValidUntil: string;
+	    Revoked: boolean;
+	    CreatedAt: string;
+
+	    static createFrom(source: any = {}) {
+	        return new LinkShareInfo(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.AudienceID = source["AudienceID"];
+	        this.ValidUntil = source["ValidUntil"];
+	        this.Revoked = source["Revoked"];
+	        this.CreatedAt = source["CreatedAt"];
+	    }
+	}
 	export class SyncStatus {
 	    configured: boolean;
 	    enabled: boolean;
@@ -127,4 +159,3 @@ export namespace teams {
 	}
 
 }
-

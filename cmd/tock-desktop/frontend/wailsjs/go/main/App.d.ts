@@ -31,6 +31,12 @@ export function Projects():Promise<Array<string>>;
 
 export function RemoveActivity(arg1:models.Activity):Promise<void>;
 
+export function SharingCreateLink(arg1:Array<string>,arg2:number,arg3:number):Promise<neonsync.LinkShare>;
+
+export function SharingListLinks():Promise<Array<neonsync.LinkShareInfo>>;
+
+export function SharingRevokeLink(arg1:string):Promise<void>;
+
 export function Start(arg1:string,arg2:string):Promise<models.Activity>;
 
 export function StartAt(arg1:string,arg2:string,arg3:string):Promise<models.Activity>;

@@ -390,6 +390,73 @@ func patchContributionStatus(ctx context.Context, hc *http.Client, base, token, 
 	return err
 }
 
+// --- link_shares ---
+
+// linkShareRow mirrors the link_shares table. valid_until is a pointer so a
+// NULL (no upper bound) serializes as JSON null; token_hash / member_id and the
+// wrapped blobs are opaque text, RLS-scoped to the creator on every verb.
+type linkShareRow struct {
+	ID               string  `json:"id"`
+	AudienceID       string  `json:"audience_id"`
+	TokenHash        string  `json:"token_hash"`
+	MemberID         string  `json:"member_id"`
+	WrappedIdentity  string  `json:"wrapped_identity"`
+	IdentityNonce    string  `json:"identity_nonce"`
+	SaltEnc          string  `json:"salt_enc"`
+	TrustBundle      string  `json:"trust_bundle"`
+	TrustBundleNonce string  `json:"trust_bundle_nonce"`
+	CreatedBy        string  `json:"created_by"`
+	ValidUntil       *string `json:"valid_until,omitempty"`
+	Revoked          bool    `json:"revoked,omitempty"`
+	CreatedAt        string  `json:"created_at,omitempty"`
+}
+
+func insertLinkShare(ctx context.Context, hc *http.Client, base, token string, row linkShareRow) error {
+	body, err := json.Marshal(row)
+	if err != nil {
+		return err
+	}
+	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/link_shares"), token, body, "return=minimal")
+	return err
+}
+
+// getLinkShares lists the caller's own links (RLS scopes to created_by = caller),
+// newest first, for a list/revoke surface.
+func getLinkShares(ctx context.Context, hc *http.Client, base, token string) ([]linkShareRow, error) {
+	data, err := doJSON(ctx, hc, http.MethodGet,
+		endpoint(base, "/link_shares?select=*&order=created_at.desc"), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []linkShareRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode link shares")
+	}
+	return rows, nil
+}
+
+// revokeLinkShare flips revoked on the link for one audience — the RPC's
+// live-row check then denies it on the next call (§8), independent of the
+// audience delete that follows.
+func revokeLinkShare(ctx context.Context, hc *http.Client, base, token, audienceID string) error {
+	path := "/link_shares?audience_id=eq." + q(audienceID)
+	body, err := json.Marshal(map[string]any{"revoked": true})
+	if err != nil {
+		return err
+	}
+	_, err = doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
+	return err
+}
+
+// deleteAudience removes an audience the caller owns; ON DELETE CASCADE reaps
+// its epochs, keys, grants, shares, and link_shares row (§8). The audiences
+// DELETE policy confines this to link audiences.
+func deleteAudience(ctx context.Context, hc *http.Client, base, token, audienceID string) error {
+	path := "/audiences?id=eq." + q(audienceID)
+	_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
+	return err
+}
+
 // q percent-escapes a value for a PostgREST filter. User ids (JWT subs),
 // audience ids and share ids are opaque strings that may contain characters
 // needing escaping; entry ids are hex and need none but escaping is harmless.

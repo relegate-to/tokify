@@ -54,6 +54,18 @@ export function RemoveActivity(arg1) {
   return window['go']['main']['App']['RemoveActivity'](arg1);
 }
 
+export function SharingCreateLink(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SharingCreateLink'](arg1, arg2, arg3);
+}
+
+export function SharingListLinks() {
+  return window['go']['main']['App']['SharingListLinks']();
+}
+
+export function SharingRevokeLink(arg1) {
+  return window['go']['main']['App']['SharingRevokeLink'](arg1);
+}
+
 export function Start(arg1, arg2) {
   return window['go']['main']['App']['Start'](arg1, arg2);
 }

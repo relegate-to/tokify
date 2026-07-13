@@ -828,3 +828,238 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.audience_members     TO authentic
 GRANT SELECT, INSERT, DELETE         ON public.audience_epoch_keys  TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.entry_audience_grants TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.shares               TO authenticated;
+
+-- ===========================================================================
+-- SECTION 6 — Capability link shares (e2ee-sharing-link-shares.md)
+--
+-- A one-off recipient with NO account reads a filtered slice through a
+-- token-gated RPC instead of RLS-on-`sub`. The crypto plane is unchanged: each
+-- link gets its OWN dedicated audience (roster = the sender only, frozen at
+-- epoch 1 — no rotation ever runs, §3 of the link-shares doc) plus a SYNTHETIC
+-- member that receives an ordinary audience_epoch_keys wrap but is deliberately
+-- NEVER inserted into audience_members. Visibility is a bearer capability: the
+-- URL fragment's secret S derives (a) a link token whose SHA-256 hash is stored
+-- here, and (b) the KEK that unwraps the synthetic identity. The server only
+-- ever holds and returns ciphertext.
+--
+-- Two load-bearing hardening rules (§7):
+--   1. The `anonymous` role gets ZERO privileges on the base tables and only
+--      EXECUTE on sharing_link_fetch — the RPC is the only door.
+--   2. sharing_link_fetch is SECURITY DEFINER and authorizes on the token hash
+--      itself (not RLS), scoping strictly to the one audience the token names
+--      and returning only that audience's ciphertext.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- link_shares: one row per capability link, owned by its creator. Everything
+-- the recipient needs to bootstrap a read lives here as opaque ciphertext:
+-- the synthetic identity keypair wrapped under the link-derived KEK, the salt
+-- anchoring that KEK, and a KEK-encrypted trust bundle carrying the sender's
+-- signing pubkey (lets a viewer verify author signatures — §7). token_hash is
+-- SHA-256(link_token) so the raw token never rests on the server. `member_id`
+-- is the synthetic sub the epoch key and grants are keyed to; no Neon account
+-- backs it and it is never a row in audience_members (§3).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.link_shares (
+    id                 text        PRIMARY KEY,             -- client-generated random hex
+    audience_id        text        NOT NULL,                -- the link's dedicated audience
+    token_hash         text        NOT NULL,                -- hex SHA-256 of the link token (never store the token)
+    member_id          text        NOT NULL,                -- synthetic member sub (no Neon account backs it)
+    wrapped_identity   text        NOT NULL,                -- base64 synthetic identity privkeys, sealed under the link KEK
+    identity_nonce     text        NOT NULL,                -- base64 24-byte nonce for wrapped_identity
+    salt_enc           text        NOT NULL,                -- base64 salt anchoring the link KEK (DeriveKEK input)
+    trust_bundle       text        NOT NULL,                -- base64 sender signing pubkey, sealed under the link KEK (§7)
+    trust_bundle_nonce text        NOT NULL,                -- base64 24-byte nonce for trust_bundle
+    created_by         text        NOT NULL,                -- sender's JWT `sub`
+    valid_from         timestamptz NOT NULL DEFAULT now(),  -- plaintext window bound (accepted leakage §7)
+    valid_until        timestamptz NULL,                    -- plaintext; NULL = no upper bound (a bounded value is recommended, §8)
+    revoked            boolean     NOT NULL DEFAULT false,  -- instant kill switch the RPC's live-row check honors (§8)
+    created_at         timestamptz NOT NULL DEFAULT now(),  -- bookkeeping only
+    CONSTRAINT link_shares_audience_fk
+        FOREIGN KEY (audience_id) REFERENCES public.audiences (id) ON DELETE CASCADE
+);
+
+-- token lookup: the RPC finds a live row by token_hash. UNIQUE so a hash names
+-- at most one link. An indexed equality lookup on a hashed high-entropy token
+-- needs no constant-time compare — a timing channel on it is useless (§9).
+CREATE UNIQUE INDEX IF NOT EXISTS link_shares_token_hash_idx
+    ON public.link_shares (token_hash);
+
+-- creator lookup: "which links did I mint" drives the list/revoke UI.
+CREATE INDEX IF NOT EXISTS link_shares_created_by_idx
+    ON public.link_shares (created_by);
+
+-- ---------------------------------------------------------------------------
+-- Does audience `aud` back a capability link? Confines the audience DELETE
+-- policy below to link audiences only, so v2's no-client-delete posture for
+-- ordinary (shared/team) audiences is preserved. SECURITY DEFINER so the check
+-- does not depend on the caller's link_shares RLS visibility.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.sharing_audience_has_link(aud text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.link_shares WHERE audience_id = aud
+    );
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.sharing_audience_has_link(text) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.sharing_audience_has_link(text) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- link_shares RLS: strictly own-row for the authenticated creator. The
+-- `anonymous` role gets NO policy and NO grant here, so it can never read a
+-- link_shares row directly — its only access is through the RPC (§7).
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.link_shares ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.link_shares FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS link_shares_select ON public.link_shares;
+CREATE POLICY link_shares_select ON public.link_shares
+    FOR SELECT
+    TO authenticated
+    USING (created_by = auth.user_id());
+
+DROP POLICY IF EXISTS link_shares_insert ON public.link_shares;
+CREATE POLICY link_shares_insert ON public.link_shares
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (created_by = auth.user_id());
+
+DROP POLICY IF EXISTS link_shares_update ON public.link_shares;
+CREATE POLICY link_shares_update ON public.link_shares
+    FOR UPDATE
+    TO authenticated
+    USING (created_by = auth.user_id())
+    WITH CHECK (created_by = auth.user_id());
+
+DROP POLICY IF EXISTS link_shares_delete ON public.link_shares;
+CREATE POLICY link_shares_delete ON public.link_shares
+    FOR DELETE
+    TO authenticated
+    USING (created_by = auth.user_id());
+
+-- ---------------------------------------------------------------------------
+-- audiences DELETE: the creator may delete an audience ONLY when it backs a
+-- link (§8 revocation deletes the link's dedicated audience, and ON DELETE
+-- CASCADE reaps its epochs, keys, grants, shares, and the link_shares row).
+-- Confined to link audiences so ordinary audiences keep v2's no-delete rule.
+-- ---------------------------------------------------------------------------
+DROP POLICY IF EXISTS audiences_delete ON public.audiences;
+CREATE POLICY audiences_delete ON public.audiences
+    FOR DELETE
+    TO authenticated
+    USING (created_by = auth.user_id() AND public.sharing_audience_has_link(id));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.link_shares TO authenticated;
+GRANT DELETE                         ON public.audiences   TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- sharing_link_fetch: the ONE door for an accountless recipient. It hashes the
+-- presented token, finds a LIVE link_shares row (not revoked, now within
+-- [valid_from, valid_until)), and returns a single JSON object of nothing but
+-- that one audience's ciphertext: the wrapped synthetic identity + salt, the
+-- KEK-encrypted trust bundle, the epoch key(s) wrapped to the synthetic member,
+-- and the granted (approved, live, non-deleted) entries joined to their grants.
+-- Returns NULL when no live link matches. SECURITY DEFINER so it authorizes on
+-- the token itself rather than RLS-on-`sub` (§2 of the link-shares doc).
+--
+-- Paging: p_limit / p_offset bound the entries array (ordered by grant
+-- valid_from desc) so a large slice does not return in one call (§9). NULL
+-- p_limit returns all.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.sharing_link_fetch(
+    link_token text,
+    p_limit    integer DEFAULT NULL,
+    p_offset   integer DEFAULT 0
+)
+RETURNS json
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_hash text := encode(sha256(convert_to(link_token, 'UTF8')), 'hex');
+    v_link public.link_shares;
+    v_result json;
+BEGIN
+    SELECT * INTO v_link
+      FROM public.link_shares
+     WHERE token_hash = v_hash
+       AND NOT revoked
+       AND now() >= valid_from
+       AND (valid_until IS NULL OR now() < valid_until);
+
+    IF NOT FOUND THEN
+        RETURN NULL;   -- unknown, revoked, or expired token: reveal nothing
+    END IF;
+
+    SELECT json_build_object(
+        'audience_id',        v_link.audience_id,
+        'member_id',          v_link.member_id,
+        'wrapped_identity',   v_link.wrapped_identity,
+        'identity_nonce',     v_link.identity_nonce,
+        'salt_enc',           v_link.salt_enc,
+        'trust_bundle',       v_link.trust_bundle,
+        'trust_bundle_nonce', v_link.trust_bundle_nonce,
+        'epoch_keys', (
+            SELECT COALESCE(json_agg(json_build_object(
+                       'epoch',                 ek.epoch,
+                       'wrapped_epoch_privkey', ek.wrapped_epoch_privkey)), '[]'::json)
+              FROM public.audience_epoch_keys ek
+             WHERE ek.audience_id = v_link.audience_id
+               AND ek.member_id   = v_link.member_id
+        ),
+        'entries', (
+            SELECT COALESCE(json_agg(row_to_json(sel)), '[]'::json)
+              FROM (
+                SELECT e.id,
+                       e.ciphertext,
+                       e.nonce,
+                       e.version,
+                       e.author_sig,
+                       e.user_id AS author_id,
+                       g.epoch   AS grant_epoch,
+                       g.wrapped_dek
+                  FROM public.entry_audience_grants g
+                  JOIN public.entries e ON e.id = g.entry_id
+                 WHERE g.audience_id = v_link.audience_id
+                   AND NOT g.revoked
+                   AND now() >= g.valid_from
+                   AND (g.valid_until IS NULL OR now() < g.valid_until)
+                   AND e.contribution_status = 'approved'
+                   AND NOT e.deleted
+                 ORDER BY g.valid_from DESC
+                 LIMIT p_limit OFFSET p_offset
+              ) sel
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- anonymous role lockdown (§7). The role exists in Neon (allowAnonymous); the
+-- guarded CREATE lets the RLS test harness — a bare postgres — exercise the
+-- same posture. It is granted NOTHING on any table and ONLY EXECUTE on the RPC,
+-- so the RPC is provably the only door. REVOKE from PUBLIC keeps the function
+-- off the default-privileges path.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anonymous') THEN
+        CREATE ROLE anonymous NOLOGIN;
+    END IF;
+END $$;
+
+REVOKE ALL ON public.link_shares FROM anonymous;
+
+REVOKE EXECUTE ON FUNCTION public.sharing_link_fetch(text, integer, integer) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.sharing_link_fetch(text, integer, integer) TO anonymous;
+GRANT  EXECUTE ON FUNCTION public.sharing_link_fetch(text, integer, integer) TO authenticated;
