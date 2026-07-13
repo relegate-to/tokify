@@ -20,6 +20,7 @@ import type { Activity, View } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDuration } from '@/lib/time';
 import { projectColor } from '@/lib/colors';
+import { useNow } from '@/lib/use-now';
 import {
     activityTitle,
     buildActivityShorthandTitle,
@@ -86,6 +87,8 @@ export function Masthead({
     const [nudgeKey, setNudgeKey] = useState(0);
     const [runningShorthand, setRunningShorthand] = useState<string | null>(null);
     const [logHover, setLogHover] = useState(false);
+    const hasRunning = !!running;
+    const now = useNow(hasRunning);
 
     useEffect(() => {
         const showId = window.setTimeout(
@@ -106,9 +109,8 @@ export function Masthead({
     const [exportOpen, setExportOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
-    const hasRunning = !!running;
     const runningStart = running ? new Date(running.start_time as any) : null;
-    const runningMs = runningStart ? Date.now() - runningStart.getTime() : 0;
+    const runningMs = runningStart ? now - runningStart.getTime() : 0;
     const runningDuration = formatDuration(runningMs);
     const runningAccent = running?.project ? projectColor(running.project) : '#f5c451';
     const runningTitle = activityTitle(

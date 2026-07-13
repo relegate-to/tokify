@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import type { Activity } from '@/types';
 import { cn } from '@/lib/utils';
 import { buildClockISO, formatClock, formatDuration } from '@/lib/time';
+import { useNow } from '@/lib/use-now';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ProjectTag } from '@/components/ProjectTag';
@@ -32,8 +33,9 @@ export function ActivityRow({
 }) {
     const start = new Date(activity.start_time as any);
     const end = activity.end_time ? new Date(activity.end_time as any) : null;
-    const ms = (end?.getTime() ?? Date.now()) - start.getTime();
     const isRunning = !end;
+    const now = useNow(isRunning);
+    const ms = (end?.getTime() ?? now) - start.getTime();
 
     const [editing, setEditing] = useState(false);
     const [desc, setDesc] = useState(activity.description ?? '');

@@ -118,7 +118,7 @@ export function HistoryView({
                     onClick={() => onOpenSharing(projectFilter || undefined)}
                 >
                     <Share2 data-icon="inline-start" />
-                    Share this view
+                    {projectFilter ? 'Create project share' : 'Create share'}
                 </Button>
             </div>
 

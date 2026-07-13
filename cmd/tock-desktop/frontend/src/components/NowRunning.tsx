@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { projectColor } from '@/lib/colors';
 import { EASE_OUT, EASE_THUNK } from '@/lib/motion';
 import { formatClock, formatDuration } from '@/lib/time';
+import { useNow } from '@/lib/use-now';
 import { Button } from '@/components/ui/button';
 import { ProjectTag } from '@/components/ProjectTag';
 
@@ -21,7 +22,8 @@ export function NowRunning({
     prominent?: boolean;
 }) {
     const since = new Date(activity.start_time as any);
-    const ms = Date.now() - since.getTime();
+    const now = useNow();
+    const ms = now - since.getTime();
     const seconds = Math.floor(ms / 1000) % 60;
     const minutePct = (seconds / 60) * 100;
     const [stopping, setStopping] = useState(false);

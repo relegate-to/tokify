@@ -66,7 +66,6 @@ function readTheme(): Theme {
 }
 
 const REFRESH_MS = 30_000;
-const TICK_MS = 1_000;
 const HISTORY_LIMIT = 500;
 
 function App() {
@@ -96,7 +95,6 @@ function App() {
     );
     const [theme, setTheme] = useState<Theme>(() => readTheme());
     const [teamsStatus, setTeamsStatus] = useState<teams.Status | null>(null);
-    const [, setTick] = useState(0);
     const viewRef = useRef<View>(view);
     const logSwiperRef = useRef<SwiperInstance | null>(null);
 
@@ -188,12 +186,6 @@ function App() {
         const id = setInterval(refresh, REFRESH_MS);
         return () => clearInterval(id);
     }, []);
-
-    useEffect(() => {
-        if (!running) return;
-        const id = setInterval(() => setTick((t) => t + 1), TICK_MS);
-        return () => clearInterval(id);
-    }, [running]);
 
     const handleStart = (description: string, project: string) =>
         Start(description, project).then(refresh).catch((e) => toast.error(String(e)));

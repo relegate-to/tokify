@@ -28,6 +28,7 @@ type fakePostgREST struct {
 	identities []identityRow
 	linkShares []linkShareRow
 	entries    []sharedEntryRow
+	operations []string
 }
 
 func (f *fakePostgREST) handler() http.Handler {
@@ -47,6 +48,7 @@ func (f *fakePostgREST) handler() http.Handler {
 func (f *fakePostgREST) handleLinkShares(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
+		f.operations = append(f.operations, "link-share")
 		var rows []linkShareRow
 		decodeOneOrMany(r, &rows)
 		f.linkShares = append(f.linkShares, rows...)
@@ -66,6 +68,7 @@ func (f *fakePostgREST) handleLinkShares(w http.ResponseWriter, r *http.Request)
 
 func (f *fakePostgREST) handleEntries(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
+		f.operations = append(f.operations, "entries")
 		var rows []sharedEntryRow
 		decodeOneOrMany(r, &rows)
 		for _, n := range rows { // upsert by id (merge-duplicates)
@@ -155,6 +158,7 @@ func (f *fakePostgREST) handleShares(w http.ResponseWriter, r *http.Request) {
 func (f *fakePostgREST) handleGrants(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
+		f.operations = append(f.operations, "grants")
 		var rows []grantRow
 		decodeOneOrMany(r, &rows)
 		// Mimic grants_guard_update: sealing is randomized, so an insert over an

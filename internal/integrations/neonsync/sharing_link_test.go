@@ -135,6 +135,9 @@ func TestCreateLinkShareRecipientCanRead(t *testing.T) {
 	if len(fake.grants) != 1 {
 		t.Fatalf("want 1 grant, got %d", len(fake.grants))
 	}
+	if got, want := fake.operations[len(fake.operations)-1], "link-share"; got != want {
+		t.Fatalf("last provisioning write = %q, want %q (operations: %v)", got, want, fake.operations)
+	}
 
 	// ---- Recipient path: everything below uses only the fragment secret. ----
 	secret, err := base64.RawURLEncoding.DecodeString(ls.Secret)

@@ -129,7 +129,6 @@ export function SharingView({
 
     useEffect(() => {
         setProject(initialProject ?? '');
-        if (initialProject) setSinceDays(0);
     }, [initialProject]);
 
     const canCreate = !!status?.configured && !!status?.unlocked;
