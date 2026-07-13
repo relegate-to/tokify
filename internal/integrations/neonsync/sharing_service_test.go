@@ -26,6 +26,8 @@ type fakePostgREST struct {
 	grants     []grantRow
 	audiences  []audienceRow
 	identities []identityRow
+	linkShares []linkShareRow
+	entries    []sharedEntryRow
 }
 
 func (f *fakePostgREST) handler() http.Handler {
@@ -37,7 +39,51 @@ func (f *fakePostgREST) handler() http.Handler {
 	mux.HandleFunc("/shares", f.handleShares)
 	mux.HandleFunc("/entry_audience_grants", f.handleGrants)
 	mux.HandleFunc("/identities", f.handleIdentities)
+	mux.HandleFunc("/link_shares", f.handleLinkShares)
+	mux.HandleFunc("/entries", f.handleEntries)
 	return mux
+}
+
+func (f *fakePostgREST) handleLinkShares(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		var rows []linkShareRow
+		decodeOneOrMany(r, &rows)
+		f.linkShares = append(f.linkShares, rows...)
+		w.WriteHeader(http.StatusCreated)
+	case http.MethodPatch:
+		aud := eqParam(r, "audience_id")
+		for i := range f.linkShares {
+			if f.linkShares[i].AudienceID == aud {
+				f.linkShares[i].Revoked = true
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		writeJSON(w, f.linkShares)
+	}
+}
+
+func (f *fakePostgREST) handleEntries(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var rows []sharedEntryRow
+		decodeOneOrMany(r, &rows)
+		for _, n := range rows { // upsert by id (merge-duplicates)
+			replaced := false
+			for i := range f.entries {
+				if f.entries[i].ID == n.ID {
+					f.entries[i] = n
+					replaced = true
+				}
+			}
+			if !replaced {
+				f.entries = append(f.entries, n)
+			}
+		}
+		w.WriteHeader(http.StatusCreated)
+		return
+	}
+	writeJSON(w, f.entries)
 }
 
 func (f *fakePostgREST) handleAudiences(w http.ResponseWriter, r *http.Request) {
