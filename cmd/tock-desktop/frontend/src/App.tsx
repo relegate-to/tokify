@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import type { Swiper as SwiperInstance } from 'swiper';
+import { Mousewheel } from 'swiper/modules';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import 'swiper/css';
 
 import {
     AddActivity,
@@ -32,6 +36,8 @@ const ACTIVITY_VIEW_KEY = 'tokify.activityView';
 const SHOW_SCROLLBARS_KEY = 'tokify.showScrollbars';
 const THEME_KEY = 'tokify.theme';
 const ACTIVITY_VIEW_VALUES: ActivityView[] = ['all', 'today', 'none'];
+const LOG_VIEWS: View[] = ['history', 'reports', 'charts', 'stats'];
+const SWIPE_VIEWS: View[] = ['now', ...LOG_VIEWS];
 
 const THEME_VALUES: Theme[] = ['auto', 'light', 'dark'];
 
@@ -91,6 +97,10 @@ function App() {
     const [theme, setTheme] = useState<Theme>(() => readTheme());
     const [teamsStatus, setTeamsStatus] = useState<teams.Status | null>(null);
     const [, setTick] = useState(0);
+    const viewRef = useRef<View>(view);
+    const logSwiperRef = useRef<SwiperInstance | null>(null);
+
+    viewRef.current = view;
 
     const refreshTeams = () => {
         TeamsGetStatus()
@@ -246,8 +256,17 @@ function App() {
         setView(next);
     };
 
+    useEffect(() => {
+        const swiper = logSwiperRef.current;
+        const index = SWIPE_VIEWS.indexOf(view);
+        if (!swiper || index === -1 || swiper.activeIndex === index) return;
+        swiper.slideTo(index);
+    }, [view]);
+
+    const isSwipeView = SWIPE_VIEWS.includes(view);
+
     return (
-        <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+        <div className="flex h-screen flex-col overflow-y-hidden bg-background text-foreground">
             <Masthead
                 view={view}
                 onView={handleView}
@@ -255,70 +274,132 @@ function App() {
                 showAccount={showAccount}
                 projects={projects}
             />
-            <main className="flex-1 overflow-y-auto">
-                <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-8 pb-12 pt-6">
-                    {view === 'now' && (
-                        <NowView
-                            running={running}
-                            today={today}
-                            recent={recent}
-                            projects={projects}
-                            removingKeys={removingKeys}
-                            activityView={activityView}
-                            onStart={handleStart}
-                            onStartAt={handleStartAt}
-                            onStop={handleStop}
-                            onUpdate={handleUpdate}
-                            onRemove={handleRemove}
-                            onResume={handleResume}
-                            onAddPast={handleAddPast}
-                        />
-                    )}
-                    {view === 'history' && (
-                        <HistoryView
-                            activities={recent}
-                            projects={projects}
-                            removingKeys={removingKeys}
-                            onUpdate={handleUpdate}
-                            onRemove={handleRemove}
-                            onResume={handleResume}
-                            onAddPast={handleAddPast}
-                            onOpenSharing={(project) => {
-                                setSharingProject(project);
-                                setView('sharing');
-                            }}
-                        />
+            <main className={`flex-1 overflow-x-visible overscroll-none ${isSwipeView ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+                <div className="flex h-full w-full flex-col pt-3">
+                    {isSwipeView && (
+                        <div className="h-full overflow-visible">
+                            <Swiper
+                                className="tokify-log-swiper h-full w-full"
+                                style={{ overflow: 'visible' }}
+                                cssMode
+                                slidesPerView={1}
+                                slidesPerGroup={1}
+                                spaceBetween={32}
+                                speed={300}
+                                modules={[Mousewheel]}
+                                initialSlide={Math.max(0, SWIPE_VIEWS.indexOf(view))}
+                                mousewheel={{
+                                    forceToAxis: true,
+                                    sensitivity: 2,
+                                    thresholdTime: 250,
+                                }}
+                                onSwiper={(swiper) => {
+                                    logSwiperRef.current = swiper;
+                                }}
+                                onSlideChange={(swiper) => {
+                                    const next = SWIPE_VIEWS[swiper.activeIndex];
+                                    if (next && next !== viewRef.current) setView(next);
+                                }}
+                        >
+                            <SwiperSlide>
+                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                    <NowView
+                                            running={running}
+                                            today={today}
+                                            recent={recent}
+                                            projects={projects}
+                                            removingKeys={removingKeys}
+                                            activityView={activityView}
+                                            onStart={handleStart}
+                                            onStartAt={handleStartAt}
+                                            onStop={handleStop}
+                                            onUpdate={handleUpdate}
+                                            onRemove={handleRemove}
+                                            onResume={handleResume}
+                                            onAddPast={handleAddPast}
+                                        />
+                                    </div>
+                            </SwiperSlide>
+                            <SwiperSlide>
+                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                    <HistoryView
+                                            activities={recent}
+                                            projects={projects}
+                                            removingKeys={removingKeys}
+                                            onUpdate={handleUpdate}
+                                            onRemove={handleRemove}
+                                            onResume={handleResume}
+                                            onAddPast={handleAddPast}
+                                            onOpenSharing={(project) => {
+                                                setSharingProject(project);
+                                                setView('sharing');
+                                            }}
+                                        />
+                                    </div>
+                            </SwiperSlide>
+                            <SwiperSlide>
+                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                    <LogPlaceholderView
+                                            title="Reports"
+                                            description="Weekly and monthly summaries will live here."
+                                        />
+                                    </div>
+                            </SwiperSlide>
+                            <SwiperSlide>
+                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                    <LogPlaceholderView
+                                            title="Charts"
+                                            description="Project and time breakdown charts will live here."
+                                        />
+                                    </div>
+                            </SwiperSlide>
+                            <SwiperSlide>
+                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                    <LogPlaceholderView
+                                            title="Stats"
+                                            description="Streaks, averages, and totals will live here."
+                                        />
+                                    </div>
+                                </SwiperSlide>
+                            </Swiper>
+                        </div>
                     )}
                     {view === 'settings' && (
-                        <SettingsView
-                            showAccount={showAccount}
-                            onShowAccountChange={setShowAccount}
-                            activityView={activityView}
-                            onActivityViewChange={setActivityView}
-                            showScrollbars={showScrollbars}
-                            onShowScrollbarsChange={setShowScrollbars}
-                            theme={theme}
-                            onThemeChange={setTheme}
-                            projects={projects}
-                            teamsStatus={teamsStatus}
-                            onTeamsRefresh={refreshTeams}
-                            onBack={() => setView('now')}
-                        />
+                        <div className="px-8 pb-12">
+                            <SettingsView
+                                showAccount={showAccount}
+                                onShowAccountChange={setShowAccount}
+                                activityView={activityView}
+                                onActivityViewChange={setActivityView}
+                                showScrollbars={showScrollbars}
+                                onShowScrollbarsChange={setShowScrollbars}
+                                theme={theme}
+                                onThemeChange={setTheme}
+                                projects={projects}
+                                teamsStatus={teamsStatus}
+                                onTeamsRefresh={refreshTeams}
+                                onBack={() => setView('now')}
+                            />
+                        </div>
                     )}
                     {view === 'sharing' && (
-                        <SharingView
-                            projects={projects}
-                            initialProject={sharingProject}
-                            onBack={() => setView('history')}
-                        />
+                        <div className="px-8 pb-12">
+                            <SharingView
+                                projects={projects}
+                                initialProject={sharingProject}
+                                onBack={() => setView('history')}
+                            />
+                        </div>
                     )}
                     {view === 'account' && (
-                        <AccountView
-                            running={running}
-                            recent={recent}
-                            projects={projects}
-                            onBack={() => setView('now')}
-                        />
+                        <div className="px-8 pb-12">
+                            <AccountView
+                                running={running}
+                                recent={recent}
+                                projects={projects}
+                                onBack={() => setView('now')}
+                            />
+                        </div>
                     )}
                 </div>
             </main>
@@ -328,3 +409,22 @@ function App() {
 }
 
 export default App;
+
+function LogPlaceholderView({
+    title,
+    description,
+}: {
+    title: string;
+    description: string;
+}) {
+    return (
+        <div className="flex min-h-[360px] items-center justify-center rounded-xl border bg-muted/30 p-8 text-center">
+            <div className="max-w-sm">
+                <div className="mb-2 text-sm font-semibold tracking-wide text-foreground">
+                    {title}
+                </div>
+                <p className="text-sm text-muted-foreground">{description}</p>
+            </div>
+        </div>
+    );
+}

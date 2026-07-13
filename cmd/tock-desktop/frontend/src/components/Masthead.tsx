@@ -6,7 +6,9 @@ import {
 } from 'react';
 import {
     Activity as ActivityIcon,
+    BarChart3,
     Download,
+    FileText,
     List,
     Settings as SettingsIcon,
     Share2,
@@ -51,7 +53,11 @@ const TAB_PADDING_X = 22;
 const TAB_ICON_WIDTH = 13;
 const TAB_CONTENT_GAP = 7;
 const IDLE_ACTIVITY_LABEL_WIDTH = 64;
+const RUNNING_ACTIVITY_LABEL_MIN_WIDTH = 28;
+const RUNNING_ACTIVITY_LABEL_MAX_WIDTH = 160;
 const HISTORY_TAB_WIDTH = 66;
+const LOG_ICON_PANEL_WIDTH = 88;
+const LOG_VIEWS: View[] = ['history', 'reports', 'charts', 'stats'];
 
 export function Masthead({
     view,
@@ -79,6 +85,7 @@ export function Masthead({
     const [openedAsTokify, setOpenedAsTokify] = useState(false);
     const [nudgeKey, setNudgeKey] = useState(0);
     const [runningShorthand, setRunningShorthand] = useState<string | null>(null);
+    const [logHover, setLogHover] = useState(false);
 
     useEffect(() => {
         const showId = window.setTimeout(
@@ -109,17 +116,24 @@ export function Masthead({
         running?.project,
     );
     const runningLabel = running ? runningShorthand || runningTitle : runningTitle;
+    const logSelected = LOG_VIEWS.includes(view);
+    const showLogIcons = logSelected || logHover;
     const activityLabelWidth = hasRunning
-        ? labelWidth(runningLabel, 220)
+        ? labelWidth(
+              runningLabel,
+              RUNNING_ACTIVITY_LABEL_MAX_WIDTH,
+              RUNNING_ACTIVITY_LABEL_MIN_WIDTH,
+          )
         : IDLE_ACTIVITY_LABEL_WIDTH;
     const activityTabWidth = nowTabWidth(
         activityLabelWidth,
         hasRunning ? timerWidth(runningDuration) : 0,
     );
     const tabGroupWidth = activityTabWidth + HISTORY_TAB_WIDTH + TAB_GROUP_GAP + TAB_GROUP_PADDING_X;
+    const tabGroupExpandedWidth = tabGroupWidth + (showLogIcons ? LOG_ICON_PANEL_WIDTH : 0);
 
     const tabStyle = (name: 'now' | 'history'): CSSProperties => {
-        const active = view === name;
+        const active = name === 'history' ? logSelected : view === name;
         const runningInactive = name === 'now' && hasRunning && !active;
         if (runningInactive) {
             return {
@@ -233,14 +247,14 @@ export function Masthead({
     return (
         <>
         <header
-            className="flex shrink-0 items-center justify-between border-b bg-background/80 pb-2 pl-28 pr-4 pt-3 backdrop-blur"
+            className="flex shrink-0 items-center justify-between bg-background/80 pb-1 pl-28 pr-4 pt-3 backdrop-blur"
             style={dragStyle}
         >
             <div className="flex items-center gap-4" style={noDragStyle}>
                 <div
                     className="inline-flex items-center gap-1 overflow-hidden rounded-[10px] bg-[#f2f2f3] p-[3px] dark:bg-muted"
                     style={{
-                        width: tabGroupWidth,
+                        width: tabGroupExpandedWidth,
                         transition: SIZE_TRANSITION,
                     }}
                 >
@@ -280,18 +294,56 @@ export function Masthead({
                             )}
                         </span>
                     </button>
-                    <button
-                        type="button"
-                        className="tt-tab-btn shrink-0 hover:text-[#1a1a1a] [&_svg]:size-[13px]"
-                        style={tabStyle('history')}
-                        onClick={() => onView('history')}
-                        aria-pressed={view === 'history'}
+                    <div
+                        className="flex shrink-0 items-center"
+                        onMouseEnter={() => setLogHover(true)}
+                        onMouseLeave={() => setLogHover(false)}
                     >
-                        <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
-                            <List />
-                            Log
-                        </span>
-                    </button>
+                        <button
+                            type="button"
+                            className="tt-tab-btn shrink-0 hover:text-[#1a1a1a] [&_svg]:size-[13px]"
+                            style={tabStyle('history')}
+                            onClick={() => onView('history')}
+                            aria-pressed={logSelected}
+                        >
+                            <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
+                                <List />
+                                Log
+                            </span>
+                        </button>
+                        <div
+                            className={cn(
+                                'ml-0 flex items-center gap-0 overflow-hidden pl-0 opacity-0 transition-[width,opacity,padding-left,margin-left] duration-200 ease-out',
+                                showLogIcons &&
+                                    'ml-0.5 gap-0.5 pl-1 opacity-100',
+                            )}
+                            style={{
+                                width: showLogIcons ? LOG_ICON_PANEL_WIDTH - 8 : 0,
+                            }}
+                        >
+                            <LogIconButton
+                                icon={FileText}
+                                label="Reports"
+                                active={view === 'reports'}
+                                visible={showLogIcons}
+                                onClick={() => onView('reports')}
+                            />
+                            <LogIconButton
+                                icon={BarChart3}
+                                label="Charts"
+                                active={view === 'charts'}
+                                visible={showLogIcons}
+                                onClick={() => onView('charts')}
+                            />
+                            <LogIconButton
+                                icon={ActivityIcon}
+                                label="Stats"
+                                active={view === 'stats'}
+                                visible={showLogIcons}
+                                onClick={() => onView('stats')}
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
             <div style={noDragStyle}>
@@ -402,11 +454,44 @@ function nowTabWidth(label: number, timer: number) {
     );
 }
 
-function labelWidth(label: string, max: number) {
+function LogIconButton({
+    icon: Icon,
+    label,
+    active = false,
+    visible,
+    onClick,
+}: {
+    icon: typeof List;
+    label: string;
+    active?: boolean;
+    visible: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            aria-label={label}
+            aria-pressed={active}
+            tabIndex={visible ? 0 : -1}
+            title={label}
+            className={cn(
+                'flex size-6 shrink-0 items-center justify-center rounded-md border bg-transparent leading-none transition-[background-color,border-color,color] duration-150 [&_svg]:size-[13px]',
+                active
+                    ? 'border-border/70 bg-background text-foreground hover:bg-background hover:text-foreground dark:bg-background/80 dark:hover:bg-background/80'
+                    : 'border-transparent text-muted-foreground hover:bg-background/75 hover:text-foreground dark:hover:bg-background/45',
+            )}
+            onClick={onClick}
+        >
+            <Icon />
+        </button>
+    );
+}
+
+function labelWidth(label: string, max: number, min = IDLE_ACTIVITY_LABEL_WIDTH) {
     const wideChars = [...label].filter((char) => /[MW@#%&]/.test(char)).length;
     const width = Math.ceil(label.length * 7 + wideChars * 1.5 + 6);
 
-    return Math.min(max, Math.max(IDLE_ACTIVITY_LABEL_WIDTH, width));
+    return Math.min(max, Math.max(min, width));
 }
 
 function timerWidth(duration: string) {

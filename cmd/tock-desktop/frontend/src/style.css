@@ -144,3 +144,11 @@
 :root:not(.show-scrollbars) * {
   scrollbar-width: none;
 }
+
+.tokify-log-swiper {
+  overflow: visible;
+}
+
+.tokify-log-swiper .swiper-slide {
+  height: 100%;
+}
