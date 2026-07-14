@@ -19,6 +19,8 @@ export function SettingsView({
     onShowAccountChange,
     activityView,
     onActivityViewChange,
+    dailyGoal,
+    onDailyGoalChange,
     showScrollbars,
     onShowScrollbarsChange,
     theme,
@@ -32,6 +34,8 @@ export function SettingsView({
     onShowAccountChange: (v: boolean) => void;
     activityView: ActivityView;
     onActivityViewChange: (v: ActivityView) => void;
+    dailyGoal: number;
+    onDailyGoalChange: (v: number) => void;
     showScrollbars: boolean;
     onShowScrollbarsChange: (v: boolean) => void;
     theme: Theme;
@@ -94,13 +98,24 @@ export function SettingsView({
                 />
                 <SettingSegmentedRow
                     title="Show activity"
-                    description="Controls what appears under the running card on the Now page."
+                    description="What appears under the timer on the Now page: today's goal progress plus recent tasks, just today's progress, or nothing."
                     value={activityView}
                     onChange={onActivityViewChange}
                     options={[
                         { value: 'all', label: 'All' },
                         { value: 'today', label: 'Today only' },
                         { value: 'none', label: 'Hidden' },
+                    ]}
+                />
+                <SettingSegmentedRow
+                    title="Daily goal"
+                    description="Target tracked time per day, shown as progress on the Now page."
+                    value={String(dailyGoal)}
+                    onChange={(v) => onDailyGoalChange(Number(v))}
+                    options={[
+                        { value: '240', label: '4h' },
+                        { value: '360', label: '6h' },
+                        { value: '480', label: '8h' },
                     ]}
                 />
                 <SettingRow

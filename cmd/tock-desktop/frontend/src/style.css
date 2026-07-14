@@ -123,6 +123,9 @@
     --project-color-5: #b66a8f;
     --project-color-6: #8b8be0;
     --project-color-7: #c57c48;
+    --mascot-badge-filter: grayscale(1);
+    --mascot-badge-blend-mode: multiply;
+    --mascot-badge-opacity: 0.3;
 }
 
 .dark {
@@ -182,6 +185,9 @@
     --project-color-5: #aa718d;
     --project-color-6: #8885ca;
     --project-color-7: #b47d55;
+    --mascot-badge-filter: grayscale(1) invert(0);
+    --mascot-badge-blend-mode: normal;
+    --mascot-badge-opacity: 0.9;
 }
 
 @layer base {

@@ -37,6 +37,9 @@ const SHOW_ACCOUNT_KEY = 'tokify.showAccount';
 const ACTIVITY_VIEW_KEY = 'tokify.activityView';
 const SHOW_SCROLLBARS_KEY = 'tokify.showScrollbars';
 const THEME_KEY = 'tokify.theme';
+const DAILY_GOAL_KEY = 'tokify.dailyGoal';
+const DEFAULT_DAILY_GOAL = 360;
+const DAILY_GOAL_VALUES = [240, 360, 480];
 const ACTIVITY_VIEW_VALUES: ActivityView[] = ['all', 'today', 'none'];
 const LOG_VIEWS: View[] = ['history', 'reports', 'charts', 'stats'];
 const SWIPE_VIEWS: View[] = ['now', ...LOG_VIEWS];
@@ -53,6 +56,16 @@ function readActivityView(): ActivityView {
         // ignore
     }
     return 'all';
+}
+
+function readDailyGoal(): number {
+    try {
+        const v = Number(localStorage.getItem(DAILY_GOAL_KEY));
+        if (DAILY_GOAL_VALUES.includes(v)) return v;
+    } catch {
+        // ignore
+    }
+    return DEFAULT_DAILY_GOAL;
 }
 
 function readTheme(): Theme {
@@ -96,6 +109,7 @@ function App() {
     const [activityView, setActivityView] = useState<ActivityView>(() =>
         readActivityView(),
     );
+    const [dailyGoal, setDailyGoal] = useState<number>(() => readDailyGoal());
     const [theme, setTheme] = useState<Theme>(() => readTheme());
     const [teamsStatus, setTeamsStatus] = useState<teams.Status | null>(null);
     const [authStatus, setAuthStatus] = useState<neonauth.Status | null>(null);
@@ -139,6 +153,14 @@ function App() {
             // ignore
         }
     }, [activityView]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(DAILY_GOAL_KEY, String(dailyGoal));
+        } catch {
+            // ignore
+        }
+    }, [dailyGoal]);
 
     useEffect(() => {
         AuthStatus()
@@ -341,6 +363,7 @@ function App() {
                                             projects={projects}
                                             removingKeys={removingKeys}
                                             activityView={activityView}
+                                            dailyGoal={dailyGoal}
                                             onStart={handleStart}
                                             onStartAt={handleStartAt}
                                             onStop={handleStop}
@@ -348,10 +371,7 @@ function App() {
                                                 setSharingProject(project);
                                                 setView('sharing');
                                             }}
-                                            onUpdate={handleUpdate}
-                                            onRemove={handleRemove}
                                             onResume={handleResume}
-                                            onAddPast={handleAddPast}
                                         />
                                     </div>
                             </SwiperSlide>
@@ -407,6 +427,8 @@ function App() {
                                 onShowAccountChange={setShowAccount}
                                 activityView={activityView}
                                 onActivityViewChange={setActivityView}
+                                dailyGoal={dailyGoal}
+                                onDailyGoalChange={setDailyGoal}
                                 showScrollbars={showScrollbars}
                                 onShowScrollbarsChange={setShowScrollbars}
                                 theme={theme}

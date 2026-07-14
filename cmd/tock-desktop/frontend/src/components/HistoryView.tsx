@@ -111,6 +111,10 @@ export function HistoryView({
                             {filtered.length === 1 ? 'activity' : 'activities'}
                         </span>
                         <Separator orientation="vertical" className="mx-1 h-4" />
+                        <AddPastButton
+                            projects={projects}
+                            onAddPast={onAddPast}
+                        />
                         <Button
                             type="button"
                             variant="ghost"
@@ -160,7 +164,6 @@ export function HistoryView({
                 </div>
             )}
 
-            <AddPastButton projects={projects} onAddPast={onAddPast} />
         </div>
     );
 }
