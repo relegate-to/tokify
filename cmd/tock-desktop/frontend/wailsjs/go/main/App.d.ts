@@ -23,6 +23,8 @@ export function Export(arg1:string,arg2:string,arg3:string,arg4:string):Promise<
 
 export function GetRunning():Promise<models.Activity>;
 
+export function ListPastYear():Promise<Array<models.Activity>>;
+
 export function ListRecent(arg1:number):Promise<Array<models.Activity>>;
 
 export function ListToday():Promise<Array<models.Activity>>;

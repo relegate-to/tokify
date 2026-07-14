@@ -77,11 +77,11 @@ export namespace neonsync {
 	export class LinkShare {
 	    AudienceID: string;
 	    Secret: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LinkShare(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.AudienceID = source["AudienceID"];
@@ -93,11 +93,11 @@ export namespace neonsync {
 	    ValidUntil: string;
 	    Revoked: boolean;
 	    CreatedAt: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LinkShareInfo(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.AudienceID = source["AudienceID"];
@@ -159,3 +159,4 @@ export namespace teams {
 	}
 
 }
+

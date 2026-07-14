@@ -22,6 +22,7 @@ import { neonauth } from '../../wailsjs/go/models';
 
 import type { Activity } from '@/types';
 import { authErrorText } from '@/lib/errors';
+import { accountInitials } from '@/lib/account';
 import { formatTotal } from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,14 +41,22 @@ export function AccountView({
     running,
     recent,
     projects,
+    onStatusChange,
     onBack,
 }: {
     running: Activity | null;
     recent: Activity[];
     projects: string[];
+    onStatusChange?: (status: neonauth.Status | null) => void;
     onBack: () => void;
 }) {
     const [status, setStatus] = useState<neonauth.Status | null>(null);
+    // Keeps the masthead pill in sync: any status change here (sign in, verify,
+    // sign out, or the initial fetch) is mirrored up to App.
+    const applyStatus = (s: neonauth.Status | null) => {
+        setStatus(s);
+        onStatusChange?.(s);
+    };
     const [loading, setLoading] = useState(true);
     const [mode, setMode] = useState<'signin' | 'signup'>('signin');
     const [name, setName] = useState('');
@@ -65,10 +74,10 @@ export function AccountView({
         let cancelled = false;
         AuthStatus()
             .then((s) => {
-                if (!cancelled) setStatus(s);
+                if (!cancelled) applyStatus(s);
             })
             .catch(() => {
-                if (!cancelled) setStatus(null);
+                if (!cancelled) applyStatus(null);
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -96,7 +105,7 @@ export function AccountView({
                 setNotice('');
                 return;
             }
-            setStatus(next);
+            applyStatus(next);
             setPassword('');
         } catch (err) {
             setError(authErrorText(err));
@@ -116,7 +125,7 @@ export function AccountView({
                 password,
                 code.trim(),
             );
-            setStatus(next);
+            applyStatus(next);
             setPassword('');
             setCode('');
             setPendingEmail('');
@@ -157,7 +166,7 @@ export function AccountView({
         setSubmitting(true);
         try {
             await AuthSignOut();
-            setStatus(await AuthStatus());
+            applyStatus(await AuthStatus());
             setPassword('');
         } catch (err) {
             setError(authErrorText(err));
@@ -202,17 +211,10 @@ export function AccountView({
 
     const signedInName = (status?.name ?? '').trim();
     const signedInEmail = (status?.email ?? '').trim();
-    const initials = useMemo(() => {
-        const source = signedInName || signedInEmail;
-        if (!source) return 'YOU';
-        const parts = source
-            .replace(/@.*$/, '')
-            .split(/[\s._-]+/)
-            .filter(Boolean);
-        if (parts.length === 0) return source.slice(0, 2).toUpperCase();
-        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-        return (parts[0][0] + parts[1][0]).toUpperCase();
-    }, [signedInName, signedInEmail]);
+    const initials = useMemo(
+        () => accountInitials(signedInName, signedInEmail),
+        [signedInName, signedInEmail],
+    );
 
     const accountDescription = !status?.configured
         ? 'Accounts are optional. Your time is always saved on this Mac.'

@@ -14,10 +14,10 @@
   </style>
 </helmet>
 
-<div style="position: absolute; width: 300px; background: #fff; border-radius: 14px; box-shadow: 0 16px 40px -12px rgba(20,20,25,0.3); border: 1px solid #eee; padding: 16px; z-index: 30; text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;">
+<div style="position: absolute; width: 300px; background: #ffffff; border-radius: 14px; box-shadow: 0 16px 40px -12px rgba(17,19,24,0.3); border: 1px solid #e7e9ec; padding: 16px; z-index: 30; text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;">
   <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
     <div style="width: 9px; height: 9px; border-radius: 50%; background: {{ project.color }};"></div>
-    <div style="font-size: 14px; font-weight: 600; color: #1a1a1a; flex: 1;">{{ project.project }} team</div>
+    <div style="font-size: 14px; font-weight: 600; color: #1b1d22; flex: 1;">{{ project.project }} team</div>
   </div>
 
   <sc-if value="{{ hasMembers }}" hint-placeholder-val="{{ true }}">
@@ -25,19 +25,19 @@
       <sc-for list="{{ project.members }}" as="mem" hint-placeholder-count="2">
         <div style="display: flex; align-items: center; gap: 9px; padding: 5px 0;">
           <div style="width: 22px; height: 22px; border-radius: 50%; background: {{ mem.bg }}; color: {{ mem.fg }}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0;">{{ mem.initials }}</div>
-          <div style="font-size: 13px; color: #333; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ mem.name }}</div>
-          <div class="tt-mono2" style="font-size: 11px; color: #b3b3b8;">{{ mem.status }}</div>
+          <div style="font-size: 13px; color: #33363d; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ mem.name }}</div>
+          <div class="tt-mono2" style="font-size: 11px; color: #adb2bb;">{{ mem.status }}</div>
         </div>
       </sc-for>
     </div>
   </sc-if>
   <sc-if value="{{ noMembers }}" hint-placeholder-val="{{ false }}">
-    <div style="font-size: 12.5px; color: #b3b3b8; padding: 4px 0 2px;">Just you on this one — invite someone in.</div>
+    <div style="font-size: 12.5px; color: #adb2bb; padding: 4px 0 2px;">Just you on this one — invite someone in.</div>
   </sc-if>
 
   <div style="display: flex; gap: 8px; margin-top: 12px;">
-    <input placeholder="invite by email" value="{{ project.inviteEmail }}" onChange="{{ project.setInviteEmail }}" style="flex: 1; min-width: 0; border: 1px solid #e4e4e6; background: #fafafb; border-radius: 8px; padding: 7px 10px; font-size: 12.5px; color: #1a1a1a; outline: none;" />
-    <button class="tt-invite-btn2" onClick="{{ project.sendInvite }}" style="background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 500; cursor: pointer; flex-shrink: 0;">{{ project.inviteLabel }}</button>
+    <input placeholder="invite by email" value="{{ project.inviteEmail }}" onChange="{{ project.setInviteEmail }}" style="flex: 1; min-width: 0; border: 1px solid #e2e4e8; background: #ffffff; border-radius: 8px; padding: 7px 10px; font-size: 12.5px; color: #1b1d22; outline: none;" />
+    <button class="tt-invite-btn2" onClick="{{ project.sendInvite }}" style="background: #1b1d22; color: #ffffff; border: none; border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 500; cursor: pointer; flex-shrink: 0;">{{ project.inviteLabel }}</button>
   </div>
 </div>
 

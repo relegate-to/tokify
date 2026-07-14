@@ -7,7 +7,9 @@ import 'swiper/css';
 
 import {
     AddActivity,
+    AuthStatus,
     GetRunning,
+    ListPastYear,
     ListRecent,
     ListToday,
     Projects,
@@ -19,7 +21,7 @@ import {
     UpdateActivity,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { teams } from '../wailsjs/go/models';
+import { neonauth, teams } from '../wailsjs/go/models';
 
 import type { Activity, ActivityView, Theme, View } from '@/types';
 import { REMOVE_ANIM_MS } from '@/lib/motion';
@@ -73,6 +75,7 @@ function App() {
     const [sharingProject, setSharingProject] = useState<string | undefined>();
     const [running, setRunning] = useState<Activity | null>(null);
     const [today, setToday] = useState<Activity[]>([]);
+    const [pastYear, setPastYear] = useState<Activity[]>([]);
     const [recent, setRecent] = useState<Activity[]>([]);
     const [projects, setProjects] = useState<string[]>([]);
     const [removingKeys, setRemovingKeys] = useState<Set<string>>(new Set());
@@ -95,8 +98,11 @@ function App() {
     );
     const [theme, setTheme] = useState<Theme>(() => readTheme());
     const [teamsStatus, setTeamsStatus] = useState<teams.Status | null>(null);
+    const [authStatus, setAuthStatus] = useState<neonauth.Status | null>(null);
     const viewRef = useRef<View>(view);
     const logSwiperRef = useRef<SwiperInstance | null>(null);
+    const programmaticSlide = useRef(false);
+    const programmaticTimer = useRef<number | null>(null);
 
     viewRef.current = view;
 
@@ -135,6 +141,12 @@ function App() {
     }, [activityView]);
 
     useEffect(() => {
+        AuthStatus()
+            .then((s) => setAuthStatus(s))
+            .catch(() => setAuthStatus(null));
+    }, []);
+
+    useEffect(() => {
         refreshTeams();
         const off = EventsOn('teams:error', (msg: string) => {
             toast.error(`Teams: ${msg}`);
@@ -169,12 +181,14 @@ function App() {
         Promise.all([
             GetRunning(),
             ListToday(),
+            ListPastYear(),
             ListRecent(HISTORY_LIMIT),
             Projects(),
         ])
-            .then(([r, t, all, p]) => {
+            .then(([r, t, year, all, p]) => {
                 setRunning((r as Activity) ?? null);
                 setToday((t as Activity[]) ?? []);
+                setPastYear((year as Activity[]) ?? []);
                 setRecent((all as Activity[]) ?? []);
                 setProjects(p ?? []);
             })
@@ -252,8 +266,31 @@ function App() {
         const swiper = logSwiperRef.current;
         const index = SWIPE_VIEWS.indexOf(view);
         if (!swiper || index === -1 || swiper.activeIndex === index) return;
+        // A programmatic move across several slides scrolls through the
+        // intermediate ones, and Swiper fires onSlideChange for each. Flag the
+        // move so those intermediate slides don't feed back into setView —
+        // otherwise the transient log-view values reopen the collapsed log
+        // icons and re-enter this effect with a stale activeIndex, bouncing the
+        // scroll back the other way.
+        programmaticSlide.current = true;
+        if (programmaticTimer.current !== null) {
+            window.clearTimeout(programmaticTimer.current);
+        }
         swiper.slideTo(index);
+        programmaticTimer.current = window.setTimeout(() => {
+            programmaticSlide.current = false;
+            programmaticTimer.current = null;
+        }, 360);
     }, [view]);
+
+    useEffect(
+        () => () => {
+            if (programmaticTimer.current !== null) {
+                window.clearTimeout(programmaticTimer.current);
+            }
+        },
+        [],
+    );
 
     const isSwipeView = SWIPE_VIEWS.includes(view);
 
@@ -264,10 +301,11 @@ function App() {
                 onView={handleView}
                 running={running}
                 showAccount={showAccount}
+                account={authStatus}
                 projects={projects}
             />
             <main className={`flex-1 overflow-x-visible overscroll-none ${isSwipeView ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-                <div className="flex h-full w-full flex-col pt-3">
+                <div className="flex h-full w-full flex-col">
                     {isSwipeView && (
                         <div className="h-full overflow-visible">
                             <Swiper
@@ -289,12 +327,13 @@ function App() {
                                     logSwiperRef.current = swiper;
                                 }}
                                 onSlideChange={(swiper) => {
+                                    if (programmaticSlide.current) return;
                                     const next = SWIPE_VIEWS[swiper.activeIndex];
                                     if (next && next !== viewRef.current) setView(next);
                                 }}
                         >
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
                                     <NowView
                                             running={running}
                                             today={today}
@@ -305,6 +344,10 @@ function App() {
                                             onStart={handleStart}
                                             onStartAt={handleStartAt}
                                             onStop={handleStop}
+                                            onShare={(project) => {
+                                                setSharingProject(project);
+                                                setView('sharing');
+                                            }}
                                             onUpdate={handleUpdate}
                                             onRemove={handleRemove}
                                             onResume={handleResume}
@@ -313,9 +356,10 @@ function App() {
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12">
-                                    <HistoryView
+                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
+                                        <HistoryView
                                             activities={recent}
+                                            graphActivities={pastYear}
                                             projects={projects}
                                             removingKeys={removingKeys}
                                             onUpdate={handleUpdate}
@@ -330,7 +374,7 @@ function App() {
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
                                     <LogPlaceholderView
                                             title="Reports"
                                             description="Weekly and monthly summaries will live here."
@@ -338,7 +382,7 @@ function App() {
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
                                     <LogPlaceholderView
                                             title="Charts"
                                             description="Project and time breakdown charts will live here."
@@ -346,7 +390,7 @@ function App() {
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12">
+                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
                                     <LogPlaceholderView
                                             title="Stats"
                                             description="Streaks, averages, and totals will live here."
@@ -357,7 +401,7 @@ function App() {
                         </div>
                     )}
                     {view === 'settings' && (
-                        <div className="px-8 pb-12">
+                        <div className="px-8 pb-12 pt-[70px]">
                             <SettingsView
                                 showAccount={showAccount}
                                 onShowAccountChange={setShowAccount}
@@ -375,7 +419,7 @@ function App() {
                         </div>
                     )}
                     {view === 'sharing' && (
-                        <div className="px-8 pb-12">
+                        <div className="px-8 pb-12 pt-[70px]">
                             <SharingView
                                 projects={projects}
                                 initialProject={sharingProject}
@@ -384,11 +428,12 @@ function App() {
                         </div>
                     )}
                     {view === 'account' && (
-                        <div className="px-8 pb-12">
+                        <div className="px-8 pb-12 pt-[70px]">
                             <AccountView
                                 running={running}
                                 recent={recent}
                                 projects={projects}
+                                onStatusChange={setAuthStatus}
                                 onBack={() => setView('now')}
                             />
                         </div>

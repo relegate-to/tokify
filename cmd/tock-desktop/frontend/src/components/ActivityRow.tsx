@@ -12,7 +12,7 @@ import { ProjectTag } from '@/components/ProjectTag';
 
 const ROW_HEIGHT = 'h-11';
 const ROW_GRID =
-    'grid grid-cols-[4rem_minmax(0,1fr)_5rem_auto] items-center gap-3 px-3';
+    'grid grid-cols-[68px_136px_minmax(0,1fr)_68px_52px] items-center px-3';
 
 export function ActivityRow({
     activity,
@@ -117,16 +117,16 @@ export function ActivityRow({
                         if (e.key === 'Escape') cancel();
                     }}
                     placeholder="HH:MM"
-                    className="h-7 px-1.5 text-center font-mono text-xs tabular-nums"
+                    className="h-7 w-[60px] px-1.5 text-center font-mono text-sm tabular-nums"
                 />
             ) : (
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                <span className="font-mono text-sm tabular-nums text-navigation-muted-foreground">
                     {formatClock(start)}
                 </span>
             )}
 
             {editing ? (
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="min-w-0 pr-3">
                     <Input
                         value={project}
                         onChange={(e) => setProject(e.target.value)}
@@ -136,42 +136,46 @@ export function ActivityRow({
                         }}
                         placeholder="project"
                         list={`projects-${start.getTime()}`}
-                        className="h-7 w-28 shrink-0"
+                        className="h-7 w-full"
                     />
                     <datalist id={`projects-${start.getTime()}`}>
                         {projects.map((p) => (
                             <option key={p} value={p} />
                         ))}
                     </datalist>
-                    <Input
-                        ref={descRef}
-                        value={desc}
-                        onChange={(e) => setDesc(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') save();
-                            if (e.key === 'Escape') cancel();
-                        }}
-                        placeholder="Description"
-                        className="h-7 flex-1"
-                    />
                 </div>
             ) : (
-                <div className="flex min-w-0 items-center gap-2.5">
+                <div className="min-w-0 pr-3">
                     {activity.project && (
                         <ProjectTag
                             project={activity.project}
-                            className="max-w-32 shrink-0"
+                            className="w-full text-sm"
                         />
                     )}
-                    <span
-                        className={cn(
-                            'truncate text-sm',
-                            !activity.description && 'text-muted-foreground',
-                        )}
-                    >
-                        {activity.description || 'No description'}
-                    </span>
                 </div>
+            )}
+
+            {editing ? (
+                <Input
+                    ref={descRef}
+                    value={desc}
+                    onChange={(e) => setDesc(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') save();
+                        if (e.key === 'Escape') cancel();
+                    }}
+                    placeholder="Description"
+                    className="h-7 w-full"
+                />
+            ) : (
+                <span
+                    className={cn(
+                        'truncate pr-3 text-sm font-medium',
+                        !activity.description && 'text-muted-foreground',
+                    )}
+                >
+                    {activity.description || 'No description'}
+                </span>
             )}
 
             {editing && end ? (
@@ -183,12 +187,12 @@ export function ActivityRow({
                         if (e.key === 'Escape') cancel();
                     }}
                     placeholder="HH:MM"
-                    className="h-7 px-1.5 text-center font-mono text-xs tabular-nums"
+                    className="h-7 w-[60px] justify-self-end px-1.5 text-center font-mono text-sm tabular-nums"
                 />
             ) : (
                 <span
                     className={cn(
-                        'text-right font-mono text-xs tabular-nums',
+                        'pr-3.5 text-right font-mono text-sm font-medium tabular-nums',
                         isRunning ? 'text-foreground' : 'text-muted-foreground',
                     )}
                 >
@@ -196,7 +200,7 @@ export function ActivityRow({
                 </span>
             )}
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center justify-end gap-1">
                 {editing ? (
                     <Button
                         size="icon-xs"

@@ -316,6 +316,17 @@ func (a *App) ListToday() ([]models.Activity, error) {
 	return acts, nil
 }
 
+// ListPastYear returns activities that started during the last 365 local days.
+func (a *App) ListPastYear() ([]models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	to := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
+	from := to.AddDate(0, 0, -365)
+	return a.rt.ActivityService.List(a.ctx, models.ActivityFilter{FromDate: &from, ToDate: &to})
+}
+
 // Start begins a new activity. Description is required; project is optional.
 // Starting a new one stops anything already running (tock's own behavior).
 func (a *App) Start(description, project string) (*models.Activity, error) {

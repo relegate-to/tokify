@@ -38,6 +38,10 @@ export function GetRunning() {
   return window['go']['main']['App']['GetRunning']();
 }
 
+export function ListPastYear() {
+  return window['go']['main']['App']['ListPastYear']();
+}
+
 export function ListRecent(arg1) {
   return window['go']['main']['App']['ListRecent'](arg1);
 }

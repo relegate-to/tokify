@@ -28,6 +28,7 @@ export function NowView({
     onStart,
     onStartAt,
     onStop,
+    onShare,
     onUpdate,
     onRemove,
     onResume,
@@ -42,6 +43,7 @@ export function NowView({
     onStart: (description: string, project: string) => void;
     onStartAt: (description: string, project: string, startISO: string) => void;
     onStop: () => void;
+    onShare: (project?: string) => void;
     onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
     onResume: (orig: Activity) => void;
@@ -76,11 +78,6 @@ export function NowView({
         [recent],
     );
 
-    const hasContentBelow =
-        activityView !== 'none' &&
-        (visibleToday.length > 0 ||
-            (activityView === 'all' && earlierGroups.length > 0));
-    const prominent = !hasContentBelow;
     // Only show the "nothing tracked yet" illustration when the user is seeing
     // the full activity view and has genuinely never recorded anything — not
     // when they've explicitly hidden earlier days via the 'today' setting.
@@ -97,7 +94,7 @@ export function NowView({
                 <NowRunning
                     activity={running}
                     onStop={onStop}
-                    prominent={prominent}
+                    onShare={() => onShare(running.project || undefined)}
                 />
             ) : (
                 <Starter

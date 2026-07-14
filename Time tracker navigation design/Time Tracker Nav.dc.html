@@ -9,31 +9,31 @@
 <x-dc>
 <helmet>
   <style>
-    body { margin: 0; background: #eceef1; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; }
+    body { margin: 0; background: #dde0e5; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; }
     .tt-mono { font-family: "SF Mono", "Menlo", "Consolas", monospace; font-variant-numeric: tabular-nums; }
-    .tt-tab-btn:hover { color: #1a1a1a !important; }
-    .tt-tab-btn-running:hover { color: #ffffff !important; background: #2a2a2a !important; }
-    .tt-log-group:hover .tt-log-icons, .tt-log-icons.tt-log-icons-expanded { max-width: 130px !important; opacity: 1 !important; margin-left: 2px !important; padding-left: 6px !important; border-color: #e2e2e4 !important; }
+    .tt-tab-btn:hover { color: #1b1d22 !important; }
+    .tt-tab-btn-running:hover { color: #ffffff !important; background: #2b2d33 !important; }
+    .tt-log-group:hover .tt-log-icons, .tt-log-icons.tt-log-icons-expanded { max-width: 130px !important; opacity: 1 !important; margin-left: 2px !important; padding-left: 6px !important; border-color: #dde0e4 !important; }
 
-    .tt-icon-btn:hover { background: #f0f1f3 !important; }
+    .tt-icon-btn:hover { background: #e9ebee !important; }
     .tt-copy-btn:hover { background: #e8e2d4 !important; }
     .tt-invite-btn:hover { filter: brightness(0.95); }
-    .tt-chip-btn:hover { background: #f2f2f3 !important; }
-    .tt-share-icon-btn:hover { background: #f2f2f3 !important; opacity: 1 !important; }
+    .tt-chip-btn:hover { background: #edeff2 !important; }
+    .tt-share-icon-btn:hover { background: #edeff2 !important; opacity: 1 !important; }
     .tt-stop-btn:hover { background: #d43f2e !important; }
     .tt-start-btn:hover { background: #37b56b !important; }
-    .tt-mini-active-btn:hover { background: #2a2a2a !important; }
+    .tt-mini-active-btn:hover { background: #2b2d33 !important; }
     .tt-row { border-radius: 10px; transition: background 0.12s ease; }
-    .tt-row:hover { background: #fafafb; }
+    .tt-row:hover { background: #f3f5f8; }
 
   </style>
 </helmet>
 
 <div style="min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 56px 24px; box-sizing: border-box;">
-  <div style="width: 1100px; max-width: 100%; background: #ffffff; border-radius: 20px; box-shadow: 0 24px 60px -20px rgba(20,20,25,0.25), 0 2px 8px rgba(20,20,25,0.06); padding: 28px 36px 40px; position: relative; box-sizing: border-box;">
+  <div style="width: 1100px; max-width: 100%; background: #fafbfc; border-radius: 20px; box-shadow: 0 24px 60px -20px rgba(17,19,24,0.25), 0 2px 8px rgba(17,19,24,0.06); padding: 28px 36px 40px; position: relative; box-sizing: border-box;">
 
     <!-- Top bar -->
-    <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid #ececec; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid #e7e9ec; margin-bottom: 24px;">
       <div style="display: flex; align-items: center; gap: 22px;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <div style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57;"></div>
@@ -41,7 +41,7 @@
           <div style="width: 12px; height: 12px; border-radius: 50%; background: #28c840;"></div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 2px; background: #f2f2f3; border-radius: 10px; padding: 3px;">
+        <div style="display: flex; align-items: center; gap: 2px; background: #edeff2; border-radius: 10px; padding: 3px;">
           <button class="tt-tab-btn {{ nowTabExtraClass }}" onClick="{{ selectTab }}" data-tab="now" style="{{ nowTabStyle }}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
             <span class="tt-tab-label" style="{{ nowTabLabelStyle }}">{{ nowTabLabel }}</span>
@@ -78,33 +78,33 @@
       <div style="display: flex; align-items: center; gap: 10px; position: relative;">
         <sc-if value="{{ isAccountHeader }}" hint-placeholder-val="{{ false }}">
           <button class="tt-icon-btn" onClick="{{ toggleMenu }}" style="display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 7px; border-radius: 9px; border: 1px solid transparent; background: {{ menuBtnBg }}; cursor: pointer;">
-            <div style="width: 21px; height: 21px; border-radius: 6px; background: #ececec; color: #6b6b70; font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">JS</div>
-            <div style="font-size: 14px; color: #444;">Jordan Silva</div>
+            <div style="width: 21px; height: 21px; border-radius: 6px; background: #e7e9ec; color: #5c616b; font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">JS</div>
+            <div style="font-size: 14px; color: #3d4149;">Jordan Silva</div>
           </button>
         </sc-if>
         <sc-if value="{{ isDateHeader }}" hint-placeholder-val="{{ true }}">
-          <button class="tt-icon-btn" onClick="{{ toggleMenu }}" style="padding: 7px 14px; border-radius: 9px; border: 1px solid transparent; background: {{ menuBtnBg }}; color: #444; font-size: 14px; cursor: pointer;">{{ todayLabel }}</button>
+          <button class="tt-icon-btn" onClick="{{ toggleMenu }}" style="padding: 7px 14px; border-radius: 9px; border: 1px solid transparent; background: {{ menuBtnBg }}; color: #3d4149; font-size: 14px; cursor: pointer;">{{ todayLabel }}</button>
         </sc-if>
 
         <sc-if value="{{ menuOpen }}">
-          <div style="position: absolute; top: 44px; right: 0; width: 190px; background: #fff; border-radius: 12px; box-shadow: 0 16px 40px -12px rgba(20,20,25,0.3); border: 1px solid #eee; padding: 6px; z-index: 20;">
+          <div style="position: absolute; top: 44px; right: 0; width: 190px; background: #ffffff; border-radius: 12px; box-shadow: 0 16px 40px -12px rgba(17,19,24,0.3); border: 1px solid #e7e9ec; padding: 6px; z-index: 20;">
             <sc-if value="{{ isAccountHeader }}" hint-placeholder-val="{{ false }}">
-              <div style="padding: 8px 12px 10px; font-size: 12.5px; color: #b3b3b8; border-bottom: 1px solid #f0f0f1; margin-bottom: 4px;">{{ todayLabel }}</div>
+              <div style="padding: 8px 12px 10px; font-size: 12.5px; color: #adb2bb; border-bottom: 1px solid #eaecef; margin-bottom: 4px;">{{ todayLabel }}</div>
             </sc-if>
-            <div style="padding: 9px 12px; font-size: 14px; color: #333; border-radius: 8px; cursor: pointer;">Account</div>
-            <div style="padding: 9px 12px; font-size: 14px; color: #333; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div style="padding: 9px 12px; font-size: 14px; color: #33363d; border-radius: 8px; cursor: pointer;">Account</div>
+            <div style="padding: 9px 12px; font-size: 14px; color: #33363d; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
               Sharing
               <span style="width: 15px; height: 15px; border-radius: 50%; background: #f0e6cf;"></span>
             </div>
-            <div style="padding: 9px 12px; font-size: 14px; color: #333; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div style="padding: 9px 12px; font-size: 14px; color: #33363d; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
               Teams
               <span style="display: flex; align-items: center;">
-                <span style="width: 15px; height: 15px; border-radius: 50%; background: #dceee9; border: 1.5px solid #fff;"></span>
-                <span style="width: 15px; height: 15px; border-radius: 50%; background: #e6e6f5; margin-left: -5px; border: 1.5px solid #fff;"></span>
+                <span style="width: 15px; height: 15px; border-radius: 50%; background: #dceee9; border: 1.5px solid #ffffff;"></span>
+                <span style="width: 15px; height: 15px; border-radius: 50%; background: #e6e6f5; margin-left: -5px; border: 1.5px solid #ffffff;"></span>
               </span>
             </div>
-            <div style="padding: 9px 12px; font-size: 14px; color: #333; border-radius: 8px; cursor: pointer;">Settings</div>
-            <div style="padding: 9px 12px; font-size: 14px; color: #333; border-radius: 8px; cursor: pointer;">Export</div>
+            <div style="padding: 9px 12px; font-size: 14px; color: #33363d; border-radius: 8px; cursor: pointer;">Settings</div>
+            <div style="padding: 9px 12px; font-size: 14px; color: #33363d; border-radius: 8px; cursor: pointer;">Export</div>
           </div>
         </sc-if>
       </div>
@@ -114,27 +114,27 @@
     <sc-if value="{{ isNow }}">
       <div>
         <div style="{{ activeCardStyle }}">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <div style="font-size: 22px; font-weight: 600; color: {{ activeCardTitleColor }};">Designing the new Laser</div>
-            <div class="tt-mono" style="font-size: 32px; font-weight: 700; color: {{ activeCardTimeColor }};">01:09</div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
-            <div style="position: relative;">
-              <button class="tt-chip-btn" onClick="{{ activeItem.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 14px; color: {{ activeCardMetaColor }}; background: transparent; border: none; padding: 4px 8px; margin-left: -8px; border-radius: 7px; cursor: pointer;">
-                <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ activeItem.color }};"></div>
-                LexCorp · since 20:03
-                <sc-if value="{{ activeItem.hasTeam }}" hint-placeholder-val="{{ true }}">
-                  <div style="display: flex; align-items: center;">
-                    <div style="width: 7px; height: 7px; border-radius: 50%; background: #56565c;"></div>
-                    <div style="width: 7px; height: 7px; border-radius: 50%; background: #56565c; margin-left: -3px; border: 1.5px solid {{ activeCardBorderMatch }};"></div>
-                  </div>
+          <div style="display: flex; align-items: center; gap: 24px;">
+            <div class="tt-mono" style="font-size: 42px; font-weight: 700; color: {{ activeCardTimeColor }}; line-height: 1; letter-spacing: -0.01em; flex-shrink: 0;">01:09</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 19px; font-weight: 600; color: {{ activeCardTitleColor }}; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Designing the new Laser</div>
+              <div style="position: relative; display: inline-block;">
+                <button class="tt-chip-btn" onClick="{{ activeItem.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: {{ activeCardMetaColor }}; background: transparent; border: none; padding: 3px 8px; margin-left: -8px; border-radius: 7px; cursor: pointer;">
+                  <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ activeItem.color }};"></div>
+                  LexCorp · since 20:03
+                  <sc-if value="{{ activeItem.hasTeam }}" hint-placeholder-val="{{ true }}">
+                    <div style="display: flex; align-items: center;">
+                      <div style="width: 7px; height: 7px; border-radius: 50%; background: #4a4e57;"></div>
+                      <div style="width: 7px; height: 7px; border-radius: 50%; background: #4a4e57; margin-left: -3px; border: 1.5px solid {{ activeCardBorderMatch }};"></div>
+                    </div>
+                  </sc-if>
+                </button>
+                <sc-if value="{{ activeItem.isOpen }}" hint-placeholder-val="{{ false }}">
+                  <dc-import name="ProjectPopover" project="{{ activeItem }}" style="top: 34px; left: 0;" hint-size="300px,220px"></dc-import>
                 </sc-if>
-              </button>
-              <sc-if value="{{ activeItem.isOpen }}" hint-placeholder-val="{{ false }}">
-                <dc-import name="ProjectPopover" project="{{ activeItem }}" style="top: 38px; left: 0;" hint-size="300px,220px"></dc-import>
-              </sc-if>
+              </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
               <div style="position: relative;">
                 <button class="tt-share-icon-btn" onClick="{{ activeItem.toggleSharePopover }}" style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent; cursor: pointer; color: {{ activeItem.shareIconColor }}; opacity: {{ activeItem.shareIconOpacity }};">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"></line><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line></svg>
@@ -149,29 +149,29 @@
             </div>
           </div>
           <sc-if value="{{ hasRunningActivity }}" hint-placeholder-val="{{ true }}">
-            <div style="height: 3px; background: #3a3a3d; border-radius: 2px; margin-top: 16px; overflow: hidden;">
+            <div style="height: 3px; background: #2b2d33; border-radius: 2px; margin-top: 18px; overflow: hidden;">
               <div style="width: 62%; height: 100%; background: #f5c451;"></div>
             </div>
           </sc-if>
         </div>
 
         <sc-for list="{{ nowGroups }}" as="group" hint-placeholder-count="2">
-          <div style="margin-bottom: 30px;">
+          <div style="margin-bottom: 26px;">
             <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
-              <div style="font-size: 11.5px; font-weight: 700; color: #9a9a9f; text-transform: uppercase; letter-spacing: 0.04em; width: 76px;">{{ group.label }}</div>
-              <div style="flex: 1; height: 1px; background: #eee;"></div>
-              <div class="tt-mono" style="font-size: 12.5px; font-weight: 600; color: #6b6b70; width: 56px; text-align: right;">{{ group.total }}</div>
+              <div style="font-size: 11.5px; font-weight: 700; color: #9aa0aa; text-transform: uppercase; letter-spacing: 0.04em; width: 76px;">{{ group.label }}</div>
+              <div style="flex: 1; height: 1px; background: #e7e9ec;"></div>
+              <div class="tt-mono" style="font-size: 12.5px; font-weight: 600; color: #5c616b; width: 56px; text-align: right;">{{ group.total }}</div>
             </div>
             <sc-for list="{{ group.items }}" as="item" hint-placeholder-count="2">
               <div class="tt-row" style="display: flex; align-items: center; padding: 11px 10px; margin: 0 -10px;">
-                <div class="tt-mono" style="width: 68px; font-size: 13.5px; color: #b3b3b8;">{{ item.time }}</div>
+                <div class="tt-mono" style="width: 68px; font-size: 13.5px; color: #adb2bb;">{{ item.time }}</div>
                 <div style="width: 136px; position: relative;">
-                  <button class="tt-chip-btn" onClick="{{ item.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: #8a8a90; background: transparent; border: none; padding: 3px 7px; margin-left: -7px; border-radius: 7px; cursor: pointer;">
+                  <button class="tt-chip-btn" onClick="{{ item.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: #7a7f8a; background: transparent; border: none; padding: 3px 7px; margin-left: -7px; border-radius: 7px; cursor: pointer;">
                     <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ item.color }}; flex-shrink: 0;"></div>{{ item.project }}
                     <sc-if value="{{ item.hasTeam }}" hint-placeholder-val="{{ true }}">
                       <div style="display: flex; align-items: center;">
-                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c9c9ce;"></div>
-                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c9c9ce; margin-left: -3px; border: 1.5px solid #fff;"></div>
+                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c3c8cf;"></div>
+                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c3c8cf; margin-left: -3px; border: 1.5px solid #ffffff;"></div>
                       </div>
                     </sc-if>
                   </button>
@@ -179,8 +179,8 @@
                     <dc-import name="ProjectPopover" project="{{ item }}" style="top: 32px; left: 0;" hint-size="300px,220px"></dc-import>
                   </sc-if>
                 </div>
-                <div style="flex: 1; font-size: 15px; color: #262626; font-weight: 450;">{{ item.title }}</div>
-                <div class="tt-mono" style="font-size: 13.5px; color: #8a8a90; font-weight: 500; margin-right: 12px;">{{ item.dur }}</div>
+                <div style="flex: 1; font-size: 15px; color: #1b1d22; font-weight: 450;">{{ item.title }}</div>
+                <div class="tt-mono" style="font-size: 13.5px; color: #7a7f8a; font-weight: 500; margin-right: 12px;">{{ item.dur }}</div>
                 <div style="position: relative;">
                   <button class="tt-share-icon-btn" onClick="{{ item.toggleSharePopover }}" style="display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; border: none; background: transparent; cursor: pointer; color: {{ item.shareIconColor }}; opacity: {{ item.shareIconOpacity }};">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"></line><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line></svg>
@@ -204,26 +204,26 @@
       <div>
 
         <!-- Contribution heatmap -->
-        <div style="background: #fafafb; border: 1px solid #ececec; border-radius: 14px; padding: 20px 22px; margin-bottom: 24px;">
+        <div style="background: #f1f3f6; border: 1px solid #e8ebef; border-radius: 14px; padding: 20px 22px; margin-bottom: 12px;">
           <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px;">
-            <div style="font-size: 14px; font-weight: 600; color: #1a1a1a;">Activity, past year</div>
-            <div style="font-size: 12.5px; color: #b3b3b8;">{{ heatmapTotal }} logged</div>
+            <div style="font-size: 14px; font-weight: 600; color: #1b1d22;">Activity, past year</div>
+            <div style="font-size: 12.5px; color: #adb2bb;">{{ heatmapTotal }} logged</div>
           </div>
 
           <div style="display: flex; gap: 3px; margin-left: 34px; margin-bottom: 4px;">
             <sc-for list="{{ heatmapWeeks }}" as="week" hint-placeholder-count="53">
-              <div style="width: 11px; font-size: 10px; color: #b3b3b8; white-space: nowrap; overflow: visible;">{{ week.monthLabel }}</div>
+              <div style="width: 11px; font-size: 10px; color: #adb2bb; white-space: nowrap; overflow: visible;">{{ week.monthLabel }}</div>
             </sc-for>
           </div>
 
           <div style="display: flex;">
             <div style="display: flex; flex-direction: column; justify-content: space-between; width: 28px; margin-right: 6px; height: 88px;">
               <div style="height: 11px;"></div>
-              <div style="height: 11px; font-size: 10px; color: #b3b3b8; line-height: 11px;">Mon</div>
+              <div style="height: 11px; font-size: 10px; color: #adb2bb; line-height: 11px;">Mon</div>
               <div style="height: 11px;"></div>
-              <div style="height: 11px; font-size: 10px; color: #b3b3b8; line-height: 11px;">Wed</div>
+              <div style="height: 11px; font-size: 10px; color: #adb2bb; line-height: 11px;">Wed</div>
               <div style="height: 11px;"></div>
-              <div style="height: 11px; font-size: 10px; color: #b3b3b8; line-height: 11px;">Fri</div>
+              <div style="height: 11px; font-size: 10px; color: #adb2bb; line-height: 11px;">Fri</div>
               <div style="height: 11px;"></div>
             </div>
             <div style="display: flex; gap: 3px;">
@@ -238,20 +238,20 @@
           </div>
 
           <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 10px;">
-            <div style="font-size: 10.5px; color: #b3b3b8;">Less</div>
-            <div style="width: 10px; height: 10px; border-radius: 2px; background: #ececec;"></div>
+            <div style="font-size: 10.5px; color: #adb2bb;">Less</div>
+            <div style="width: 10px; height: 10px; border-radius: 2px; background: #e7e9ec;"></div>
             <div style="width: 10px; height: 10px; border-radius: 2px; background: #f0e6cf;"></div>
             <div style="width: 10px; height: 10px; border-radius: 2px; background: #e3cd97;"></div>
             <div style="width: 10px; height: 10px; border-radius: 2px; background: #cbab5f;"></div>
             <div style="width: 10px; height: 10px; border-radius: 2px; background: #b8932e;"></div>
-            <div style="font-size: 10.5px; color: #b3b3b8;">More</div>
+            <div style="font-size: 10.5px; color: #adb2bb;">More</div>
           </div>
         </div>
 
         <!-- Search -->
-        <div style="display: flex; align-items: center; gap: 10px; background: #fafafb; border: 1px solid #ececec; border-radius: 12px; padding: 10px 16px; margin-bottom: 12px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a8a8ad" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input value="{{ historySearch }}" onChange="{{ setHistorySearch }}" placeholder="Search description or project" style="flex: 1; border: none; background: transparent; outline: none; font-size: 14.5px; color: #1a1a1a;">
+        <div style="display: flex; align-items: center; gap: 10px; background: #f1f3f6; border: 1px solid #e8ebef; border-radius: 12px; padding: 11px 16px; margin-bottom: 12px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa0aa" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input value="{{ historySearch }}" onChange="{{ setHistorySearch }}" placeholder="Search description or project" style="flex: 1; border: none; background: transparent; outline: none; font-size: 14.5px; color: #1b1d22;">
         </div>
 
         <!-- Filter chips + share -->
@@ -261,19 +261,19 @@
           <button onClick="{{ selectProjectFilter }}" data-project="Study" style="{{ filterStudyStyle }}">Study</button>
           <button onClick="{{ selectProjectFilter }}" data-project="Toki" style="{{ filterTokiStyle }}">Toki</button>
           <div style="flex: 1;"></div>
-          <div style="font-size: 13.5px; color: #a8a8ad;">{{ filteredCount }} activities</div>
-          <div style="width: 1px; height: 16px; background: #e4e4e6;"></div>
+          <div style="font-size: 13.5px; color: #9aa0aa;">{{ filteredCount }} activities</div>
+          <div style="width: 1px; height: 16px; background: #e2e4e8;"></div>
           <div style="position: relative;">
-            <button class="tt-icon-btn" onClick="{{ toggleFilterShare }}" style="display: flex; align-items: center; gap: 6px; background: transparent; border: none; padding: 6px 9px; border-radius: 8px; color: #8a8a90; font-size: 13px; cursor: pointer;">
+            <button class="tt-icon-btn" onClick="{{ toggleFilterShare }}" style="display: flex; align-items: center; gap: 6px; background: transparent; border: none; padding: 6px 9px; border-radius: 8px; color: #7a7f8a; font-size: 13px; cursor: pointer;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"></line><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line></svg>
               Share this view
             </button>
             <sc-if value="{{ filterShareOpen }}">
-              <div style="position: absolute; top: 38px; right: 0; width: 300px; background: #fff; border-radius: 14px; box-shadow: 0 16px 40px -12px rgba(20,20,25,0.3); border: 1px solid #eee; padding: 16px; z-index: 30; text-align: left;">
-                <div style="font-size: 13.5px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px;">Share this filtered view</div>
-                <div style="font-size: 12px; color: #8a8a90; margin-bottom: 12px;">{{ filterShareDescription }}</div>
+              <div style="position: absolute; top: 38px; right: 0; width: 300px; background: #ffffff; border-radius: 14px; box-shadow: 0 16px 40px -12px rgba(17,19,24,0.3); border: 1px solid #e7e9ec; padding: 16px; z-index: 30; text-align: left;">
+                <div style="font-size: 13.5px; font-weight: 600; color: #1b1d22; margin-bottom: 4px;">Share this filtered view</div>
+                <div style="font-size: 12px; color: #7a7f8a; margin-bottom: 12px;">{{ filterShareDescription }}</div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <div class="tt-mono" style="flex: 1; font-size: 12px; color: #6b6b70; background: #f7f7f8; border: 1px solid #ececec; border-radius: 8px; padding: 7px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">trackr.app/s/f/9c14b2</div>
+                  <div class="tt-mono" style="flex: 1; font-size: 12px; color: #5c616b; background: #ffffff; border: 1px solid #e7e9ec; border-radius: 8px; padding: 7px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">trackr.app/s/f/9c14b2</div>
                   <button class="tt-copy-btn" onClick="{{ copyFilterLink }}" style="background: #efe6cf; color: #7a5f16; border: none; border-radius: 8px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">{{ filterCopyLabel }}</button>
                 </div>
               </div>
@@ -282,22 +282,22 @@
         </div>
 
         <sc-for list="{{ historyGroups }}" as="day" hint-placeholder-count="3">
-          <div style="margin-bottom: 26px;">
+          <div style="margin-bottom: 28px;">
             <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 12px;">
-              <div style="font-size: 14px; font-weight: 600; color: #1a1a1a; width: 76px;">{{ day.label }}</div>
-              <div style="flex: 1; height: 4px; background: #f0f0f1; border-radius: 2px;"></div>
-              <div class="tt-mono" style="font-size: 13px; color: #8a8a90; width: 56px; text-align: right;">{{ day.total }}</div>
+              <div style="font-size: 14px; font-weight: 600; color: #1b1d22; width: 76px;">{{ day.label }}</div>
+              <div style="flex: 1; height: 1px; background: #e7e9ec;"></div>
+              <div class="tt-mono" style="font-size: 13px; color: #7a7f8a; width: 56px; text-align: right;">{{ day.total }}</div>
             </div>
             <sc-for list="{{ day.items }}" as="item" hint-placeholder-count="2">
               <div style="display: flex; align-items: center; padding: 9px 0;">
-                <div class="tt-mono" style="width: 68px; font-size: 14px; color: #a8a8ad;">{{ item.time }}</div>
+                <div class="tt-mono" style="width: 68px; font-size: 14px; color: #9aa0aa;">{{ item.time }}</div>
                 <div style="width: 136px; position: relative;">
-                  <button class="tt-chip-btn" onClick="{{ item.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 14px; color: #8a8a90; background: transparent; border: none; padding: 3px 7px; margin-left: -7px; border-radius: 7px; cursor: pointer;">
+                  <button class="tt-chip-btn" onClick="{{ item.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 14px; color: #7a7f8a; background: transparent; border: none; padding: 3px 7px; margin-left: -7px; border-radius: 7px; cursor: pointer;">
                     <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ item.color }}; flex-shrink: 0;"></div>{{ item.project }}
                     <sc-if value="{{ item.hasTeam }}" hint-placeholder-val="{{ true }}">
                       <div style="display: flex; align-items: center;">
-                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c9c9ce;"></div>
-                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c9c9ce; margin-left: -3px; border: 1.5px solid #fff;"></div>
+                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c3c8cf;"></div>
+                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c3c8cf; margin-left: -3px; border: 1.5px solid #ffffff;"></div>
                       </div>
                     </sc-if>
                   </button>
@@ -305,8 +305,8 @@
                     <dc-import name="ProjectPopover" project="{{ item }}" style="top: 32px; left: 0;" hint-size="300px,220px"></dc-import>
                   </sc-if>
                 </div>
-                <div style="flex: 1; font-size: 15px; color: #1a1a1a;">{{ item.title }}</div>
-                <div class="tt-mono" style="font-size: 14px; color: #a8a8ad; margin-right: 14px;">{{ item.dur }}</div>
+                <div style="flex: 1; font-size: 15px; color: #1b1d22;">{{ item.title }}</div>
+                <div class="tt-mono" style="font-size: 14px; color: #9aa0aa; margin-right: 14px;">{{ item.dur }}</div>
                 <div style="position: relative;">
                   <button class="tt-share-icon-btn" onClick="{{ item.toggleSharePopover }}" style="display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; border: none; background: transparent; cursor: pointer; color: {{ item.shareIconColor }}; opacity: {{ item.shareIconOpacity }};">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"></line><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line></svg>
@@ -321,7 +321,7 @@
         </sc-for>
 
         <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
-          <div style="text-align: center; padding: 40px 0; color: #b3b3b8; font-size: 14px;">No activities match this filter.</div>
+          <div style="text-align: center; padding: 40px 0; color: #adb2bb; font-size: 14px;">No activities match this filter.</div>
         </sc-if>
       </div>
       </sc-if>
@@ -329,21 +329,21 @@
       <sc-if value="{{ isLogReports }}" hint-placeholder-val="{{ false }}">
         <div style="{{ logPlaceholderStyle }}">
           <div style="{{ logPlaceholderStripes }}"></div>
-          <div class="tt-mono" style="position: relative; font-size: 12.5px; color: #8a8a90; letter-spacing: 0.03em;">REPORTS — weekly/monthly summaries go here</div>
+          <div class="tt-mono" style="position: relative; font-size: 12.5px; color: #7a7f8a; letter-spacing: 0.03em;">REPORTS — weekly/monthly summaries go here</div>
         </div>
       </sc-if>
 
       <sc-if value="{{ isLogCharts }}" hint-placeholder-val="{{ false }}">
         <div style="{{ logPlaceholderStyle }}">
           <div style="{{ logPlaceholderStripes }}"></div>
-          <div class="tt-mono" style="position: relative; font-size: 12.5px; color: #8a8a90; letter-spacing: 0.03em;">CHARTS — time-by-project breakdown goes here</div>
+          <div class="tt-mono" style="position: relative; font-size: 12.5px; color: #7a7f8a; letter-spacing: 0.03em;">CHARTS — time-by-project breakdown goes here</div>
         </div>
       </sc-if>
 
       <sc-if value="{{ isLogStats }}" hint-placeholder-val="{{ false }}">
         <div style="{{ logPlaceholderStyle }}">
           <div style="{{ logPlaceholderStripes }}"></div>
-          <div class="tt-mono" style="position: relative; font-size: 12.5px; color: #8a8a90; letter-spacing: 0.03em;">STATS — streaks, averages, totals go here</div>
+          <div class="tt-mono" style="position: relative; font-size: 12.5px; color: #7a7f8a; letter-spacing: 0.03em;">STATS — streaks, averages, totals go here</div>
         </div>
       </sc-if>
 
@@ -412,8 +412,8 @@ class Component extends DCLogic {
       borderRadius: '7px',
       cursor: 'pointer',
       background: active ? '#ffffff' : 'transparent',
-      color: active ? '#1a1a1a' : '#9a9a9f',
-      boxShadow: active ? '0 1px 3px rgba(20,20,25,0.12)' : 'none',
+      color: active ? '#1b1d22' : '#9aa0aa',
+      boxShadow: active ? '0 1px 3px rgba(17,19,24,0.12)' : 'none',
       transition: 'all 0.15s ease',
     };
   };
@@ -421,7 +421,7 @@ class Component extends DCLogic {
   heatmapWeeks = (() => {
     const months = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
     const weeksCount = 53;
-    const colors = ['#ececec', '#f0e6cf', '#e3cd97', '#cbab5f', '#b8932e'];
+    const colors = ['#e7e9ec', '#f0e6cf', '#e3cd97', '#cbab5f', '#b8932e'];
     const weeks = [];
     let seed = 7;
     let totalMinutes = 0;
@@ -602,9 +602,9 @@ class Component extends DCLogic {
   filterChipStyle = (name) => {
     const active = this.state.historyProjectFilter === name;
     return {
-      border: '1px solid ' + (active ? '#1a1a1a' : '#e4e4e6'),
-      background: active ? '#1a1a1a' : '#fff',
-      color: active ? '#fff' : '#6b6b70',
+      border: '1px solid ' + (active ? '#1b1d22' : '#e2e4e8'),
+      background: active ? '#1b1d22' : '#ffffff',
+      color: active ? '#ffffff' : '#5c616b',
       fontWeight: '500',
       fontSize: '13px',
       padding: '6px 13px',
@@ -626,14 +626,14 @@ class Component extends DCLogic {
         alignItems: 'center',
         gap: '7px',
         border: 'none',
-        background: '#1a1a1a',
+        background: '#1b1d22',
         color: '#ffffff',
         fontWeight: '600',
         fontSize: '14.5px',
         padding: '7px 12px 7px 14px',
         borderRadius: '8px',
         cursor: 'pointer',
-        boxShadow: '0 1px 3px rgba(20,20,25,0.12)',
+        boxShadow: '0 1px 3px rgba(17,19,24,0.12)',
         transition: 'all 0.18s ease',
       };
     }
@@ -643,13 +643,13 @@ class Component extends DCLogic {
       gap: '7px',
       border: 'none',
       background: active ? '#ffffff' : 'transparent',
-      color: active ? '#1a1a1a' : '#9a9a9f',
+      color: active ? '#1b1d22' : '#9aa0aa',
       fontWeight: active ? '600' : '500',
       fontSize: '14.5px',
       padding: '7px 12px 7px 14px',
       borderRadius: '8px',
       cursor: 'pointer',
-      boxShadow: active ? '0 1px 3px rgba(20,20,25,0.12)' : 'none',
+      boxShadow: active ? '0 1px 3px rgba(17,19,24,0.12)' : 'none',
       transition: 'all 0.18s ease',
     };
   };
@@ -678,8 +678,8 @@ class Component extends DCLogic {
       fontSize: '10.5px',
       fontWeight: '600',
       lineHeight: '1',
-      color: active ? '#9a9a9f' : '#b3b3b8',
-      background: active ? '#f2f2f3' : 'rgba(0,0,0,0.05)',
+      color: active ? '#9aa0aa' : '#adb2bb',
+      background: active ? '#edeff2' : 'rgba(0,0,0,0.05)',
       borderRadius: '4px',
       padding: '3px 5px',
       marginLeft: '2px',
@@ -704,7 +704,7 @@ class Component extends DCLogic {
       sendInvite: this.sendInvite,
       inviteLabel: this.state.invited ? 'Invited' : 'Invite',
       isShared,
-      shareIconColor: isShared ? '#b8932e' : '#c9c9ce',
+      shareIconColor: isShared ? '#b8932e' : '#c3c8cf',
       shareIconOpacity: isShared ? 1 : 0.55,
       shareLink: `trackr.app/s/r/${rowId.replace(/[^a-z0-9]/gi, '')}`,
       shareOpen: this.state.shareOpenRowId === rowId,
@@ -780,29 +780,29 @@ class Component extends DCLogic {
         justifyContent: 'center',
         height: '360px',
         borderRadius: '14px',
-        border: '1px solid #ececec',
-        background: '#fafafb',
+        border: '1px solid #e7e9ec',
+        background: '#ffffff',
       },
       logPlaceholderStripes: {
         position: 'absolute',
         inset: '0',
-        backgroundImage: 'repeating-linear-gradient(135deg, #f0f0f1, #f0f0f1 10px, #fafafb 10px, #fafafb 20px)',
+        backgroundImage: 'repeating-linear-gradient(135deg, #eaecef, #eaecef 10px, #ffffff 10px, #ffffff 20px)',
       },
       menuOpen: this.state.menuOpen,
       toggleMenu: this.toggleMenu,
-      menuBtnBg: this.state.menuOpen ? '#f2f2f3' : 'transparent',
+      menuBtnBg: this.state.menuOpen ? '#edeff2' : 'transparent',
       isAccountHeader: (this.props.headerMode ?? 'date') === 'account',
       isDateHeader: (this.props.headerMode ?? 'date') !== 'account',
       todayLabel: 'sun, 12 jul',
       activeItem,
       hasRunningActivity: running,
       activeCardStyle: running
-        ? { background: '#1a1a1a', border: '1px solid #1a1a1a', borderRadius: '16px', padding: '22px 26px', marginBottom: '28px', position: 'relative', overflow: 'visible', boxShadow: '0 16px 32px -16px rgba(20,20,25,0.4)' }
-        : { background: '#fafafb', border: '1px solid #ececec', borderRadius: '16px', padding: '22px 26px', marginBottom: '28px', position: 'relative', overflow: 'visible' },
-      activeCardTitleColor: running ? '#ffffff' : '#c3c3c8',
-      activeCardTimeColor: running ? '#f5c451' : '#c3c3c8',
-      activeCardMetaColor: running ? '#b8b8bd' : '#b3b3b8',
-      activeCardBorderMatch: running ? '#1a1a1a' : '#fafafb',
+        ? { background: '#1b1d22', border: '1px solid #1b1d22', borderRadius: '16px', padding: '22px 26px', marginBottom: '30px', position: 'relative', overflow: 'visible', boxShadow: '0 16px 32px -16px rgba(17,19,24,0.4)' }
+        : { background: '#ffffff', border: '1px solid #e7e9ec', borderRadius: '16px', padding: '22px 26px', marginBottom: '30px', position: 'relative', overflow: 'visible', boxShadow: '0 1px 3px rgba(17,19,24,0.05)' },
+      activeCardTitleColor: running ? '#ffffff' : '#b7bcc4',
+      activeCardTimeColor: running ? '#f5c451' : '#b7bcc4',
+      activeCardMetaColor: running ? '#b8b8bd' : '#adb2bb',
+      activeCardBorderMatch: running ? '#1b1d22' : '#ffffff',
       activeCardButtonClass: running ? 'tt-stop-btn' : 'tt-start-btn',
       activeCardButtonLabel: running ? 'Stop' : 'Start',
       activeCardButtonStyle: running
@@ -815,6 +815,7 @@ class Component extends DCLogic {
       historyGroups: filteredHistory,
       filteredCount,
       noResults: filteredHistory.length === 0,
+      hasResults: filteredHistory.length > 0,
       historySearch: this.state.historySearch,
       setHistorySearch: this.setHistorySearch,
       selectProjectFilter: this.selectProjectFilter,

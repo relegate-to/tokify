@@ -17,7 +17,9 @@ import {
 } from 'lucide-react';
 
 import type { Activity, View } from '@/types';
+import type { neonauth } from '../../wailsjs/go/models';
 import { cn } from '@/lib/utils';
+import { accountDisplayName, accountInitials } from '@/lib/account';
 import { formatDuration } from '@/lib/time';
 import { projectColor } from '@/lib/colors';
 import { useNow } from '@/lib/use-now';
@@ -65,12 +67,14 @@ export function Masthead({
     onView,
     running,
     showAccount,
+    account,
     projects,
 }: {
     view: View;
     onView: (v: View) => void;
     running: Activity | null;
     showAccount: boolean;
+    account: neonauth.Status | null;
     projects: string[];
 }) {
     const date = new Date()
@@ -143,14 +147,14 @@ export function Masthead({
                 alignItems: 'center',
                 gap: 7,
                 border: 'none',
-                background: '#1a1a1a',
-                color: '#ffffff',
+                background: 'var(--running-card)',
+                color: 'var(--running-card-foreground)',
                 fontWeight: 600,
                 fontSize: 13.5,
                 padding: '4px 10px 4px 12px',
                 borderRadius: 8,
                 cursor: 'pointer',
-                boxShadow: '0 1px 3px rgba(20,20,25,0.12)',
+                boxShadow: 'var(--navigation-shadow)',
                 overflow: 'hidden',
                 width: activityTabWidth,
                 transition: `${SIZE_TRANSITION}, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease`,
@@ -161,14 +165,16 @@ export function Masthead({
             alignItems: 'center',
             gap: 7,
             border: 'none',
-            background: active ? '#ffffff' : 'transparent',
-            color: active ? '#1a1a1a' : '#9a9a9f',
+            background: active ? 'var(--navigation-active)' : 'transparent',
+            color: active
+                ? 'var(--navigation-active-foreground)'
+                : 'var(--navigation-muted-foreground)',
             fontWeight: active ? 600 : 500,
             fontSize: 13.5,
             padding: '4px 10px 4px 12px',
             borderRadius: 8,
             cursor: 'pointer',
-            boxShadow: active ? '0 1px 3px rgba(20,20,25,0.12)' : 'none',
+            boxShadow: active ? 'var(--navigation-shadow)' : 'none',
             overflow: 'hidden',
             width: name === 'now' ? activityTabWidth : HISTORY_TAB_WIDTH,
             transition: `${SIZE_TRANSITION}, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease`,
@@ -249,12 +255,12 @@ export function Masthead({
     return (
         <>
         <header
-            className="flex shrink-0 items-center justify-between bg-background/80 pb-1 pl-28 pr-4 pt-3 backdrop-blur"
+            className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-background/75 pb-4 pl-28 pr-4 pt-3 backdrop-blur-md"
             style={dragStyle}
         >
             <div className="flex items-center gap-4" style={noDragStyle}>
                 <div
-                    className="inline-flex items-center gap-1 overflow-hidden rounded-[10px] bg-[#f2f2f3] p-[3px] dark:bg-muted"
+                    className="inline-flex items-center gap-1 overflow-hidden rounded-[10px] bg-navigation p-[3px]"
                     style={{
                         width: tabGroupExpandedWidth,
                         transition: SIZE_TRANSITION,
@@ -263,9 +269,9 @@ export function Masthead({
                     <button
                         type="button"
                         className={cn(
-                            'tt-tab-btn shrink-0 hover:text-[#1a1a1a] [&_svg]:size-[13px]',
+                            'tt-tab-btn shrink-0 hover:text-navigation-active-foreground [&_svg]:size-[13px]',
                             running && view !== 'now' &&
-                                'tt-tab-btn-running hover:bg-[#2a2a2a] hover:text-white',
+                                'tt-tab-btn-running hover:bg-navigation hover:text-running-card-foreground',
                         )}
                         style={tabStyle('now')}
                         onClick={() => onView('now')}
@@ -303,7 +309,7 @@ export function Masthead({
                     >
                         <button
                             type="button"
-                            className="tt-tab-btn shrink-0 hover:text-[#1a1a1a] [&_svg]:size-[13px]"
+                            className="tt-tab-btn shrink-0 hover:text-navigation-active-foreground [&_svg]:size-[13px]"
                             style={tabStyle('history')}
                             onClick={() => onView('history')}
                             aria-pressed={logSelected}
@@ -351,6 +357,34 @@ export function Masthead({
             <div style={noDragStyle}>
                 <DropdownMenu open={open} onOpenChange={handleOpenChange}>
                     <DropdownMenuTrigger asChild>
+                        {showAccount ? (
+                        <button
+                            ref={triggerRef}
+                            type="button"
+                            onMouseEnter={() => setHover(true)}
+                            onMouseLeave={() => setHover(false)}
+                            className="flex select-none items-center gap-2 rounded-[9px] border border-transparent py-1.5 pl-[7px] pr-3 outline-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-0 data-[state=open]:bg-muted"
+                        >
+                            <span
+                                aria-hidden
+                                className="flex size-[21px] shrink-0 items-center justify-center rounded-[6px] bg-muted text-[10.5px] font-semibold leading-none text-foreground/70 [&_svg]:size-3"
+                            >
+                                {account?.signed_in ? (
+                                    accountInitials(account.name, account.email)
+                                ) : (
+                                    <User />
+                                )}
+                            </span>
+                            <span className="max-w-40 truncate text-sm text-foreground/90">
+                                {account?.signed_in
+                                    ? accountDisplayName(
+                                          account.name,
+                                          account.email,
+                                      )
+                                    : 'Account'}
+                            </span>
+                        </button>
+                        ) : (
                         <button
                             ref={triggerRef}
                             type="button"
@@ -396,8 +430,17 @@ export function Masthead({
                                 {date}
                             </span>
                         </button>
+                        )}
                     </DropdownMenuTrigger>
                     <DropdownMenuContent ref={contentRef}>
+                        {showAccount && (
+                            <>
+                                <div className="px-2 pb-1 pt-0.5 text-[12.5px] text-muted-foreground">
+                                    {date}
+                                </div>
+                                <DropdownMenuSeparator />
+                            </>
+                        )}
                         <DropdownMenuItem onSelect={() => onView('settings')}>
                             <SettingsIcon className="size-4 opacity-70" />
                             Settings
