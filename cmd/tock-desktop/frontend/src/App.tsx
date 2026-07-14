@@ -32,6 +32,7 @@ import { HistoryView } from '@/components/HistoryView';
 import { SettingsView } from '@/components/SettingsView';
 import { AccountView } from '@/components/AccountView';
 import { SharingView } from '@/components/SharingView';
+import { TeamsView } from '@/components/TeamsView';
 
 const SHOW_ACCOUNT_KEY = 'tokify.showAccount';
 const ACTIVITY_VIEW_KEY = 'tokify.activityView';
@@ -446,6 +447,15 @@ function App() {
                                 projects={projects}
                                 initialProject={sharingProject}
                                 onBack={() => setView('history')}
+                            />
+                        </div>
+                    )}
+                    {view === 'teams' && (
+                        <div className="px-8 pb-12 pt-[70px]">
+                            <TeamsView
+                                projects={projects}
+                                selfUserID={authStatus?.user_id}
+                                onBack={() => setView('now')}
                             />
                         </div>
                     )}

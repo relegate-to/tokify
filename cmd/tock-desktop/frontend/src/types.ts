@@ -8,6 +8,7 @@ export type View =
     | 'charts'
     | 'stats'
     | 'sharing'
+    | 'teams'
     | 'settings'
     | 'account';
 export type ActivityView = 'all' | 'today' | 'none';

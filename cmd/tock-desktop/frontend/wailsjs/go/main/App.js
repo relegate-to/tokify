@@ -30,6 +30,10 @@ export function AuthVerifyEmail(arg1, arg2, arg3) {
   return window['go']['main']['App']['AuthVerifyEmail'](arg1, arg2, arg3);
 }
 
+export function CreateProject(arg1) {
+  return window['go']['main']['App']['CreateProject'](arg1);
+}
+
 export function Export(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['Export'](arg1, arg2, arg3, arg4);
 }
@@ -40,6 +44,10 @@ export function GetRunning() {
 
 export function ListPastYear() {
   return window['go']['main']['App']['ListPastYear']();
+}
+
+export function ListProjects() {
+  return window['go']['main']['App']['ListProjects']();
 }
 
 export function ListRecent(arg1) {
@@ -58,16 +66,56 @@ export function RemoveActivity(arg1) {
   return window['go']['main']['App']['RemoveActivity'](arg1);
 }
 
+export function SharingAddMember(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SharingAddMember'](arg1, arg2, arg3);
+}
+
 export function SharingCreateLink(arg1, arg2, arg3) {
   return window['go']['main']['App']['SharingCreateLink'](arg1, arg2, arg3);
+}
+
+export function SharingCreateTeam(arg1) {
+  return window['go']['main']['App']['SharingCreateTeam'](arg1);
+}
+
+export function SharingDeleteTeam(arg1) {
+  return window['go']['main']['App']['SharingDeleteTeam'](arg1);
+}
+
+export function SharingInviteByEmail(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SharingInviteByEmail'](arg1, arg2, arg3);
 }
 
 export function SharingListLinks() {
   return window['go']['main']['App']['SharingListLinks']();
 }
 
+export function SharingListTeams() {
+  return window['go']['main']['App']['SharingListTeams']();
+}
+
+export function SharingRemoveMember(arg1, arg2) {
+  return window['go']['main']['App']['SharingRemoveMember'](arg1, arg2);
+}
+
+export function SharingRenameTeam(arg1, arg2) {
+  return window['go']['main']['App']['SharingRenameTeam'](arg1, arg2);
+}
+
 export function SharingRevokeLink(arg1) {
   return window['go']['main']['App']['SharingRevokeLink'](arg1);
+}
+
+export function SharingSetTeamShare(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SharingSetTeamShare'](arg1, arg2, arg3);
+}
+
+export function SharingTeamMembers(arg1) {
+  return window['go']['main']['App']['SharingTeamMembers'](arg1);
+}
+
+export function SharingTeamShare(arg1) {
+  return window['go']['main']['App']['SharingTeamShare'](arg1);
 }
 
 export function Start(arg1, arg2) {

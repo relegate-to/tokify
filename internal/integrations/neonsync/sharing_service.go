@@ -52,12 +52,18 @@ func (s *Service) Pins() *PinStore {
 // public halves into identities, and caches the unwrapped identity in Keychain.
 // Otherwise it unwraps the existing identity with the KEK and caches it. Called
 // from Unlock with the KEK and the already-fetched (or freshly provisioned) row.
-func (s *Service) provisionIdentity(ctx context.Context, base, token, userID string, kek []byte, row *userKeysRow) error {
+func (s *Service) provisionIdentity(ctx context.Context, base, token, userID, email string, kek []byte, row *userKeysRow) error {
 	if row != nil && row.WrappedIdentity != "" && row.IdentityNonce != "" {
 		id, err := unwrapIdentityFromRow(kek, userID, row)
 		if err != nil {
 			return err
 		}
+		// Best-effort email_hash backfill: re-publish so an already-provisioned
+		// identity becomes discoverable by email without re-provisioning. A
+		// failure here (the column not yet migrated, a transient write) must
+		// NEVER block caching an otherwise-valid identity — that would break
+		// sharing for existing users. Ignore it; the next unlock retries.
+		_ = s.publishIdentity(ctx, base, token, userID, email, id.Public())
 		return s.saveIdentity(ctx, id)
 	}
 
@@ -72,15 +78,26 @@ func (s *Service) provisionIdentity(ctx context.Context, base, token, userID str
 	if perr := patchIdentityColumns(ctx, s.http, base, token, b64(ct), b64(nonce)); perr != nil {
 		return gerrors.Wrap(perr, "store wrapped identity")
 	}
-	pub := id.Public()
-	if uerr := upsertIdentity(ctx, s.http, base, token, identityRow{
-		UserID: userID,
-		PubEnc: b64(pub.EncPub),
-		PubSig: b64(pub.SigPub),
-	}); uerr != nil {
-		return gerrors.Wrap(uerr, "publish identity")
+	if perr := s.publishIdentity(ctx, base, token, userID, email, id.Public()); perr != nil {
+		return perr
 	}
 	return s.saveIdentity(ctx, id)
+}
+
+// publishIdentity upserts the caller's public identity row, including the email
+// discovery hash when an email is known. omitempty on email_hash means a blank
+// email never clobbers a previously published hash.
+func (s *Service) publishIdentity(ctx context.Context, base, token, userID, email string, pub sharing.PublicIdentity) error {
+	row := identityRow{
+		UserID:    userID,
+		PubEnc:    b64(pub.EncPub),
+		PubSig:    b64(pub.SigPub),
+		EmailHash: emailHash(email),
+	}
+	if err := upsertIdentity(ctx, s.http, base, token, row); err != nil {
+		return gerrors.Wrap(err, "publish identity")
+	}
+	return nil
 }
 
 func unwrapIdentityFromRow(kek []byte, userID string, row *userKeysRow) (*sharing.Identity, error) {

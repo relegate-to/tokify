@@ -1,3 +1,28 @@
+export namespace main {
+	
+	export class TeamView {
+	    ID: string;
+	    Role: string;
+	    MemberCount: number;
+	    CurrentEpoch: number;
+	    Name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TeamView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.Role = source["Role"];
+	        this.MemberCount = source["MemberCount"];
+	        this.CurrentEpoch = source["CurrentEpoch"];
+	        this.Name = source["Name"];
+	    }
+	}
+
+}
+
 export namespace models {
 	
 	export class Activity {
@@ -106,6 +131,22 @@ export namespace neonsync {
 	        this.CreatedAt = source["CreatedAt"];
 	    }
 	}
+	export class ShareView {
+	    Projects: string[];
+	    SinceDays: number;
+	    HasShare: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShareView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Projects = source["Projects"];
+	        this.SinceDays = source["SinceDays"];
+	        this.HasShare = source["HasShare"];
+	    }
+	}
 	export class SyncStatus {
 	    configured: boolean;
 	    enabled: boolean;
@@ -126,6 +167,41 @@ export namespace neonsync {
 	        this.last_sync = source["last_sync"];
 	        this.entry_count = source["entry_count"];
 	        this.error = source["error"];
+	    }
+	}
+	export class TeamMember {
+	    UserID: string;
+	    Role: string;
+	    Pinned: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TeamMember(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.UserID = source["UserID"];
+	        this.Role = source["Role"];
+	        this.Pinned = source["Pinned"];
+	    }
+	}
+
+}
+
+export namespace projects {
+	
+	export class Project {
+	    name: string;
+	    audience_id?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Project(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.audience_id = source["audience_id"];
 	    }
 	}
 

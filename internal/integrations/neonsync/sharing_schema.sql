@@ -102,8 +102,21 @@ CREATE TABLE IF NOT EXISTS public.identities (
     user_id    text        PRIMARY KEY,                  -- Neon Auth JWT `sub`
     pub_enc    text        NOT NULL,                      -- base64 X25519 public encryption key
     pub_sig    text        NOT NULL,                      -- base64 Ed25519 public signing key
+    email_hash text,                                      -- hex SHA-256 of the normalized email; discovery handle, NOT the address
     created_at timestamptz NOT NULL DEFAULT now()         -- bookkeeping only
 );
+
+-- email_hash lets one client find another's public key by email WITHOUT the
+-- server ever storing an address: the inviter hashes an email they already know
+-- and looks it up. ACCEPTED LEAKAGE (§7): the hash is unsalted (both clients
+-- must derive the same value from the address alone), so a determined server can
+-- dictionary-attack it to recover which emails are registered. This resists
+-- casual reading and bulk harvest, not a targeted precompute — a deliberate,
+-- weaker-than-plaintext-avoidance trade for usable discovery. Idempotent add for
+-- already-deployed instances; nullable, so a pre-discovery identity stays valid.
+ALTER TABLE public.identities
+    ADD COLUMN IF NOT EXISTS email_hash text;
+CREATE INDEX IF NOT EXISTS identities_email_hash_idx ON public.identities (email_hash);
 
 -- ---------------------------------------------------------------------------
 -- audiences: the universal sharing primitive (plan §1). `current_epoch` is a
@@ -411,6 +424,8 @@ GRANT EXECUTE ON FUNCTION public.sharing_is_grant_admin(text)      TO authentica
 CREATE OR REPLACE FUNCTION public.entries_guard_admin_update()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF auth.user_id() IS DISTINCT FROM OLD.user_id THEN
@@ -443,6 +458,8 @@ CREATE TRIGGER entries_guard_admin_update
 CREATE OR REPLACE FUNCTION public.grants_guard_update()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     IF NEW.entry_id    IS DISTINCT FROM OLD.entry_id
@@ -944,16 +961,17 @@ CREATE POLICY link_shares_delete ON public.link_shares
     USING (created_by = auth.user_id());
 
 -- ---------------------------------------------------------------------------
--- audiences DELETE: the creator may delete an audience ONLY when it backs a
--- link (§8 revocation deletes the link's dedicated audience, and ON DELETE
--- CASCADE reaps its epochs, keys, grants, shares, and the link_shares row).
--- Confined to link audiences so ordinary audiences keep v2's no-delete rule.
+-- audiences DELETE: the creator may delete an audience they own — a capability
+-- link's dedicated audience (§8 revocation) or a team they created. ON DELETE
+-- CASCADE reaps the audience's epochs, keys, grants, shares, members, and any
+-- link_shares row. Scoped to the creator (not every admin) so tearing a whole
+-- team down stays with the person who made it.
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS audiences_delete ON public.audiences;
 CREATE POLICY audiences_delete ON public.audiences
     FOR DELETE
     TO authenticated
-    USING (created_by = auth.user_id() AND public.sharing_audience_has_link(id));
+    USING (created_by = auth.user_id());
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.link_shares TO authenticated;
 GRANT DELETE                         ON public.audiences   TO authenticated;

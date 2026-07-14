@@ -165,7 +165,7 @@ func (s *Service) Status() SyncStatus {
 // No-ops silently when sync isn't configured or the device is offline: key
 // provisioning is not worth failing a sign-in over, and it will happen on the
 // next sign-in once reachable.
-func (s *Service) Unlock(ctx context.Context, _, password, userID, token string) error {
+func (s *Service) Unlock(ctx context.Context, email, password, userID, token string) error {
 	base := s.dataURL()
 	if base == "" || token == "" {
 		return nil
@@ -198,7 +198,7 @@ func (s *Service) Unlock(ctx context.Context, _, password, userID, token string)
 	// exists. Failure to set up sharing must not fail a sign-in that already has
 	// a working DEK, so it is best-effort: sharing simply stays locked until the
 	// next successful Unlock.
-	if perr := s.provisionIdentity(ctx, base, token, userID, kek, row); perr != nil {
+	if perr := s.provisionIdentity(ctx, base, token, userID, email, kek, row); perr != nil {
 		return nil //nolint:nilerr // sharing setup is best-effort; DEK unlock already succeeded
 	}
 	return nil

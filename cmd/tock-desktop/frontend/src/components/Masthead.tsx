@@ -462,15 +462,13 @@ export function Masthead({
                             Sharing
                             <span className="ml-auto size-3 rounded-full bg-amber-200" />
                         </DropdownMenuItem>
-                        <DropdownMenuItem disabled>
+                        <DropdownMenuItem onSelect={() => onView('teams')}>
                             <Users className="size-4 opacity-70" />
                             Teams
-                            {projects.length > 0 && (
-                                <span className="ml-auto flex items-center">
-                                    <span className="size-3 rounded-full border border-background bg-emerald-200" />
-                                    <span className="-ml-1 size-3 rounded-full border border-background bg-violet-200" />
-                                </span>
-                            )}
+                            <span className="ml-auto flex items-center">
+                                <span className="size-3 rounded-full border border-background bg-emerald-200" />
+                                <span className="-ml-1 size-3 rounded-full border border-background bg-violet-200" />
+                            </span>
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => setExportOpen(true)}>
                             <Download className="size-4 opacity-70" />

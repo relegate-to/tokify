@@ -21,7 +21,7 @@ func TestLinkTokenDerivation(t *testing.T) {
 	s1 := []byte("0123456789abcdef")
 	s2 := []byte("fedcba9876543210")
 
-	if deriveLinkToken(s1) != deriveLinkToken(s1) {
+	if tok1, tok2 := deriveLinkToken(s1), deriveLinkToken(s1); tok1 != tok2 {
 		t.Fatal("link token derivation is not deterministic")
 	}
 	if deriveLinkToken(s1) == deriveLinkToken(s2) {
@@ -37,7 +37,7 @@ func TestLinkTokenDerivation(t *testing.T) {
 
 	// The KEK is salt-dependent and stable for a (secret, salt) pair.
 	salt, _ := GenerateSalt()
-	if string(deriveLinkKEK(s1, salt)) != string(deriveLinkKEK(s1, salt)) {
+	if kek1, kek2 := deriveLinkKEK(s1, salt), deriveLinkKEK(s1, salt); string(kek1) != string(kek2) {
 		t.Fatal("link KEK derivation is not deterministic")
 	}
 	salt2, _ := GenerateSalt()
@@ -57,6 +57,8 @@ func TestLinkTokenDerivation(t *testing.T) {
 // KEK, unwraps the synthetic identity, unwraps the epoch key and DEK, decrypts
 // the entry, and verifies the author signature via the trust bundle. This is
 // the whole readability plane of the link, proven without a browser viewer.
+//
+//nolint:gocyclo // end-to-end recipient-decrypt simulation is intentionally one long linear scenario
 func TestCreateLinkShareRecipientCanRead(t *testing.T) {
 	fake := &fakePostgREST{}
 	srv := httptest.NewServer(fake.handler())

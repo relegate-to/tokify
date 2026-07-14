@@ -22,6 +22,7 @@ type identityRow struct {
 	UserID    string `json:"user_id"`
 	PubEnc    string `json:"pub_enc"`
 	PubSig    string `json:"pub_sig"`
+	EmailHash string `json:"email_hash,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
 }
 
@@ -101,6 +102,22 @@ func getIdentity(ctx context.Context, hc *http.Client, base, token, userID strin
 // errIdentityNotFound signals that a user has not published an identity row yet.
 // The read path treats it as an unpinnable identity (a hard failure to trust).
 var errIdentityNotFound = gerrors.New("neonsync: no published identity")
+
+// getIdentitiesByEmailHash finds published identities whose email_hash matches —
+// the invite discovery lookup. Returns all matches (normally zero or one); the
+// caller resolves ambiguity.
+func getIdentitiesByEmailHash(ctx context.Context, hc *http.Client, base, token, emailHash string) ([]identityRow, error) {
+	path := "/identities?select=*&email_hash=eq." + q(emailHash)
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []identityRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode identities by email")
+	}
+	return rows, nil
+}
 
 // upsertIdentity writes the caller's own public identity row (RLS: own row only).
 func upsertIdentity(ctx context.Context, hc *http.Client, base, token string, row identityRow) error {
