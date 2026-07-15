@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	gerrors "github.com/go-faster/errors"
@@ -23,7 +24,11 @@ type identityRow struct {
 	PubEnc    string `json:"pub_enc"`
 	PubSig    string `json:"pub_sig"`
 	EmailHash string `json:"email_hash,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	// DisplayName is the self-chosen human name published for the roster. omitempty
+	// so a name-less re-publish (e.g. an email_hash backfill) never clobbers a name
+	// already set — only an explicit PublishDisplayName writes it.
+	DisplayName string `json:"display_name,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
 }
 
 // audienceRow mirrors audiences. current_epoch is server-maintained (bump-pointer
@@ -48,6 +53,10 @@ type audienceMemberRow struct {
 	AudienceID string `json:"audience_id"`
 	MemberID   string `json:"member_id"`
 	Role       string `json:"role"`
+	// Status is 'invited' (admin planted the row) or 'active' (accepted). omitempty
+	// on insert so the creator's bootstrap self-admin row takes the server DEFAULT
+	// 'active'; an invite sends 'invited' explicitly.
+	Status string `json:"status,omitempty"`
 }
 
 type audienceEpochKeyRow struct {
@@ -200,7 +209,18 @@ func insertMember(ctx context.Context, hc *http.Client, base, token string, row 
 	if err != nil {
 		return err
 	}
-	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_members"), token, body, "return=minimal")
+	// Plain INSERT, and swallow a duplicate. This can't use ON CONFLICT: that would
+	// make Postgres apply the SELECT policy (sharing_is_member) as a WITH CHECK on
+	// the inserted row, which the audience creator's bootstrap self-admin insert
+	// fails (they are not a member yet — that row is what makes them one). A
+	// duplicate instead means the member is already present, so AddMember stays
+	// idempotent (retry after a partial failure, or a re-invite) with the existing
+	// role left untouched.
+	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_members"), token,
+		body, "return=minimal")
+	if isUniqueViolation(err) {
+		return nil
+	}
 	return err
 }
 
@@ -223,6 +243,19 @@ func deleteMember(ctx context.Context, hc *http.Client, base, token, audienceID,
 	return err
 }
 
+// updateMemberStatus PATCHes one member row's status — the invitee's accept
+// ('invited' -> 'active'). RLS + the column-guard trigger confine a non-admin to
+// exactly that flip on their own row.
+func updateMemberStatus(ctx context.Context, hc *http.Client, base, token, audienceID, memberID, status string) error {
+	path := "/audience_members?audience_id=eq." + q(audienceID) + "&member_id=eq." + q(memberID)
+	body, err := json.Marshal(map[string]string{"status": status})
+	if err != nil {
+		return err
+	}
+	_, err = doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
+	return err
+}
+
 // --- audience_epoch_keys ---
 
 func insertEpochKeys(ctx context.Context, hc *http.Client, base, token string, rows []audienceEpochKeyRow) error {
@@ -233,8 +266,33 @@ func insertEpochKeys(ctx context.Context, hc *http.Client, base, token string, r
 	if err != nil {
 		return err
 	}
+	// Plain INSERT, NO conflict resolution. An admin wraps epoch keys to OTHER
+	// members, whose rows the admin cannot see (SELECT policy is member_id =
+	// auth.user_id()). Postgres applies a table's SELECT policy as an extra
+	// WITH CHECK on any INSERT that carries ON CONFLICT (WCO_RLS_CONFLICT_CHECK) —
+	// so merge-/ignore-duplicates both fail here with an RLS violation the moment
+	// member_id != the caller. Idempotency for re-wraps is handled by the caller
+	// deleting the target rows first (DELETE is admin-gated, no such check).
 	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_epoch_keys"), token,
-		body, "resolution=merge-duplicates,return=minimal")
+		body, "return=minimal")
+	return err
+}
+
+// deleteEpochKeys removes the (audience, epoch, member) wraps for the given
+// members so a subsequent insert can't collide. Admin-gated (DELETE policy is
+// sharing_is_admin); a no-op when there is nothing to delete.
+func deleteEpochKeys(ctx context.Context, hc *http.Client, base, token, audienceID string, epoch int, memberIDs []string) error {
+	if len(memberIDs) == 0 {
+		return nil
+	}
+	quoted := make([]string, len(memberIDs))
+	for i, m := range memberIDs {
+		quoted[i] = q(m)
+	}
+	path := "/audience_epoch_keys?audience_id=eq." + q(audienceID) +
+		"&epoch=eq." + strconv.Itoa(epoch) +
+		"&member_id=in.(" + strings.Join(quoted, ",") + ")"
+	_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
 	return err
 }
 

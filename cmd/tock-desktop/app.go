@@ -792,6 +792,27 @@ func (a *App) unlockSync(ctx context.Context, email, password, userID string) {
 	}
 	if err := a.neonSync.Unlock(ctx, email, password, userID, token); err != nil {
 		fmt.Fprintf(os.Stderr, "neonsync: unlock: %v\n", err)
+		return
+	}
+	a.publishSelfName(ctx)
+}
+
+// publishSelfName best-effort republishes the signed-in user's name (from the
+// auth profile) onto their sharing identity, so anyone who sees them resolves a
+// name rather than an id: a team roster, or — the reverse of that — an invitee
+// reading who invited them. Called on unlock and before any invite/create action
+// so the name is present the moment someone else needs it. A failure (sharing
+// locked, offline) is ignored; the next call retries.
+func (a *App) publishSelfName(ctx context.Context) {
+	if a.neonSync == nil || a.neonAuth == nil {
+		return
+	}
+	name := strings.TrimSpace(a.neonAuth.Status().Name)
+	if name == "" {
+		return
+	}
+	if err := a.neonSync.PublishDisplayName(ctx, name); err != nil {
+		fmt.Fprintf(os.Stderr, "neonsync: publish display name: %v\n", err)
 	}
 }
 
@@ -1026,6 +1047,7 @@ func (a *App) SharingCreateTeam(name string) (TeamView, error) {
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
+	a.publishSelfName(ctx)
 	id, err := a.neonSync.CreateAudience(ctx)
 	if err != nil {
 		return TeamView{}, err
@@ -1092,6 +1114,61 @@ func (a *App) SharingDeleteTeam(audienceID string) error {
 	return nil
 }
 
+// SharingLeaveTeam removes the caller from a team they belong to but did not
+// create, and drops its local name. Unlike delete, this only touches the caller's
+// own membership; the team lives on for everyone else.
+func (a *App) SharingLeaveTeam(audienceID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	id := strings.TrimSpace(audienceID)
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	if err := a.neonSync.LeaveAudience(ctx, id); err != nil {
+		return err
+	}
+	if a.teamNames != nil {
+		_ = a.teamNames.Remove(id)
+	}
+	return nil
+}
+
+// SharingAcceptInvite accepts a pending team invitation: the caller's membership
+// flips from invited to active, and only then do the team's shared entries and
+// roster become visible to them. A sync is kicked so the newly readable slice
+// reconciles into their view.
+func (a *App) SharingAcceptInvite(audienceID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	if err := a.neonSync.AcceptInvite(ctx, strings.TrimSpace(audienceID)); err != nil {
+		return err
+	}
+	a.syncSoon()
+	return nil
+}
+
+// SharingDeclineInvite declines a pending invitation by removing the caller's own
+// (still-pending) membership row. It is the same self-delete as leaving a team,
+// framed for an invite the caller never accepted; any local name is dropped too.
+func (a *App) SharingDeclineInvite(audienceID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	id := strings.TrimSpace(audienceID)
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	if err := a.neonSync.LeaveAudience(ctx, id); err != nil {
+		return err
+	}
+	if a.teamNames != nil {
+		_ = a.teamNames.Remove(id)
+	}
+	return nil
+}
+
 // SharingRenameTeam updates the local name for a team.
 func (a *App) SharingRenameTeam(audienceID, name string) error {
 	if a.teamNames == nil {
@@ -1115,6 +1192,7 @@ func (a *App) SharingAddMember(audienceID, userID, role string) (string, error) 
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
+	a.publishSelfName(ctx)
 	fp, err := a.neonSync.AddMemberTOFU(ctx, strings.TrimSpace(audienceID), strings.TrimSpace(userID), role, true)
 	if err != nil {
 		return "", err
@@ -1139,6 +1217,7 @@ func (a *App) SharingInviteByEmail(audienceID, email, role string) (string, erro
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
+	a.publishSelfName(ctx)
 	userID, err := a.neonSync.InviteByEmail(ctx, strings.TrimSpace(audienceID), strings.TrimSpace(email), role, true)
 	if err != nil {
 		return "", err

@@ -3,18 +3,24 @@ import {
     ArrowLeft,
     Check,
     Loader2,
+    LogOut,
+    Mail,
     Plus,
     RefreshCw,
     ShieldCheck,
     Trash2,
     UserPlus,
+    X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
+    SharingAcceptInvite,
     SharingCreateTeam,
+    SharingDeclineInvite,
     SharingDeleteTeam,
     SharingInviteByEmail,
+    SharingLeaveTeam,
     SharingListTeams,
     SharingRemoveMember,
     SharingRenameTeam,
@@ -50,40 +56,45 @@ const SINCE_OPTIONS = [
     { label: 'Last 7 days', value: 7 },
 ];
 
-// Contacts are a local, display-only convenience: the email you invited someone
-// with, keyed by their user id, so the roster reads as people rather than opaque
-// ids. It never leaves this device — the server only ever knows an email hash.
-const CONTACTS_KEY = 'tokify.teamContacts';
+function shortID(userID: string): string {
+    return userID.length <= 10 ? userID : `…${userID.slice(-6)}`;
+}
 
-function readContacts(): Record<string, string> {
+// Invite emails are a local, display-only convenience: the address you invited
+// someone with, keyed by their user id. It never leaves this device (the server
+// only ever knows an email hash) and exists to label a pending invitee — who has
+// not published a name yet — as the person you actually invited.
+const INVITE_EMAILS_KEY = 'tokify.inviteEmails';
+
+function readInviteEmails(): Record<string, string> {
     try {
-        return JSON.parse(localStorage.getItem(CONTACTS_KEY) || '{}');
+        return JSON.parse(localStorage.getItem(INVITE_EMAILS_KEY) || '{}');
     } catch {
         return {};
     }
 }
 
-function rememberContact(userID: string, email: string) {
+function rememberInviteEmail(userID: string, email: string) {
     try {
-        const map = readContacts();
+        const map = readInviteEmails();
         map[userID] = email;
-        localStorage.setItem(CONTACTS_KEY, JSON.stringify(map));
+        localStorage.setItem(INVITE_EMAILS_KEY, JSON.stringify(map));
     } catch {
         // ignore
     }
 }
 
-function shortID(userID: string): string {
-    return userID.length <= 10 ? userID : `…${userID.slice(-6)}`;
-}
-
+// A member's roster label prefers the name they published for themselves
+// (identities.display_name). Before they've accepted they usually have none, so
+// fall back to the email you invited them with, then a short id. The caller's own
+// row always reads as "You".
 function memberLabel(
-    userID: string,
+    m: neonsync.TeamMember,
     self: boolean,
-    contacts: Record<string, string>,
+    emails: Record<string, string>,
 ): string {
     if (self) return 'You';
-    return contacts[userID] || shortID(userID);
+    return m.DisplayName.trim() || emails[m.UserID] || shortID(m.UserID);
 }
 
 function memberInitial(label: string): string {
@@ -172,6 +183,9 @@ export function TeamsView({
     useEffect(load, []);
 
     const canManage = !!status?.configured && !!status?.unlocked;
+
+    const pendingInvites = teams.filter((t) => t.Pending);
+    const activeTeams = teams.filter((t) => !t.Pending);
 
     const createTeam = () => {
         const name = newName.trim();
@@ -268,7 +282,29 @@ export function TeamsView({
                 )
             ) : (
                 <div className="flex flex-col gap-4">
-                    {teams.map((team) => (
+                    {pendingInvites.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                                Invitations
+                            </div>
+                            {pendingInvites.map((team) => (
+                                <InviteCard
+                                    key={team.ID}
+                                    team={team}
+                                    onResolved={(accepted) => {
+                                        if (accepted) {
+                                            load();
+                                        } else {
+                                            setTeams((cur) =>
+                                                cur.filter((t) => t.ID !== team.ID),
+                                            );
+                                        }
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    )}
+                    {activeTeams.map((team) => (
                         <TeamCard
                             key={team.ID}
                             team={team}
@@ -291,6 +327,94 @@ export function TeamsView({
     );
 }
 
+// A pending invitation: someone added this device's user to a team, but nothing
+// of the team (roster, shared projects) is visible until the invite is accepted —
+// so this card only offers Accept / Decline. Accepting flips membership to active
+// and reloads the list, at which point the team renders as a full TeamCard.
+function InviteCard({
+    team,
+    onResolved,
+}: {
+    team: main.TeamView;
+    onResolved: (accepted: boolean) => void;
+}) {
+    const [busy, setBusy] = useState<'accept' | 'decline' | null>(null);
+    const inviter = team.InvitedBy.trim() || 'Someone';
+    const asAdmin = team.Role === 'admin';
+
+    const accept = () => {
+        if (busy) return;
+        setBusy('accept');
+        SharingAcceptInvite(team.ID)
+            .then(() => {
+                toast.success('Joined the team');
+                onResolved(true);
+            })
+            .catch((e) => {
+                toast.error(authErrorText(e));
+                setBusy(null);
+            });
+    };
+
+    const decline = () => {
+        if (busy) return;
+        setBusy('decline');
+        SharingDeclineInvite(team.ID)
+            .then(() => {
+                toast.success('Invitation declined');
+                onResolved(false);
+            })
+            .catch((e) => {
+                toast.error(authErrorText(e));
+                setBusy(null);
+            });
+    };
+
+    return (
+        <Card className="overflow-hidden">
+            <CardContent className="flex items-center gap-4 p-4">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground/70">
+                    <Mail className="size-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm">
+                        You're invited to join{' '}
+                        <span className="font-medium">{inviter}'s team</span>
+                        {asAdmin ? ' as an admin' : ''}
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                        Accept to see what they share with the team.
+                    </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                    <Button size="sm" onClick={accept} disabled={busy !== null}>
+                        {busy === 'accept' ? (
+                            <Loader2 data-icon="inline-start" className="animate-spin" />
+                        ) : (
+                            <Check data-icon="inline-start" />
+                        )}
+                        Accept
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={decline}
+                        disabled={busy !== null}
+                        title="Decline invitation"
+                    >
+                        {busy === 'decline' ? (
+                            <Loader2 data-icon="inline-start" className="animate-spin" />
+                        ) : (
+                            <X data-icon="inline-start" />
+                        )}
+                        Decline
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 function TeamCard({
     team,
     projects,
@@ -309,7 +433,7 @@ function TeamCard({
     const [members, setMembers] = useState<neonsync.TeamMember[]>([]);
     const [share, setShare] = useState<neonsync.ShareView | null>(null);
     const [loading, setLoading] = useState(true);
-    const [contacts, setContacts] = useState(readContacts);
+    const [inviteEmails, setInviteEmails] = useState(readInviteEmails);
 
     const [editingName, setEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState(team.Name);
@@ -325,6 +449,9 @@ function TeamCard({
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
+    const [confirmLeave, setConfirmLeave] = useState(false);
+    const [leaving, setLeaving] = useState(false);
+
     const isAdmin = team.Role === 'admin';
 
     const deleteTeam = () => {
@@ -339,6 +466,21 @@ function TeamCard({
                 toast.error(authErrorText(e));
                 setDeleting(false);
                 setConfirmDelete(false);
+            });
+    };
+
+    const leaveTeam = () => {
+        if (leaving) return;
+        setLeaving(true);
+        SharingLeaveTeam(team.ID)
+            .then(() => {
+                toast.success(`Left ${team.Name || 'team'}`);
+                onDeleted();
+            })
+            .catch((e) => {
+                toast.error(authErrorText(e));
+                setLeaving(false);
+                setConfirmLeave(false);
             });
     };
 
@@ -368,10 +510,10 @@ function TeamCard({
         setInviting(true);
         SharingInviteByEmail(team.ID, email, 'member')
             .then((userID) => {
-                rememberContact(userID, email);
-                setContacts(readContacts());
+                rememberInviteEmail(userID, email);
+                setInviteEmails(readInviteEmails());
                 setInviteEmail('');
-                toast.success(`Added ${email}`);
+                toast.success(`Invited ${email}`);
                 load();
             })
             .catch((e) => toast.error(inviteErrorText(e, email)))
@@ -456,9 +598,9 @@ function TeamCard({
                                     key={m.UserID}
                                     userID={m.UserID}
                                     label={memberLabel(
-                                        m.UserID,
+                                        m,
                                         m.UserID === selfUserID,
-                                        contacts,
+                                        inviteEmails,
                                     )}
                                     stacked={i > 0}
                                 />
@@ -543,6 +685,42 @@ function TeamCard({
                                     <Trash2 />
                                 </Button>
                             ))}
+                        {!isAdmin &&
+                            (confirmLeave ? (
+                                <div className="flex items-center gap-1">
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        disabled={leaving}
+                                        onClick={leaveTeam}
+                                    >
+                                        {leaving && (
+                                            <Loader2
+                                                data-icon="inline-start"
+                                                className="animate-spin"
+                                            />
+                                        )}
+                                        Leave team
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={leaving}
+                                        onClick={() => setConfirmLeave(false)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => setConfirmLeave(true)}
+                                    title="Leave team"
+                                >
+                                    <LogOut />
+                                </Button>
+                            ))}
                     </div>
                 </div>
 
@@ -559,7 +737,8 @@ function TeamCard({
                         <div className="flex flex-col">
                             {members.map((m) => {
                                 const self = m.UserID === selfUserID;
-                                const label = memberLabel(m.UserID, self, contacts);
+                                const label = memberLabel(m, self, inviteEmails);
+                                const invited = m.Status === 'invited';
                                 return (
                                     <div
                                         key={m.UserID}
@@ -576,7 +755,17 @@ function TeamCard({
                                                         ? 'Admin'
                                                         : 'Member'}
                                                 </span>
+                                                {invited && (
+                                                    <span
+                                                        className="inline-flex items-center gap-1"
+                                                        title="Invited — waiting for them to accept"
+                                                    >
+                                                        <span className="size-1.5 rounded-full bg-sky-400/80" />
+                                                        <span>invited</span>
+                                                    </span>
+                                                )}
                                                 {!self &&
+                                                    !invited &&
                                                     (m.Pinned ? (
                                                         <span
                                                             className="inline-flex items-center gap-1"

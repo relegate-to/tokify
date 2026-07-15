@@ -39,15 +39,21 @@ export function Projects():Promise<Array<string>>;
 
 export function RemoveActivity(arg1:models.Activity):Promise<void>;
 
+export function SharingAcceptInvite(arg1:string):Promise<void>;
+
 export function SharingAddMember(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function SharingCreateLink(arg1:Array<string>,arg2:number,arg3:number):Promise<neonsync.LinkShare>;
 
 export function SharingCreateTeam(arg1:string):Promise<main.TeamView>;
 
+export function SharingDeclineInvite(arg1:string):Promise<void>;
+
 export function SharingDeleteTeam(arg1:string):Promise<void>;
 
 export function SharingInviteByEmail(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function SharingLeaveTeam(arg1:string):Promise<void>;
 
 export function SharingListLinks():Promise<Array<neonsync.LinkShareInfo>>;
 

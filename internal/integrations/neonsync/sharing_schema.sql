@@ -118,6 +118,16 @@ ALTER TABLE public.identities
     ADD COLUMN IF NOT EXISTS email_hash text;
 CREATE INDEX IF NOT EXISTS identities_email_hash_idx ON public.identities (email_hash);
 
+-- display_name: the self-chosen human name (the sign-up name), published so a
+-- team roster reads as people rather than opaque subs. ACCEPTED LEAKAGE (§7):
+-- unlike email (only ever a hash here), this is plaintext PII, readable by every
+-- authenticated caller — a conscious trade for a usable roster. It is the ONLY
+-- plaintext-name column in the schema; nothing else about a user leaks from it.
+-- Nullable and owner-writable only (identities RLS), so a pre-name identity stays
+-- valid and no one can stamp a name onto someone else's row.
+ALTER TABLE public.identities
+    ADD COLUMN IF NOT EXISTS display_name text;
+
 -- ---------------------------------------------------------------------------
 -- audiences: the universal sharing primitive (plan §1). `current_epoch` is a
 -- pointer into audience_epochs. It DEFAULTS TO 0 meaning "no epoch minted yet";
@@ -172,6 +182,32 @@ CREATE TABLE IF NOT EXISTS public.audience_members (
     CONSTRAINT audience_members_audience_fk
         FOREIGN KEY (audience_id) REFERENCES public.audiences (id) ON DELETE CASCADE
 );
+
+-- status: an invitation is a two-step handshake, not a unilateral add. An admin
+-- plants a member row as 'invited' (and pre-wraps epoch keys to it); the invitee
+-- accepts by flipping their OWN row to 'active' (audience_members UPDATE policy +
+-- guard trigger below). Until then they are NOT a member for any read predicate —
+-- every membership helper in Section 2 requires status='active' — so an invitee
+-- can see the audience and their own pending row, but none of the team's shares,
+-- grants, or shared entries. Pre-wrapped keys are useless without that ciphertext,
+-- which is what makes acceptance a real gate despite the keys landing early.
+-- DEFAULT 'active' so existing rows and the creator's bootstrap self-admin row are
+-- members immediately; idempotent add + guarded CHECK for already-deployed DBs.
+ALTER TABLE public.audience_members
+    ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'audience_members_status_check'
+          AND conrelid = 'public.audience_members'::regclass
+    ) THEN
+        ALTER TABLE public.audience_members
+            ADD CONSTRAINT audience_members_status_check
+            CHECK (status IN ('invited', 'active'));
+    END IF;
+END $$;
 
 -- member lookup: "which audiences am I in" drives most read predicates.
 CREATE INDEX IF NOT EXISTS audience_members_member_idx
@@ -277,7 +313,9 @@ CREATE TRIGGER shares_set_updated_at
 -- statement) and EXECUTE is revoked from PUBLIC, granted only to authenticated.
 -- ===========================================================================
 
--- Is `uid` (defaulting to the caller) a member of audience `aud`?
+-- Is the caller an ACCEPTED member of audience `aud`? status='active' is what
+-- makes acceptance load-bearing: an 'invited' row does not count here, so an
+-- invitee is invisible to every membership-gated read/insert until they accept.
 CREATE OR REPLACE FUNCTION public.sharing_is_member(aud text)
 RETURNS boolean
 LANGUAGE sql
@@ -287,11 +325,13 @@ SET search_path = public, pg_temp
 AS $$
     SELECT EXISTS (
         SELECT 1 FROM public.audience_members
-        WHERE audience_id = aud AND member_id = auth.user_id()
+        WHERE audience_id = aud AND member_id = auth.user_id() AND status = 'active'
     );
 $$;
 
--- Is the caller an admin of audience `aud`?
+-- Is the caller an ACCEPTED admin of audience `aud`? An admin invited but not yet
+-- accepted (status='invited') is not an admin — they hold no authority until they
+-- flip their own row to 'active'.
 CREATE OR REPLACE FUNCTION public.sharing_is_admin(aud text)
 RETURNS boolean
 LANGUAGE sql
@@ -301,7 +341,25 @@ SET search_path = public, pg_temp
 AS $$
     SELECT EXISTS (
         SELECT 1 FROM public.audience_members
-        WHERE audience_id = aud AND member_id = auth.user_id() AND role = 'admin'
+        WHERE audience_id = aud AND member_id = auth.user_id()
+          AND role = 'admin' AND status = 'active'
+    );
+$$;
+
+-- Does the caller hold ANY membership row in `aud`, accepted or still pending?
+-- Distinct from sharing_is_member (active only): this is what lets an invitee SEE
+-- the audience row and their own pending membership row so the UI can render the
+-- invitation, WITHOUT granting them any of the team's shared data.
+CREATE OR REPLACE FUNCTION public.sharing_has_membership(aud text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.audience_members
+        WHERE audience_id = aud AND member_id = auth.user_id()
     );
 $$;
 
@@ -365,6 +423,7 @@ AS $$
           ON m.audience_id = g.audience_id
         WHERE g.entry_id = eid
           AND m.member_id = auth.user_id()
+          AND m.status = 'active'
           AND NOT g.revoked
           AND now() >= g.valid_from
           AND (g.valid_until IS NULL OR now() < g.valid_until)
@@ -389,11 +448,13 @@ AS $$
         WHERE g.entry_id = eid
           AND m.member_id = auth.user_id()
           AND m.role = 'admin'
+          AND m.status = 'active'
     );
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.sharing_is_member(text)          FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.sharing_is_admin(text)           FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.sharing_has_membership(text)     FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.sharing_is_audience_creator(text) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.sharing_current_epoch(text)      FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.sharing_audience_has_share(text) FROM PUBLIC;
@@ -402,6 +463,7 @@ REVOKE EXECUTE ON FUNCTION public.sharing_is_grant_admin(text)     FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION public.sharing_is_member(text)           TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sharing_is_admin(text)            TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sharing_has_membership(text)      TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sharing_is_audience_creator(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sharing_current_epoch(text)       TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sharing_audience_has_share(text)  TO authenticated;
@@ -609,11 +671,14 @@ CREATE POLICY identities_update ON public.identities
 ALTER TABLE public.audiences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audiences FORCE ROW LEVEL SECURITY;
 
+-- SELECT: accepted members and the creator, PLUS a pending invitee (any
+-- membership row, via sharing_has_membership) so the invitation UI can render the
+-- team it is an invite to. sharing_has_membership subsumes sharing_is_member here.
 DROP POLICY IF EXISTS audiences_select ON public.audiences;
 CREATE POLICY audiences_select ON public.audiences
     FOR SELECT
     TO authenticated
-    USING (public.sharing_is_member(id) OR created_by = auth.user_id());
+    USING (public.sharing_has_membership(id) OR created_by = auth.user_id());
 
 DROP POLICY IF EXISTS audiences_insert ON public.audiences;
 CREATE POLICY audiences_insert ON public.audiences
@@ -666,11 +731,14 @@ CREATE POLICY audience_epochs_insert ON public.audience_epochs
 ALTER TABLE public.audience_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audience_members FORCE ROW LEVEL SECURITY;
 
+-- SELECT: an accepted member sees the whole roster (including who is still
+-- 'invited', so admins can manage pending invites); an invitee who has not yet
+-- accepted sees ONLY their own pending row (member_id = self), not the roster.
 DROP POLICY IF EXISTS audience_members_select ON public.audience_members;
 CREATE POLICY audience_members_select ON public.audience_members
     FOR SELECT
     TO authenticated
-    USING (public.sharing_is_member(audience_id));
+    USING (public.sharing_is_member(audience_id) OR member_id = auth.user_id());
 
 DROP POLICY IF EXISTS audience_members_insert ON public.audience_members;
 CREATE POLICY audience_members_insert ON public.audience_members
@@ -685,18 +753,60 @@ CREATE POLICY audience_members_insert ON public.audience_members
         )
     );
 
+-- UPDATE: an admin manages membership (re-role, etc.); OR the invitee updates
+-- their OWN row to accept. The self-service branch is narrowed by the column-guard
+-- trigger below to exactly the 'invited' -> 'active' status flip, so it can never
+-- be used to self-promote to admin or to touch another member's row.
 DROP POLICY IF EXISTS audience_members_update ON public.audience_members;
 CREATE POLICY audience_members_update ON public.audience_members
     FOR UPDATE
     TO authenticated
-    USING (public.sharing_is_admin(audience_id))
-    WITH CHECK (public.sharing_is_admin(audience_id));
+    USING (public.sharing_is_admin(audience_id) OR member_id = auth.user_id())
+    WITH CHECK (public.sharing_is_admin(audience_id) OR member_id = auth.user_id());
 
+-- Guard the self-service accept: when the caller is NOT an admin of the audience
+-- (i.e. an invitee flipping their own row), the ONLY permitted change is
+-- status 'invited' -> 'active'; role / audience_id / member_id must be unchanged.
+-- An admin update bypasses the guard and keeps its full membership-management
+-- surface. sharing_is_admin sees the pre-update row (still 'invited' for the
+-- accepting invitee), so an accept correctly takes the narrow branch.
+CREATE OR REPLACE FUNCTION public.audience_members_guard_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NOT public.sharing_is_admin(NEW.audience_id) THEN
+        IF NEW.audience_id IS DISTINCT FROM OLD.audience_id
+        OR NEW.member_id   IS DISTINCT FROM OLD.member_id
+        OR NEW.role        IS DISTINCT FROM OLD.role THEN
+            RAISE EXCEPTION 'non-admin may only accept their own invitation';
+        END IF;
+        IF NOT (OLD.status = 'invited' AND NEW.status = 'active') THEN
+            RAISE EXCEPTION 'non-admin may only change status from invited to active';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS audience_members_guard_update ON public.audience_members;
+CREATE TRIGGER audience_members_guard_update
+    BEFORE UPDATE ON public.audience_members
+    FOR EACH ROW EXECUTE FUNCTION public.audience_members_guard_update();
+
+-- Admins remove anyone (RemoveMember, with an epoch rotation); a member may
+-- delete only their own row (LeaveAudience). Self-leave carries no forward
+-- secrecy for the remaining team — that stays an admin action.
 DROP POLICY IF EXISTS audience_members_delete ON public.audience_members;
 CREATE POLICY audience_members_delete ON public.audience_members
     FOR DELETE
     TO authenticated
-    USING (public.sharing_is_admin(audience_id));
+    USING (
+        public.sharing_is_admin(audience_id)
+        OR member_id = auth.user_id()
+    );
 
 -- ---------------------------------------------------------------------------
 -- audience_epoch_keys: a member reads only the epoch keys wrapped to THEM;

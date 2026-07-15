@@ -5,6 +5,8 @@ export namespace main {
 	    Role: string;
 	    MemberCount: number;
 	    CurrentEpoch: number;
+	    Pending: boolean;
+	    InvitedBy: string;
 	    Name: string;
 	
 	    static createFrom(source: any = {}) {
@@ -17,6 +19,8 @@ export namespace main {
 	        this.Role = source["Role"];
 	        this.MemberCount = source["MemberCount"];
 	        this.CurrentEpoch = source["CurrentEpoch"];
+	        this.Pending = source["Pending"];
+	        this.InvitedBy = source["InvitedBy"];
 	        this.Name = source["Name"];
 	    }
 	}
@@ -173,6 +177,8 @@ export namespace neonsync {
 	    UserID: string;
 	    Role: string;
 	    Pinned: boolean;
+	    DisplayName: string;
+	    Status: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TeamMember(source);
@@ -183,6 +189,8 @@ export namespace neonsync {
 	        this.UserID = source["UserID"];
 	        this.Role = source["Role"];
 	        this.Pinned = source["Pinned"];
+	        this.DisplayName = source["DisplayName"];
+	        this.Status = source["Status"];
 	    }
 	}
 

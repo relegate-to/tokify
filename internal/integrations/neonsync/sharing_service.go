@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	gerrors "github.com/go-faster/errors"
@@ -96,6 +97,29 @@ func (s *Service) publishIdentity(ctx context.Context, base, token, userID, emai
 	}
 	if err := upsertIdentity(ctx, s.http, base, token, row); err != nil {
 		return gerrors.Wrap(err, "publish identity")
+	}
+	return nil
+}
+
+// PublishDisplayName writes the caller's self-chosen name onto their public
+// identity row so team rosters can read it (the "everyone publishes their own
+// name" model). It re-upserts the identity with the same public keys and the
+// name set; email_hash is omitted (omitempty), so this never disturbs a
+// previously published discovery hash. Requires an unlocked sharing identity.
+func (s *Service) PublishDisplayName(ctx context.Context, name string) error {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return err
+	}
+	pub := sess.id.Public()
+	row := identityRow{
+		UserID:      sess.userID,
+		PubEnc:      b64(pub.EncPub),
+		PubSig:      b64(pub.SigPub),
+		DisplayName: strings.TrimSpace(name),
+	}
+	if uerr := upsertIdentity(ctx, s.http, sess.base, sess.token, row); uerr != nil {
+		return gerrors.Wrap(uerr, "publish display name")
 	}
 	return nil
 }
@@ -315,6 +339,7 @@ func (s *Service) wrapEpochToMembers(
 	members []memberKey,
 ) error {
 	rows := make([]audienceEpochKeyRow, 0, len(members))
+	ids := make([]string, 0, len(members))
 	for _, m := range members {
 		wrapped, err := sharing.WrapEpochKeyToMember(m.encPub, epochPriv, sharing.EpochKeyAAD{
 			AudienceID: audienceID, Epoch: epoch, MemberID: m.id,
@@ -326,6 +351,14 @@ func (s *Service) wrapEpochToMembers(
 			AudienceID: audienceID, Epoch: epoch, MemberID: m.id,
 			WrappedEpochPrivkey: b64(wrapped),
 		})
+		ids = append(ids, m.id)
+	}
+	// Clear any prior wrap for these (audience, epoch, member) first so the insert
+	// is a plain INSERT with no ON CONFLICT (which would drag in the SELECT policy
+	// as a WITH CHECK and reject wraps to other members — see insertEpochKeys). A
+	// re-wrap is equivalent, so replacing the row is safe.
+	if err := deleteEpochKeys(ctx, s.http, sess.base, sess.token, audienceID, epoch, ids); err != nil {
+		return gerrors.Wrap(err, "clear stale epoch wraps")
 	}
 	if err := insertEpochKeys(ctx, s.http, sess.base, sess.token, rows); err != nil {
 		return gerrors.Wrap(err, "wrap epoch to members")
@@ -444,8 +477,12 @@ func (s *Service) AddMember(ctx context.Context, audienceID, userID, role string
 	if len(verified) == 0 {
 		return errors.New("audience has no epochs")
 	}
+	// Plant the row as 'invited': the invitee is not yet a member for any read
+	// predicate (RLS requires status='active'). They accept via AcceptInvite, which
+	// flips their own row to 'active'. Epoch keys are still wrapped below so an
+	// accept needs no admin round-trip — but they are dark until the flip.
 	if merr := insertMember(ctx, s.http, sess.base, sess.token, audienceMemberRow{
-		AudienceID: audienceID, MemberID: userID, Role: role,
+		AudienceID: audienceID, MemberID: userID, Role: role, Status: "invited",
 	}); merr != nil {
 		return gerrors.Wrap(merr, "add member")
 	}

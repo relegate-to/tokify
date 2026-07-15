@@ -164,23 +164,45 @@ func doJSON(ctx context.Context, hc *http.Client, method, url, token string, bod
 	return data, nil
 }
 
+// apiErr carries PostgREST's structured error alongside the HTTP status so
+// callers can branch on it (e.g. a unique-violation on an idempotent insert)
+// while its Error() text stays the human-readable message for the UI.
+type apiErr struct {
+	status  int
+	code    string
+	message string
+	hint    string
+}
+
+func (e *apiErr) Error() string {
+	if e.message == "" {
+		return fmt.Sprintf("neonsync: request failed (%d)", e.status)
+	}
+	if e.hint != "" {
+		return fmt.Sprintf("%s (%s)", e.message, e.hint)
+	}
+	return e.message
+}
+
 // apiError extracts PostgREST's `{ "message", "hint", "details", "code" }` error
 // body so the UI can show the real reason rather than a bare status.
 func apiError(status int, body []byte) error {
-	var e struct {
+	e := &apiErr{status: status}
+	var parsed struct {
 		Message string `json:"message"`
 		Hint    string `json:"hint"`
 		Code    string `json:"code"`
 	}
-	if json.Unmarshal(body, &e) == nil && e.Message != "" {
-		if e.Hint != "" {
-			return fmt.Errorf("%s (%s)", e.Message, e.Hint)
-		}
-		return errorString(e.Message)
+	if json.Unmarshal(body, &parsed) == nil {
+		e.message, e.hint, e.code = parsed.Message, parsed.Hint, parsed.Code
 	}
-	return fmt.Errorf("neonsync: request failed (%d)", status)
+	return e
 }
 
-// errorString is a tiny helper so apiError can return a plain message without a
-// format directive misreading a `%` in the server text.
-func errorString(s string) error { return gerrors.New(s) }
+// isUniqueViolation reports whether err is a PostgREST duplicate-key error
+// (Postgres 23505, surfaced as HTTP 409) — the signal that an idempotent insert
+// hit an already-present row and can be treated as success.
+func isUniqueViolation(err error) bool {
+	var e *apiErr
+	return errors.As(err, &e) && (e.code == "23505" || e.status == http.StatusConflict)
+}

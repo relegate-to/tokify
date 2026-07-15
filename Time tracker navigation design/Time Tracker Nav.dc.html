@@ -20,20 +20,25 @@
     .tt-invite-btn:hover { filter: brightness(0.95); }
     .tt-chip-btn:hover { background: #edeff2 !important; }
     .tt-share-icon-btn:hover { background: #edeff2 !important; opacity: 1 !important; }
-    .tt-stop-btn:hover { background: #d43f2e !important; }
+    .tt-stop-btn:hover { background: #474c55 !important; }
     .tt-start-btn:hover { background: #37b56b !important; }
     .tt-mini-active-btn:hover { background: #2b2d33 !important; }
     .tt-row { border-radius: 10px; transition: background 0.12s ease; }
     .tt-row:hover { background: #f3f5f8; }
 
+    .tt-qs-card { transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease; }
+    .tt-qs-card:hover { transform: translateY(-2px); box-shadow: 0 12px 26px -14px rgba(17,19,24,0.3); border-color: #d5d9de !important; }
+    .tt-qs-card:hover .tt-qs-dur { opacity: 0; }
+    .tt-qs-card:hover .tt-qs-go { opacity: 1 !important; }
+    .tt-resume-btn:hover { background: #2b2d33 !important; }
   </style>
 </helmet>
 
-<div style="min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 56px 24px; box-sizing: border-box;">
+<div style="min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 56px 24px; box-sizing: border-box; width: 830px; height: 822px">
   <div style="width: 1100px; max-width: 100%; background: #fafbfc; border-radius: 20px; box-shadow: 0 24px 60px -20px rgba(17,19,24,0.25), 0 2px 8px rgba(17,19,24,0.06); padding: 28px 36px 40px; position: relative; box-sizing: border-box;">
 
     <!-- Top bar -->
-    <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid #e7e9ec; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid #e7e9ec; margin-bottom: 24px; width: 711px; height: 19px">
       <div style="display: flex; align-items: center; gap: 22px;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <div style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57;"></div>
@@ -113,86 +118,128 @@
     <!-- NOW -->
     <sc-if value="{{ isNow }}">
       <div>
-        <div style="{{ activeCardStyle }}">
-          <div style="display: flex; align-items: center; gap: 24px;">
-            <div class="tt-mono" style="font-size: 42px; font-weight: 700; color: {{ activeCardTimeColor }}; line-height: 1; letter-spacing: -0.01em; flex-shrink: 0;">01:09</div>
-            <div style="flex: 1; min-width: 0;">
-              <div style="font-size: 19px; font-weight: 600; color: {{ activeCardTitleColor }}; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Designing the new Laser</div>
-              <div style="position: relative; display: inline-block;">
-                <button class="tt-chip-btn" onClick="{{ activeItem.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: {{ activeCardMetaColor }}; background: transparent; border: none; padding: 3px 8px; margin-left: -8px; border-radius: 7px; cursor: pointer;">
-                  <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ activeItem.color }};"></div>
-                  LexCorp · since 20:03
-                  <sc-if value="{{ activeItem.hasTeam }}" hint-placeholder-val="{{ true }}">
-                    <div style="display: flex; align-items: center;">
-                      <div style="width: 7px; height: 7px; border-radius: 50%; background: #4a4e57;"></div>
-                      <div style="width: 7px; height: 7px; border-radius: 50%; background: #4a4e57; margin-left: -3px; border: 1.5px solid {{ activeCardBorderMatch }};"></div>
-                    </div>
-                  </sc-if>
-                </button>
-                <sc-if value="{{ activeItem.isOpen }}" hint-placeholder-val="{{ false }}">
-                  <dc-import name="ProjectPopover" project="{{ activeItem }}" style="top: 34px; left: 0;" hint-size="300px,220px"></dc-import>
-                </sc-if>
-              </div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="position: relative;">
-                <button class="tt-share-icon-btn" onClick="{{ activeItem.toggleSharePopover }}" style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent; cursor: pointer; color: {{ activeItem.shareIconColor }}; opacity: {{ activeItem.shareIconOpacity }};">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"></line><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line></svg>
-                </button>
-                <sc-if value="{{ activeItem.shareOpen }}" hint-placeholder-val="{{ false }}">
-                  <dc-import name="RowSharePopover" item="{{ activeItem }}" style="top: 32px; right: 0;" hint-size="270px,140px"></dc-import>
-                </sc-if>
-              </div>
-              <button class="{{ activeCardButtonClass }}" style="{{ activeCardButtonStyle }}">
-                <span style="{{ activeCardButtonDotStyle }}"></span> {{ activeCardButtonLabel }}
-              </button>
-            </div>
-          </div>
-          <sc-if value="{{ hasRunningActivity }}" hint-placeholder-val="{{ true }}">
-            <div style="height: 3px; background: #2b2d33; border-radius: 2px; margin-top: 18px; overflow: hidden;">
-              <div style="width: 62%; height: 100%; background: #f5c451;"></div>
-            </div>
-          </sc-if>
-        </div>
-
-        <sc-for list="{{ nowGroups }}" as="group" hint-placeholder-count="2">
-          <div style="margin-bottom: 26px;">
-            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
-              <div style="font-size: 11.5px; font-weight: 700; color: #9aa0aa; text-transform: uppercase; letter-spacing: 0.04em; width: 76px;">{{ group.label }}</div>
-              <div style="flex: 1; height: 1px; background: #e7e9ec;"></div>
-              <div class="tt-mono" style="font-size: 12.5px; font-weight: 600; color: #5c616b; width: 56px; text-align: right;">{{ group.total }}</div>
-            </div>
-            <sc-for list="{{ group.items }}" as="item" hint-placeholder-count="2">
-              <div class="tt-row" style="display: flex; align-items: center; padding: 11px 10px; margin: 0 -10px;">
-                <div class="tt-mono" style="width: 68px; font-size: 13.5px; color: #adb2bb;">{{ item.time }}</div>
-                <div style="width: 136px; position: relative;">
-                  <button class="tt-chip-btn" onClick="{{ item.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: #7a7f8a; background: transparent; border: none; padding: 3px 7px; margin-left: -7px; border-radius: 7px; cursor: pointer;">
-                    <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ item.color }}; flex-shrink: 0;"></div>{{ item.project }}
-                    <sc-if value="{{ item.hasTeam }}" hint-placeholder-val="{{ true }}">
+        <!-- HERO — running -->
+        <sc-if value="{{ hasRunningActivity }}" hint-placeholder-val="{{ true }}">
+          <div style="background: #23262c; border-radius: 18px; padding: 22px 26px; margin-bottom: 16px; box-shadow: 0 8px 22px -16px rgba(17,19,24,0.35); position: relative;">
+            <div style="display: flex; align-items: center; gap: 24px;">
+              <div class="tt-mono" style="font-size: 34px; font-weight: 600; color: #e8c877; line-height: 1; letter-spacing: -0.01em; flex-shrink: 0;">{{ runTimer }}</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 17px; font-weight: 600; color: #f3f4f6; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ runTitle }}</div>
+                <div style="position: relative; display: inline-block;">
+                  <button class="tt-chip-btn" onClick="{{ activeItem.togglePopover }}" style="display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: #b8b8bd; background: transparent; border: none; padding: 3px 8px; margin-left: -8px; border-radius: 7px; cursor: pointer;">
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ activeItem.color }};"></div>
+                    {{ activeItem.project }} · since {{ runSince }}
+                    <sc-if value="{{ activeItem.hasTeam }}" hint-placeholder-val="{{ true }}">
                       <div style="display: flex; align-items: center;">
-                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c3c8cf;"></div>
-                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #c3c8cf; margin-left: -3px; border: 1.5px solid #ffffff;"></div>
+                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #4a4e57;"></div>
+                        <div style="width: 7px; height: 7px; border-radius: 50%; background: #4a4e57; margin-left: -3px; border: 1.5px solid #1b1d22;"></div>
                       </div>
                     </sc-if>
                   </button>
-                  <sc-if value="{{ item.isOpen }}" hint-placeholder-val="{{ false }}">
-                    <dc-import name="ProjectPopover" project="{{ item }}" style="top: 32px; left: 0;" hint-size="300px,220px"></dc-import>
-                  </sc-if>
-                </div>
-                <div style="flex: 1; font-size: 15px; color: #1b1d22; font-weight: 450;">{{ item.title }}</div>
-                <div class="tt-mono" style="font-size: 13.5px; color: #7a7f8a; font-weight: 500; margin-right: 12px;">{{ item.dur }}</div>
-                <div style="position: relative;">
-                  <button class="tt-share-icon-btn" onClick="{{ item.toggleSharePopover }}" style="display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; border: none; background: transparent; cursor: pointer; color: {{ item.shareIconColor }}; opacity: {{ item.shareIconOpacity }};">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"></line><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line></svg>
-                  </button>
-                  <sc-if value="{{ item.shareOpen }}" hint-placeholder-val="{{ false }}">
-                    <dc-import name="RowSharePopover" item="{{ item }}" style="top: 30px; right: 0;" hint-size="270px,140px"></dc-import>
+                  <sc-if value="{{ activeItem.isOpen }}" hint-placeholder-val="{{ false }}">
+                    <dc-import name="ProjectPopover" project="{{ activeItem }}" style="top: 34px; left: 0;" hint-size="300px,220px"></dc-import>
                   </sc-if>
                 </div>
               </div>
+              <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                <div style="position: relative;">
+                  <button class="tt-share-icon-btn" onClick="{{ activeItem.toggleSharePopover }}" style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent; cursor: pointer; color: {{ activeItem.shareIconColor }}; opacity: {{ activeItem.shareIconOpacity }};">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"></line><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line></svg>
+                  </button>
+                  <sc-if value="{{ activeItem.shareOpen }}" hint-placeholder-val="{{ false }}">
+                    <dc-import name="RowSharePopover" item="{{ activeItem }}" style="top: 32px; right: 0;" hint-size="270px,140px"></dc-import>
+                  </sc-if>
+                </div>
+                <button class="tt-stop-btn" onClick="{{ stopActivity }}" style="display: flex; align-items: center; gap: 7px; background: #3a3e46; color: #f3f4f6; border: none; border-radius: 9px; padding: 9px 17px; font-size: 13.5px; font-weight: 600; cursor: pointer;">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: #e08a7f;"></span> Stop
+                </button>
+              </div>
+            </div>
+            <div style="height: 3px; background: #34383f; border-radius: 2px; margin-top: 18px; overflow: hidden;">
+              <div style="width: {{ runProgressWidth }}; height: 100%; background: #e8c877; transition: width 0.3s ease;"></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- HERO — idle -->
+        <sc-if value="{{ isIdle }}" hint-placeholder-val="{{ false }}">
+          <div style="background: #ffffff; border: 1px solid #e7e9ec; border-radius: 18px; padding: 24px 28px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(17,19,24,0.05); display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <div style="display: flex; align-items: center; gap: 18px; min-width: 0;">
+              <div style="width: 54px; height: 54px; border-radius: 15px; background: #f1f3f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#9aa0aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 14"></polyline></svg>
+              </div>
+              <div style="min-width: 0;">
+                <div style="font-size: 18px; font-weight: 600; color: #1b1d22; margin-bottom: 3px;">Nothing tracking right now</div>
+                <div style="font-size: 13.5px; color: #9aa0aa;">Pick up where you left off, or start something new below.</div>
+              </div>
+            </div>
+            <button class="tt-resume-btn" onClick="{{ startSuggested }}" style="display: flex; align-items: center; gap: 9px; background: #1b1d22; color: #ffffff; border: none; border-radius: 10px; padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer; flex-shrink: 0; white-space: nowrap;">
+              <span style="width: 0; height: 0; border-left: 8px solid #ffffff; border-top: 5.5px solid transparent; border-bottom: 5.5px solid transparent;"></span>
+              Resume {{ suggestedTitle }}
+            </button>
+          </div>
+        </sc-if>
+
+        <!-- TODAY — goal progress -->
+        <div style="background: #f1f3f6; border: 1px solid #e8ebef; border-radius: 16px; padding: 22px 24px; margin-bottom: 30px;">
+          <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 18px;">
+            <div>
+              <div style="font-size: 11.5px; font-weight: 700; color: #9aa0aa; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 9px;">Today</div>
+              <div style="display: flex; align-items: baseline; gap: 11px;">
+                <div class="tt-mono" style="font-size: 19px; font-weight: 600; color: #43464B; line-height: 1; letter-spacing: -0.01em">{{ todayTotalLabel }}</div>
+                <div style="font-size: 13px; color: #9aa0aa;">of {{ goalLabel }} goal</div>
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <div class="tt-mono" style="font-size: 15px; font-weight: 600; color: #8a8f99; line-height: 1;">{{ goalPctLabel }}</div>
+              <div style="font-size: 12px; color: #adb2bb; margin-top: 6px;">{{ remainingLabel }} to goal</div>
+            </div>
+          </div>
+
+          <div style="display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: #e2e5ea; width: 662px">
+            <sc-for list="{{ todaySegments }}" as="seg" hint-placeholder-count="2">
+              <div style="width: {{ seg.widthPct }}; background: {{ seg.color }};"></div>
             </sc-for>
           </div>
-        </sc-for>
+
+          <div style="display: flex; align-items: center; gap: 22px; margin-top: 14px; flex-wrap: wrap;">
+            <sc-for list="{{ todaySegments }}" as="seg" hint-placeholder-count="2">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 9px; height: 9px; border-radius: 50%; background: {{ seg.color }};"></div>
+                <div style="font-size: 12px; color: #5c616b">{{ seg.label }}</div>
+                <div class="tt-mono" style="font-size: 13px; color: #9aa0aa;">{{ seg.durLabel }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- JUMP BACK IN — one-tap resume -->
+        <div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+            <div style="font-size: 15px; font-weight: 600; color: #1b1d22;">Jump back in</div>
+            <div style="font-size: 12.5px; color: #adb2bb;">Yesterday<br></div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+            <sc-for list="{{ quickStarts }}" as="qs" hint-placeholder-count="4">
+              <button class="tt-qs-card" onClick="{{ qs.start }}" style="text-align: left; display: flex; flex-direction: column; gap: 9px; background: #ffffff; border: 1px solid #e7e9ec; border-radius: 14px; padding: 14px 16px; cursor: pointer;">
+                <div style="font-size: 14px; font-weight: 500; color: #1b1d22; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ qs.title }}</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                  <div style="display: flex; align-items: center; gap: 7px; min-width: 0;">
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ qs.color }}; flex-shrink: 0;"></div>
+                    <div style="font-size: 12.5px; color: #7a7f8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ qs.project }}</div>
+                  </div>
+                  <div style="position: relative; flex-shrink: 0; min-width: 52px; height: 16px;">
+                    <div class="tt-mono tt-qs-dur" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; font-size: 12px; color: #adb2bb; transition: opacity 0.14s ease;">{{ qs.dur }}</div>
+                    <div class="tt-qs-go" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; opacity: 0; transition: opacity 0.14s ease; color: #1b1d22; font-size: 12.5px; font-weight: 500;">
+                      <span style="width: 0; height: 0; border-left: 7px solid currentColor; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent;"></span>Start
+                    </div>
+                  </div>
+                </div>
+              </button>
+              </button>
+            </sc-for>
+          </div>
+        </div>
       </div>
     </sc-if>
 
@@ -371,6 +418,51 @@ class Component extends DCLogic {
     historySearch: '',
     historyProjectFilter: 'all',
     logView: 'list',
+    runOverride: null, // null = follow prop; false = idle; object = running that item
+  };
+
+  quickStartsData = [
+    { title: 'Performance investigation', project: 'LexCorp', dur: '1h 32m' },
+    { title: 'Flashcards', project: 'Study', dur: '22m' },
+    { title: 'Technical Meeting', project: 'LexCorp', dur: '1h 1m' },
+    { title: 'Branding updates', project: 'Toki', dur: '2h 18m' },
+  ];
+
+  suggested = { title: 'Designing the new Laser', project: 'LexCorp' };
+
+  startActivity = (item) => {
+    this.setState({ runOverride: { title: item.title, project: item.project, since: 'just now', dur: '00:00', progress: 4 }, menuOpen: false, openRowId: null, shareOpenRowId: null });
+  };
+
+  startSuggested = () => this.startActivity(this.suggested);
+
+  stopActivity = () => {
+    this.setState({ runOverride: false, menuOpen: false, openRowId: null, shareOpenRowId: null });
+  };
+
+  computeTodaySummary = () => {
+    const today = this.rawNowGroups[0];
+    const order = [];
+    const byProject = {};
+    today.items.forEach(it => {
+      if (!(it.project in byProject)) { byProject[it.project] = 0; order.push(it.project); }
+      byProject[it.project] += this.parseDur(it.dur);
+    });
+    const total = order.reduce((a, p) => a + byProject[p], 0);
+    const goal = 360;
+    const segs = order.map(p => ({
+      label: p,
+      color: this.projectsData[p].color,
+      widthPct: (byProject[p] / goal * 100).toFixed(2) + '%',
+      durLabel: byProject[p] < 60 ? byProject[p] + 'm' : this.formatMinutes(byProject[p]),
+    }));
+    return {
+      totalLabel: this.formatMinutes(total),
+      goalLabel: '6h',
+      pct: Math.round(total / goal * 100),
+      remainingLabel: this.formatMinutes(Math.max(0, goal - total)),
+      segs,
+    };
   };
 
   logViewOrder = ['list', 'reports', 'charts', 'stats'];
@@ -614,7 +706,14 @@ class Component extends DCLogic {
   };
 
   get hasRunningActivity() {
+    if (this.state.runOverride === false) return false;
+    if (this.state.runOverride) return true;
     return this.props.activityRunning ?? true;
+  }
+
+  get currentRun() {
+    if (this.state.runOverride && typeof this.state.runOverride === 'object') return this.state.runOverride;
+    return { title: 'Designing the new Laser', project: 'LexCorp', since: '20:03', dur: '01:09', progress: 62 };
   }
 
   tabStyle = (name) => {
@@ -738,7 +837,14 @@ class Component extends DCLogic {
 
   renderVals() {
     const running = this.hasRunningActivity;
-    const activeItem = this.decorateItem({ project: 'LexCorp', title: 'Designing the new Laser', dur: running ? '01:09' : '00:00' }, 'active');
+    const cr = this.currentRun;
+    const activeItem = this.decorateItem({ project: cr.project, title: cr.title, dur: running ? cr.dur : '00:00' }, 'active');
+    const summary = this.computeTodaySummary();
+    const quickStarts = this.quickStartsData.map(q => ({
+      ...q,
+      color: this.projectsData[q.project].color,
+      start: () => this.startActivity(q),
+    }));
     const decoratedHistory = this.decorateGroups(this.rawHistoryGroups, 'hist');
     const filteredHistory = this.filterGroups(decoratedHistory);
     const filteredCount = filteredHistory.reduce((sum, g) => sum + g.items.length, 0);
@@ -796,6 +902,20 @@ class Component extends DCLogic {
       todayLabel: 'sun, 12 jul',
       activeItem,
       hasRunningActivity: running,
+      isIdle: !running,
+      runTitle: cr.title,
+      runTimer: running ? cr.dur : '00:00',
+      runSince: cr.since,
+      runProgressWidth: (running ? cr.progress : 0) + '%',
+      stopActivity: this.stopActivity,
+      startSuggested: this.startSuggested,
+      suggestedTitle: this.suggested.title,
+      todayTotalLabel: summary.totalLabel,
+      goalLabel: summary.goalLabel,
+      goalPctLabel: summary.pct + '%',
+      remainingLabel: summary.remainingLabel,
+      todaySegments: summary.segs,
+      quickStarts,
       activeCardStyle: running
         ? { background: '#1b1d22', border: '1px solid #1b1d22', borderRadius: '16px', padding: '22px 26px', marginBottom: '30px', position: 'relative', overflow: 'visible', boxShadow: '0 16px 32px -16px rgba(17,19,24,0.4)' }
         : { background: '#ffffff', border: '1px solid #e7e9ec', borderRadius: '16px', padding: '22px 26px', marginBottom: '30px', position: 'relative', overflow: 'visible', boxShadow: '0 1px 3px rgba(17,19,24,0.05)' },

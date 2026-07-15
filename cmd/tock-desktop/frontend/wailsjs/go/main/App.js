@@ -66,6 +66,10 @@ export function RemoveActivity(arg1) {
   return window['go']['main']['App']['RemoveActivity'](arg1);
 }
 
+export function SharingAcceptInvite(arg1) {
+  return window['go']['main']['App']['SharingAcceptInvite'](arg1);
+}
+
 export function SharingAddMember(arg1, arg2, arg3) {
   return window['go']['main']['App']['SharingAddMember'](arg1, arg2, arg3);
 }
@@ -78,12 +82,20 @@ export function SharingCreateTeam(arg1) {
   return window['go']['main']['App']['SharingCreateTeam'](arg1);
 }
 
+export function SharingDeclineInvite(arg1) {
+  return window['go']['main']['App']['SharingDeclineInvite'](arg1);
+}
+
 export function SharingDeleteTeam(arg1) {
   return window['go']['main']['App']['SharingDeleteTeam'](arg1);
 }
 
 export function SharingInviteByEmail(arg1, arg2, arg3) {
   return window['go']['main']['App']['SharingInviteByEmail'](arg1, arg2, arg3);
+}
+
+export function SharingLeaveTeam(arg1) {
+  return window['go']['main']['App']['SharingLeaveTeam'](arg1);
 }
 
 export function SharingListLinks() {

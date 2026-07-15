@@ -33,6 +33,16 @@ type TeamInfo struct {
 	Role         string
 	MemberCount  int
 	CurrentEpoch int
+	// Pending is true when the caller has been invited to this audience but has
+	// not accepted yet (their own membership row is status='invited'). While
+	// pending they see the invitation but none of the team's shared data; Role is
+	// the role they will hold once they accept. MemberCount is not meaningful while
+	// pending (RLS shows an invitee only their own row).
+	Pending bool
+	// InvitedBy is the published display name of the audience creator, filled only
+	// when Pending, so the invitation can read "X invited you". Empty when the
+	// inviter has published no name.
+	InvitedBy string
 }
 
 // TeamMember is one row of an audience's roster plus whether the caller has
@@ -43,6 +53,12 @@ type TeamMember struct {
 	UserID string
 	Role   string
 	Pinned bool
+	// DisplayName is the member's self-published name (identities.display_name),
+	// empty if they have published none — the roster falls back to a short id then.
+	DisplayName string
+	// Status is 'invited' (invited, not yet accepted) or 'active' (accepted), so
+	// the roster can flag a pending invite distinctly from a joined member.
+	Status string
 }
 
 // ListAudiences returns the caller's team audiences — every audience they are a
@@ -76,11 +92,20 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 		if merr != nil {
 			return nil, gerrors.Wrapf(merr, "members of %s", aud.ID)
 		}
-		role := ""
+		role, status := "", ""
 		for _, m := range members {
 			if m.MemberID == sess.userID {
-				role = m.Role
+				role, status = m.Role, m.Status
 				break
+			}
+		}
+		pending := status == "invited"
+		invitedBy := ""
+		if pending {
+			// The invitee can read identities (public), so surface the inviter's
+			// name for the invitation. A missing/nameless identity is not an error.
+			if idRow, ierr := getIdentity(ctx, s.http, sess.base, sess.token, aud.CreatedBy); ierr == nil {
+				invitedBy = idRow.DisplayName
 			}
 		}
 		out = append(out, TeamInfo{
@@ -88,6 +113,8 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 			Role:         role,
 			MemberCount:  len(members),
 			CurrentEpoch: aud.CurrentEpoch,
+			Pending:      pending,
+			InvitedBy:    invitedBy,
 		})
 	}
 	return out, nil
@@ -231,6 +258,23 @@ func (s *Service) DeleteAudience(ctx context.Context, audienceID string) error {
 	return deleteAudience(ctx, s.http, sess.base, sess.token, audienceID)
 }
 
+// LeaveAudience removes the caller from a team they belong to but did not create.
+// Unlike RemoveMember (an admin action that rotates the epoch for forward secrecy),
+// leaving just deletes the caller's own membership row — the audience_members DELETE
+// policy admits it because member_id is the caller. No epoch bump: a voluntary
+// leaver already holds the current epoch key, so a hard cutoff is the admin's call
+// (RemoveMember) if they want one; future rotations simply stop wrapping to them.
+func (s *Service) LeaveAudience(ctx context.Context, audienceID string) error {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return err
+	}
+	if derr := deleteMember(ctx, s.http, sess.base, sess.token, audienceID, sess.userID); derr != nil {
+		return gerrors.Wrap(derr, "leave team")
+	}
+	return nil
+}
+
 // ListMembers returns one audience's roster with each member's pin status.
 func (s *Service) ListMembers(ctx context.Context, audienceID string) ([]TeamMember, error) {
 	sess, err := s.session(ctx)
@@ -247,7 +291,32 @@ func (s *Service) ListMembers(ctx context.Context, audienceID string) ([]TeamMem
 		if ferr != nil {
 			return nil, ferr
 		}
-		out = append(out, TeamMember{UserID: m.MemberID, Role: m.Role, Pinned: pinned})
+		name := ""
+		if idRow, ierr := getIdentity(ctx, s.http, sess.base, sess.token, m.MemberID); ierr == nil {
+			name = idRow.DisplayName
+		}
+		out = append(out, TeamMember{
+			UserID:      m.MemberID,
+			Role:        m.Role,
+			Pinned:      pinned,
+			DisplayName: name,
+			Status:      m.Status,
+		})
 	}
 	return out, nil
+}
+
+// AcceptInvite accepts a pending invitation by flipping the caller's own
+// membership row from 'invited' to 'active'. Only then do the team's shared
+// entries, grants, and roster become visible to them (RLS gates every read on
+// status='active'); the epoch keys they need were wrapped at invite time.
+func (s *Service) AcceptInvite(ctx context.Context, audienceID string) error {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return err
+	}
+	if uerr := updateMemberStatus(ctx, s.http, sess.base, sess.token, audienceID, sess.userID, "active"); uerr != nil {
+		return gerrors.Wrap(uerr, "accept invite")
+	}
+	return nil
 }

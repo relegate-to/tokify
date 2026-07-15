@@ -58,7 +58,7 @@ func TestLinkTokenDerivation(t *testing.T) {
 // the entry, and verifies the author signature via the trust bundle. This is
 // the whole readability plane of the link, proven without a browser viewer.
 //
-//nolint:gocyclo // end-to-end recipient-decrypt simulation is intentionally one long linear scenario
+//nolint:gocyclo,cyclop // end-to-end recipient-decrypt simulation is intentionally one long linear scenario
 func TestCreateLinkShareRecipientCanRead(t *testing.T) {
 	fake := &fakePostgREST{}
 	srv := httptest.NewServer(fake.handler())

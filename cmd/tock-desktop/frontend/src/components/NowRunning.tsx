@@ -87,7 +87,7 @@ export function NowRunning({
             size="icon-sm"
             aria-label={shareLabel}
             title={shareLabel}
-            className="text-[var(--activity-accent)] hover:bg-white/6 hover:text-[var(--activity-accent)]"
+            className="text-[var(--activity-accent)] hover:bg-running-card-control-hover hover:text-[var(--activity-accent)]"
           >
             <Share2 />
           </Button>
@@ -109,7 +109,7 @@ export function NowRunning({
         </div>
       </div>
       <div
-        className="mt-[18px] h-[3px] overflow-hidden rounded-full bg-white/10"
+        className="mt-[18px] h-[3px] overflow-hidden rounded-full bg-running-card-track"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={60}

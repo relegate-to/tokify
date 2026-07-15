@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -126,22 +127,119 @@ func (f *fakePostgREST) handleMembers(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var rows []audienceMemberRow
 		decodeOneOrMany(r, &rows)
-		f.members = append(f.members, rows...)
+		// audience_members must be a plain insert (ON CONFLICT would apply the
+		// SELECT policy as a WITH CHECK and break the creator's bootstrap row), so
+		// a duplicate PRIMARY KEY is a hard 409 that the client swallows.
+		for _, n := range rows {
+			if f.hasMember(n.AudienceID, n.MemberID) {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{"code":"23505","message":"duplicate key value violates unique constraint \"audience_members_pkey\""}`))
+				return
+			}
+			f.members = append(f.members, n)
+		}
 		w.WriteHeader(http.StatusCreated)
+		return
+	}
+	if r.Method == http.MethodPatch {
+		aud := eqParam(r, "audience_id")
+		member := eqParam(r, "member_id")
+		var patch struct {
+			Status string `json:"status"`
+		}
+		_ = json.Unmarshal(readBody(r), &patch)
+		for i := range f.members {
+			if f.members[i].AudienceID == aud && f.members[i].MemberID == member {
+				f.members[i].Status = patch.Status
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	writeJSON(w, f.members)
 }
 
+func (f *fakePostgREST) hasMember(audienceID, memberID string) bool {
+	for _, m := range f.members {
+		if m.AudienceID == audienceID && m.MemberID == memberID {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fakePostgREST) handleEpochKeys(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost {
+	switch r.Method {
+	case http.MethodPost:
 		var rows []audienceEpochKeyRow
 		decodeOneOrMany(r, &rows)
-		f.epochKeys = append(f.epochKeys, rows...)
+		// ON CONFLICT (any resolution) makes Postgres apply the SELECT policy
+		// (member_id = auth.user_id()) as a WITH CHECK, which rejects an admin's
+		// wrap to any OTHER member. Epoch-key inserts must therefore be plain.
+		if preferResolution(r) != "" {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"new row violates row-level security policy for table \"audience_epoch_keys\""}`))
+			return
+		}
+		for _, n := range rows {
+			if f.hasEpochKey(n) { // plain INSERT: a duplicate PK is a hard conflict.
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{"message":"duplicate key value violates unique constraint \"audience_epoch_keys_pkey\""}`))
+				return
+			}
+			f.epochKeys = append(f.epochKeys, n)
+		}
 		w.WriteHeader(http.StatusCreated)
-		return
+	case http.MethodDelete:
+		aud := eqParam(r, "audience_id")
+		epoch := eqParam(r, "epoch")
+		members := inParam(r, "member_id")
+		kept := f.epochKeys[:0]
+		for _, e := range f.epochKeys {
+			if e.AudienceID == aud && strconv.Itoa(e.Epoch) == epoch && members[e.MemberID] {
+				continue
+			}
+			kept = append(kept, e)
+		}
+		f.epochKeys = kept
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		writeJSON(w, f.epochKeys)
 	}
-	writeJSON(w, f.epochKeys)
+}
+
+// inParam parses a PostgREST `col=in.(a,b,c)` filter into a set.
+func inParam(r *http.Request, col string) map[string]bool {
+	raw := r.URL.Query().Get(col)
+	raw = strings.TrimPrefix(raw, "in.(")
+	raw = strings.TrimSuffix(raw, ")")
+	out := map[string]bool{}
+	for _, v := range strings.Split(raw, ",") {
+		if v = strings.Trim(strings.TrimSpace(v), `"`); v != "" {
+			out[v] = true
+		}
+	}
+	return out
+}
+
+func (f *fakePostgREST) hasEpochKey(n audienceEpochKeyRow) bool {
+	for _, e := range f.epochKeys {
+		if e.AudienceID == n.AudienceID && e.Epoch == n.Epoch && e.MemberID == n.MemberID {
+			return true
+		}
+	}
+	return false
+}
+
+// preferResolution extracts the PostgREST conflict resolution (merge-duplicates
+// or ignore-duplicates) from the Prefer header, or "" if unset.
+func preferResolution(r *http.Request) string {
+	for _, part := range strings.Split(r.Header.Get("Prefer"), ",") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(part), "resolution="); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 func (f *fakePostgREST) handleShares(w http.ResponseWriter, r *http.Request) {
@@ -390,5 +488,91 @@ func TestAudienceLifecycleFlow(t *testing.T) {
 	}
 	if len(fake.grants) != 0 {
 		t.Fatalf("stale grant not cleaned up: %d grants remain", len(fake.grants))
+	}
+}
+
+// TestWrapEpochToMembersReWrap guards the invite path: wrapping is a plain INSERT
+// (ON CONFLICT would make Postgres apply the SELECT policy as a WITH CHECK and
+// reject an admin's wrap to another member), and re-wrapping an existing
+// (audience, epoch, member) must still succeed because the wrap deletes the stale
+// row first. This covers re-inviting a previously removed member, whose old-epoch
+// keys survive the removal.
+func TestWrapEpochToMembersReWrap(t *testing.T) {
+	fake := &fakePostgREST{}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+
+	svc := newFlowService(t, srv)
+	ctx := context.Background()
+
+	id, err := sharing.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dek, _ := GenerateDEK()
+	sess := &sharingSession{svc: svc, base: srv.URL, token: "tok", userID: "admin-sub", id: id, dek: dek}
+
+	epochPriv, err := sharing.GenerateEpochKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := []memberKey{{id: "member-sub", encPub: id.Public().EncPub}}
+
+	if err = svc.wrapEpochToMembers(ctx, sess, "aud-1", 1, epochPriv.Bytes(), member); err != nil {
+		t.Fatal(err)
+	}
+	// Second wrap of the same (audience, epoch, member): must succeed as a no-op.
+	if err = svc.wrapEpochToMembers(ctx, sess, "aud-1", 1, epochPriv.Bytes(), member); err != nil {
+		t.Fatalf("re-wrap of existing epoch key failed: %v", err)
+	}
+	if len(fake.epochKeys) != 1 {
+		t.Fatalf("want 1 epoch key row after re-wrap, got %d", len(fake.epochKeys))
+	}
+}
+
+// TestInviteThenAcceptStatus guards the invite handshake at the transport seam:
+// an invited member is planted as 'invited' and the accept flip (updateMemberStatus)
+// moves that same row to 'active'. The RLS guard that confines a non-admin to this
+// exact transition is enforced in the schema, not the fake.
+func TestInviteThenAcceptStatus(t *testing.T) {
+	fake := &fakePostgREST{}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+	ctx := context.Background()
+
+	invited := audienceMemberRow{AudienceID: "aud-1", MemberID: "member-sub", Role: "member", Status: "invited"}
+	if err := insertMember(ctx, srv.Client(), srv.URL, "tok", invited); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.members) != 1 || fake.members[0].Status != "invited" {
+		t.Fatalf("want one invited member, got %+v", fake.members)
+	}
+
+	if err := updateMemberStatus(ctx, srv.Client(), srv.URL, "tok", "aud-1", "member-sub", "active"); err != nil {
+		t.Fatalf("accept flip failed: %v", err)
+	}
+	if len(fake.members) != 1 || fake.members[0].Status != "active" {
+		t.Fatalf("want member active after accept, got %+v", fake.members)
+	}
+}
+
+// TestInsertMemberIdempotent guards AddMember's recoverability: a retry after a
+// partial failure (member row already written, epoch-key wrap aborted) must not
+// fail on the audience_members primary key.
+func TestInsertMemberIdempotent(t *testing.T) {
+	fake := &fakePostgREST{}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+	ctx := context.Background()
+
+	row := audienceMemberRow{AudienceID: "aud-1", MemberID: "member-sub", Role: "member"}
+	if err := insertMember(ctx, srv.Client(), srv.URL, "tok", row); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertMember(ctx, srv.Client(), srv.URL, "tok", row); err != nil {
+		t.Fatalf("re-insert of existing member failed: %v", err)
+	}
+	if len(fake.members) != 1 {
+		t.Fatalf("want 1 member row after re-insert, got %d", len(fake.members))
 	}
 }
