@@ -46,6 +46,23 @@ type FilterAAD struct {
 	Epoch      int    `json:"epoch"`
 }
 
+// NameAAD binds an encrypted team name to its audience and epoch. It carries the
+// same (audience, epoch) tuple as FilterAAD, so NameAADBytes stamps a constant
+// kind to keep the two AADs distinct: without it a server could present a share
+// filter's ciphertext in the team-name slot (or vice versa) and it would decrypt.
+type NameAAD struct {
+	AudienceID string `json:"audience_id"`
+	Epoch      int    `json:"epoch"`
+}
+
+// nameAADCanonical is the wire shape NameAADBytes marshals — the kind field is
+// fixed here (not caller-supplied) so it can never be omitted or varied.
+type nameAADCanonical struct {
+	AudienceID string `json:"audience_id"`
+	Epoch      int    `json:"epoch"`
+	Kind       string `json:"kind"`
+}
+
 // entrySigPayload is the canonical body an author signs for an entry: the AAD
 // tuple plus the base64 ciphertext (plan §3: Ed25519 over id, version, payload
 // ciphertext).
@@ -76,6 +93,12 @@ func EpochKeyAADBytes(a EpochKeyAAD) ([]byte, error) { return marshalCanonical(a
 
 // FilterAADBytes returns the canonical AAD for an encrypted share filter.
 func FilterAADBytes(a FilterAAD) ([]byte, error) { return marshalCanonical(a) }
+
+// NameAADBytes returns the canonical AAD for an encrypted team name, with the
+// fixed kind="team_name" giving it domain separation from FilterAADBytes.
+func NameAADBytes(a NameAAD) ([]byte, error) {
+	return marshalCanonical(nameAADCanonical{AudienceID: a.AudienceID, Epoch: a.Epoch, Kind: "team_name"})
+}
 
 // EntrySigBytes returns the canonical bytes an author signs over an entry, given
 // the raw ciphertext (base64-encoded internally so the signed value is text).

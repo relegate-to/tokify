@@ -90,6 +90,16 @@ type shareRow struct {
 	CreatedBy        string `json:"created_by"`
 }
 
+// audienceNameRow mirrors the audience_names table: one encrypted team name per
+// audience, sealed to the epoch key. audience_id is the PK so an upsert renames
+// in place.
+type audienceNameRow struct {
+	AudienceID     string `json:"audience_id"`
+	Epoch          int    `json:"epoch"`
+	NameCiphertext string `json:"name_ciphertext"`
+	CreatedBy      string `json:"created_by"`
+}
+
 // --- identities ---
 
 func getIdentity(ctx context.Context, hc *http.Client, base, token, userID string) (*identityRow, error) {
@@ -397,6 +407,40 @@ func getShares(ctx context.Context, hc *http.Client, base, token, audienceID str
 		return nil, gerrors.Wrap(uerr, "decode shares")
 	}
 	return rows, nil
+}
+
+// --- audience names ---
+
+func upsertAudienceName(ctx context.Context, hc *http.Client, base, token string, row audienceNameRow) error {
+	body, err := json.Marshal(row)
+	if err != nil {
+		return err
+	}
+	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_names"), token,
+		body, "resolution=merge-duplicates,return=minimal")
+	return err
+}
+
+// getAudienceName returns the audience's name rows (zero or one — audience_id is
+// the PK). Mirrors getShares: an empty slice means no name is published, which
+// the caller treats as "no shared name", not an error.
+func getAudienceName(ctx context.Context, hc *http.Client, base, token, audienceID string) ([]audienceNameRow, error) {
+	path := "/audience_names?select=*&audience_id=eq." + q(audienceID)
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []audienceNameRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode audience names")
+	}
+	return rows, nil
+}
+
+func deleteAudienceName(ctx context.Context, hc *http.Client, base, token, audienceID string) error {
+	path := "/audience_names?audience_id=eq." + q(audienceID)
+	_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
+	return err
 }
 
 // --- entries (shared read path) ---

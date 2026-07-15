@@ -16,6 +16,8 @@ import (
 	"sync"
 
 	"github.com/go-faster/errors"
+
+	"github.com/kriuchkov/tock/internal/appdir"
 )
 
 // Team is a local name for a sharing audience. AudienceID is the neonsync
@@ -39,11 +41,7 @@ type registryFile struct {
 
 // DefaultPath is where the registry lives, next to the other Tokify state files.
 func DefaultPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", errors.Wrap(err, "home dir")
-	}
-	return filepath.Join(home, "Library", "Application Support", "Tokify", "teams.json"), nil
+	return appdir.Path("teams.json")
 }
 
 // Open loads the registry at path, returning an empty registry if the file does

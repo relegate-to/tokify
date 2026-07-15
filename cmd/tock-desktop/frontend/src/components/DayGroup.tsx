@@ -1,4 +1,4 @@
-import type { Activity } from '@/types';
+import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
 import { REMOVE_ANIM_MS } from '@/lib/motion';
 import { dayLabel, formatTotal } from '@/lib/time';
@@ -53,6 +53,12 @@ export function DayHeader({
     );
 }
 
+// A stable per-row key: a local row is unique by start time, but a shared row can
+// collide with a local one (or another author's) on start time, so fold the
+// author in for shared rows.
+const rowKey = (a: ActivityItem) =>
+    a.shared ? `s:${a.shared.authorId}:${String(a.start_time)}` : String(a.start_time);
+
 export function DayGroup({
     day,
     activities,
@@ -64,7 +70,7 @@ export function DayGroup({
     onResume,
 }: {
     day: Date;
-    activities: Activity[];
+    activities: ActivityItem[];
     projects: string[];
     removingKeys: Set<string>;
     variant?: 'now' | 'history';
@@ -73,7 +79,7 @@ export function DayGroup({
     onResume?: (orig: Activity) => void;
 }) {
     const visible = activities.filter(
-        (a) => !removingKeys.has(String(a.start_time)),
+        (a) => a.shared || !removingKeys.has(String(a.start_time)),
     );
     const totalMs = visible.reduce((sum, a) => {
         const startMs = new Date(a.start_time as any).getTime();
@@ -109,10 +115,13 @@ export function DayGroup({
                 <ul className="flex flex-col">
                     {activities.map((a) => (
                         <ActivityRow
-                            key={String(a.start_time)}
+                            key={rowKey(a)}
                             activity={a}
                             projects={projects}
-                            isRemoving={removingKeys.has(String(a.start_time))}
+                            isRemoving={
+                                !a.shared &&
+                                removingKeys.has(String(a.start_time))
+                            }
                             onUpdate={onUpdate}
                             onRemove={onRemove}
                             onResume={onResume}

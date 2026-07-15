@@ -67,6 +67,8 @@ export function SharingRevokeLink(arg1:string):Promise<void>;
 
 export function SharingSetTeamShare(arg1:string,arg2:Array<string>,arg3:number):Promise<void>;
 
+export function SharingSharedEntries():Promise<Array<main.SharedActivity>>;
+
 export function SharingTeamMembers(arg1:string):Promise<Array<neonsync.TeamMember>>;
 
 export function SharingTeamShare(arg1:string):Promise<neonsync.ShareView>;

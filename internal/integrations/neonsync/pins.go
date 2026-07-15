@@ -105,6 +105,27 @@ func (p *PinStore) Pin(userID, fingerprint string) error {
 	return p.save(f)
 }
 
+// Repin unconditionally records a fingerprint, overwriting any existing pin.
+// Unlike Pin it does NOT treat a changed fingerprint as a conflict, so it is
+// only ever correct for the caller's OWN identity: you hold your own private
+// key and cannot be the victim of a key-swap against yourself, so a self
+// fingerprint that no longer matches the pin is legitimate rotation / a
+// re-provisioned identity, not an attack. Never call this for another user's
+// identity — that path must stay TOFU (Pin), which hard-fails on conflict.
+func (p *PinStore) Repin(userID, fingerprint string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	f, err := p.load()
+	if err != nil {
+		return err
+	}
+	if f.Fingerprints[userID] == fingerprint {
+		return nil
+	}
+	f.Fingerprints[userID] = fingerprint
+	return p.save(f)
+}
+
 // Unpin removes a user's pin, allowing a subsequent Pin to record a new
 // fingerprint (identity-key rotation / device-compromise response, plan §9).
 func (p *PinStore) Unpin(userID string) error {

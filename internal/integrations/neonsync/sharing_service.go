@@ -286,8 +286,11 @@ func (s *Service) CreateAudience(ctx context.Context) (string, error) {
 		[]memberKey{{id: sess.userID, encPub: sess.id.Public().EncPub}}); err != nil {
 		return "", err
 	}
-	// Self-pin so later verification of our own admin signatures succeeds.
-	if perr := s.pins.Pin(sess.userID, sharing.Fingerprint(sess.id.Public())); perr != nil {
+	// Self-pin so later verification of our own admin signatures succeeds. Use
+	// Repin, not Pin: a conflict against our OWN prior fingerprint is legitimate
+	// identity rotation / re-provisioning (§9), not a key-swap, and hard-failing
+	// here would wedge us out of creating audiences after any such change.
+	if perr := s.pins.Repin(sess.userID, sharing.Fingerprint(sess.id.Public())); perr != nil {
 		return "", perr
 	}
 	return audienceID, nil
@@ -660,6 +663,71 @@ func (s *Service) currentFilter(ctx context.Context, sess *sharingSession, audie
 		return shareFilter{}, "", false, err
 	}
 	return filter, sh.ID, true, nil
+}
+
+// SetTeamName seals the audience's human name to its current epoch key and
+// upserts the audience_names row (admin-only, RLS-enforced). The server stores
+// only ciphertext; members decrypt it with the epoch key they already hold. A
+// blank name deletes the row so the team falls back to the local/inviter label.
+func (s *Service) SetTeamName(ctx context.Context, audienceID, name string) error {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return deleteAudienceName(ctx, s.http, sess.base, sess.token, audienceID)
+	}
+	verified, err := s.verifiedEpochs(ctx, sess, audienceID)
+	if err != nil {
+		return err
+	}
+	if len(verified) == 0 {
+		return errors.New("audience has no epochs")
+	}
+	current := verified[len(verified)-1]
+	ct, err := sharing.WrapNameToEpoch(current.EpochPub, []byte(name),
+		sharing.NameAAD{AudienceID: audienceID, Epoch: current.Epoch})
+	if err != nil {
+		return err
+	}
+	return upsertAudienceName(ctx, s.http, sess.base, sess.token, audienceNameRow{
+		AudienceID: audienceID, Epoch: current.Epoch,
+		NameCiphertext: b64(ct), CreatedBy: sess.userID,
+	})
+}
+
+// TeamName fetches and decrypts the audience's shared name, or "" when none is
+// published (or it cannot be decrypted). Best-effort by design: a missing name
+// is normal, not an error, so callers fall back to a local name.
+func (s *Service) TeamName(ctx context.Context, audienceID string) (string, error) {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return "", err
+	}
+	return s.teamName(ctx, sess, audienceID)
+}
+
+func (s *Service) teamName(ctx context.Context, sess *sharingSession, audienceID string) (string, error) {
+	rows, err := getAudienceName(ctx, s.http, sess.base, sess.token, audienceID)
+	if err != nil || len(rows) == 0 {
+		return "", err
+	}
+	row := rows[0]
+	epochPriv, err := s.unwrapEpochKey(ctx, sess, audienceID, row.Epoch)
+	if err != nil {
+		return "", err
+	}
+	ct, err := unb64(row.NameCiphertext)
+	if err != nil {
+		return "", err
+	}
+	plain, err := sharing.UnwrapNameFromEpoch(epochPriv, ct,
+		sharing.NameAAD{AudienceID: audienceID, Epoch: row.Epoch})
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
 }
 
 // RevokeGrant is the admin §4a fast path: a visibility-plane soft-revoke that

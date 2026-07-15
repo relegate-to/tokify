@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Search, Share2 } from 'lucide-react';
 
-import type { Activity } from '@/types';
+import type { Activity, ActivityItem } from '@/types';
 import { groupByLocalDate } from '@/lib/time';
 import {
     Empty,
@@ -22,6 +22,7 @@ import { Separator } from '@/components/ui/separator';
 
 export function HistoryView({
     activities,
+    sharedActivities,
     graphActivities,
     projects,
     removingKeys,
@@ -32,6 +33,7 @@ export function HistoryView({
     onOpenSharing,
 }: {
     activities: Activity[];
+    sharedActivities: ActivityItem[];
     graphActivities: Activity[];
     projects: string[];
     removingKeys: Set<string>;
@@ -44,9 +46,15 @@ export function HistoryView({
     const [query, setQuery] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
 
-    const finished = useMemo(
-        () => activities.filter((a) => a.end_time),
-        [activities],
+    // Local finished activities plus read-only entries other members shared with
+    // the caller's teams. Shared rows are display-only (never merged into the
+    // local log) but they group and filter alongside local rows.
+    const finished = useMemo<ActivityItem[]>(
+        () => [
+            ...activities.filter((a) => a.end_time),
+            ...sharedActivities.filter((a) => a.end_time),
+        ],
+        [activities, sharedActivities],
     );
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -57,7 +65,8 @@ export function HistoryView({
         return scoped.filter(
             (a) =>
                 (a.description ?? '').toLowerCase().includes(q) ||
-                (a.project ?? '').toLowerCase().includes(q),
+                (a.project ?? '').toLowerCase().includes(q) ||
+                (a.shared?.authorName ?? '').toLowerCase().includes(q),
         );
     }, [finished, projectFilter, query]);
 

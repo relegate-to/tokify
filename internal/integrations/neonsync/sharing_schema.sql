@@ -302,6 +302,33 @@ CREATE TRIGGER shares_set_updated_at
     BEFORE INSERT OR UPDATE ON public.shares
     FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---------------------------------------------------------------------------
+-- audience_names: the human team name, authored client-side by an admin. Team
+-- names are metadata the server must stay blind to (plan §1: the server knows an
+-- audience only by opaque id), so name_ciphertext is sealed to the audience epoch
+-- key exactly like a share filter and the DB NEVER reads it. One row per audience
+-- (audience_id is the PK): a rename upserts in place. Sealing to the epoch key
+-- means any member who can unwrap that epoch (they already do to read entries)
+-- decrypts the name; the name is sealed to the epoch current at set time and does
+-- NOT need re-sealing on a bump, since members retain access to past epoch keys
+-- (history is wrapped forward to new members on invite).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.audience_names (
+    audience_id     text        PRIMARY KEY,             -- one name per audience; rename upserts
+    epoch           integer     NOT NULL,                -- epoch the name is sealed to
+    name_ciphertext text        NOT NULL,                -- base64; sealed to the audience epoch key, never DB-evaluated
+    created_by      text        NOT NULL,                -- authoring admin's JWT `sub`
+    updated_at      timestamptz NOT NULL DEFAULT now(),  -- server-set (trigger below); advisory
+    created_at      timestamptz NOT NULL DEFAULT now(),  -- bookkeeping only
+    CONSTRAINT audience_names_audience_fk
+        FOREIGN KEY (audience_id) REFERENCES public.audiences (id) ON DELETE CASCADE
+);
+
+DROP TRIGGER IF EXISTS audience_names_set_updated_at ON public.audience_names;
+CREATE TRIGGER audience_names_set_updated_at
+    BEFORE INSERT OR UPDATE ON public.audience_names
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ===========================================================================
 -- SECTION 2 — SECURITY DEFINER helper functions
 --
@@ -935,6 +962,39 @@ CREATE POLICY shares_delete ON public.shares
     TO authenticated
     USING (public.sharing_is_admin(audience_id));
 
+-- ---------------------------------------------------------------------------
+-- audience_names: any active member reads the name (so a joiner sees the real
+-- team name on accept, not "Untitled"); only admins create/edit/delete it. Same
+-- member-read/admin-write posture as shares — the ciphertext is never DB-read.
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.audience_names ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audience_names FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS audience_names_select ON public.audience_names;
+CREATE POLICY audience_names_select ON public.audience_names
+    FOR SELECT
+    TO authenticated
+    USING (public.sharing_is_member(audience_id));
+
+DROP POLICY IF EXISTS audience_names_insert ON public.audience_names;
+CREATE POLICY audience_names_insert ON public.audience_names
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (public.sharing_is_admin(audience_id));
+
+DROP POLICY IF EXISTS audience_names_update ON public.audience_names;
+CREATE POLICY audience_names_update ON public.audience_names
+    FOR UPDATE
+    TO authenticated
+    USING (public.sharing_is_admin(audience_id))
+    WITH CHECK (public.sharing_is_admin(audience_id));
+
+DROP POLICY IF EXISTS audience_names_delete ON public.audience_names;
+CREATE POLICY audience_names_delete ON public.audience_names
+    FOR DELETE
+    TO authenticated
+    USING (public.sharing_is_admin(audience_id));
+
 -- ===========================================================================
 -- SECTION 5 — Grants to the authenticated role
 --
@@ -955,6 +1015,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.audience_members     TO authentic
 GRANT SELECT, INSERT, DELETE         ON public.audience_epoch_keys  TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.entry_audience_grants TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.shares               TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.audience_names       TO authenticated;
 
 -- ===========================================================================
 -- SECTION 6 — Capability link shares (e2ee-sharing-link-shares.md)

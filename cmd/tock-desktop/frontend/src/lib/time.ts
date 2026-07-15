@@ -4,12 +4,12 @@ export function startOfDay(d: Date) {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-export function groupByLocalDate(
-    activities: Activity[],
+export function groupByLocalDate<T extends Activity>(
+    activities: T[],
     includeToday: boolean,
-): { dateKey: string; date: Date; items: Activity[] }[] {
+): { dateKey: string; date: Date; items: T[] }[] {
     const todayStart = startOfDay(new Date()).getTime();
-    const buckets = new Map<string, { date: Date; items: Activity[] }>();
+    const buckets = new Map<string, { date: Date; items: T[] }>();
 
     for (const a of activities) {
         const start = new Date(a.start_time as any);

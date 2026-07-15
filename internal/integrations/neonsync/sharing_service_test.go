@@ -133,7 +133,9 @@ func (f *fakePostgREST) handleMembers(w http.ResponseWriter, r *http.Request) {
 		for _, n := range rows {
 			if f.hasMember(n.AudienceID, n.MemberID) {
 				w.WriteHeader(http.StatusConflict)
-				_, _ = w.Write([]byte(`{"code":"23505","message":"duplicate key value violates unique constraint \"audience_members_pkey\""}`))
+				_, _ = w.Write(
+					[]byte(`{"code":"23505","message":"duplicate key value violates unique constraint \"audience_members_pkey\""}`),
+				)
 				return
 			}
 			f.members = append(f.members, n)
@@ -214,7 +216,7 @@ func inParam(r *http.Request, col string) map[string]bool {
 	raw = strings.TrimPrefix(raw, "in.(")
 	raw = strings.TrimSuffix(raw, ")")
 	out := map[string]bool{}
-	for _, v := range strings.Split(raw, ",") {
+	for v := range strings.SplitSeq(raw, ",") {
 		if v = strings.Trim(strings.TrimSpace(v), `"`); v != "" {
 			out[v] = true
 		}
@@ -234,7 +236,7 @@ func (f *fakePostgREST) hasEpochKey(n audienceEpochKeyRow) bool {
 // preferResolution extracts the PostgREST conflict resolution (merge-duplicates
 // or ignore-duplicates) from the Prefer header, or "" if unset.
 func preferResolution(r *http.Request) string {
-	for _, part := range strings.Split(r.Header.Get("Prefer"), ",") {
+	for part := range strings.SplitSeq(r.Header.Get("Prefer"), ",") {
 		if v, ok := strings.CutPrefix(strings.TrimSpace(part), "resolution="); ok {
 			return v
 		}

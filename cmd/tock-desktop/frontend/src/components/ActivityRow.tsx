@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import type { Activity } from '@/types';
+import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
 import { buildClockISO, formatClock, formatDuration } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ProjectTag } from '@/components/ProjectTag';
+import { MemberAvatar } from '@/components/MemberAvatar';
 
 const ROW_HEIGHT = 'h-11';
 const ROW_GRID =
@@ -23,7 +24,7 @@ export function ActivityRow({
     onResume,
     readOnly = false,
 }: {
-    activity: Activity;
+    activity: ActivityItem;
     projects: string[];
     isRemoving?: boolean;
     onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
@@ -31,6 +32,11 @@ export function ActivityRow({
     onResume?: (orig: Activity) => void;
     readOnly?: boolean;
 }) {
+    // A shared entry belongs to another member: always read-only, never editable
+    // or removable here, and tagged with the author's avatar badge.
+    const shared = activity.shared;
+    readOnly = readOnly || !!shared;
+
     const start = new Date(activity.start_time as any);
     const end = activity.end_time ? new Date(activity.end_time as any) : null;
     const isRunning = !end;
@@ -201,7 +207,16 @@ export function ActivityRow({
             )}
 
             <div className="flex items-center justify-end gap-1">
-                {editing ? (
+                {shared ? (
+                    <MemberAvatar
+                        seed={shared.authorId}
+                        label={
+                            shared.teamName
+                                ? `${shared.authorName || 'Someone'} · shared via ${shared.teamName}`
+                                : `${shared.authorName || 'Someone'} · shared`
+                        }
+                    />
+                ) : editing ? (
                     <Button
                         size="icon-xs"
                         variant="ghost"

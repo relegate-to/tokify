@@ -43,6 +43,11 @@ type TeamInfo struct {
 	// when Pending, so the invitation can read "X invited you". Empty when the
 	// inviter has published no name.
 	InvitedBy string
+	// SharedName is the creator's team name, decrypted from audience_names (sealed
+	// to the epoch key, invisible to the server). Empty when none is published or
+	// it cannot be decrypted; the app layer prefers a device-local name over it.
+	// Only populated for active members — a pending invitee cannot read it yet.
+	SharedName string
 }
 
 // TeamMember is one row of an audience's roster plus whether the caller has
@@ -101,12 +106,17 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 		}
 		pending := status == "invited"
 		invitedBy := ""
+		sharedName := ""
 		if pending {
 			// The invitee can read identities (public), so surface the inviter's
 			// name for the invitation. A missing/nameless identity is not an error.
 			if idRow, ierr := getIdentity(ctx, s.http, sess.base, sess.token, aud.CreatedBy); ierr == nil {
 				invitedBy = idRow.DisplayName
 			}
+		} else {
+			// Active members decrypt the shared team name; best-effort, a failure
+			// just leaves it empty and the app falls back to a local name.
+			sharedName, _ = s.teamName(ctx, sess, aud.ID)
 		}
 		out = append(out, TeamInfo{
 			ID:           aud.ID,
@@ -115,6 +125,7 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 			CurrentEpoch: aud.CurrentEpoch,
 			Pending:      pending,
 			InvitedBy:    invitedBy,
+			SharedName:   sharedName,
 		})
 	}
 	return out, nil
@@ -247,6 +258,27 @@ func (s *Service) InviteByEmail(ctx context.Context, audienceID, email, role str
 	return userID, nil
 }
 
+// ResolveDisplayNames maps each user id to its published display name (empty
+// when the user has published none). Best-effort per id: an unreadable identity
+// is simply omitted. Used by the app layer to label shared entries by author
+// without leaking display concerns into the decrypt path.
+func (s *Service) ResolveDisplayNames(ctx context.Context, userIDs []string) (map[string]string, error) {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(userIDs))
+	for _, id := range userIDs {
+		if _, done := out[id]; done {
+			continue
+		}
+		if row, ierr := getIdentity(ctx, s.http, sess.base, sess.token, id); ierr == nil {
+			out[id] = row.DisplayName
+		}
+	}
+	return out, nil
+}
+
 // DeleteAudience deletes a team the caller created. ON DELETE CASCADE reaps its
 // epochs, members, keys, grants, and shares server-side; the audiences DELETE
 // policy confines this to the creator, so a non-creator gets a permission error.
@@ -310,6 +342,15 @@ func (s *Service) ListMembers(ctx context.Context, audienceID string) ([]TeamMem
 // membership row from 'invited' to 'active'. Only then do the team's shared
 // entries, grants, and roster become visible to them (RLS gates every read on
 // status='active'); the epoch keys they need were wrapped at invite time.
+//
+// Pinning is symmetric: the inviter TOFU-pinned this caller when adding them
+// (AddMemberTOFU), but the caller has pinned no one. So once the roster is
+// readable, TOFU-pin every other active member's published identity — otherwise
+// the inviter (and everyone else) would render as unverified, and reading their
+// shared entries would hard-fail on ErrNotPinned. Pinning is best-effort per
+// member and never blocks the accept: a member already pinned to a DIFFERENT
+// fingerprint is a real key change, surfaced later by the roster/read paths, not
+// silently overwritten here.
 func (s *Service) AcceptInvite(ctx context.Context, audienceID string) error {
 	sess, err := s.session(ctx)
 	if err != nil {
@@ -318,5 +359,35 @@ func (s *Service) AcceptInvite(ctx context.Context, audienceID string) error {
 	if uerr := updateMemberStatus(ctx, s.http, sess.base, sess.token, audienceID, sess.userID, "active"); uerr != nil {
 		return gerrors.Wrap(uerr, "accept invite")
 	}
+	s.pinRoster(ctx, sess, audienceID)
 	return nil
+}
+
+// pinRoster TOFU-pins every active member of an audience other than the caller.
+// Best-effort: a member with no published identity, or one already pinned
+// (matching or conflicting), is skipped — Pin only records a first observation
+// and returns nil on a matching re-pin. Called after a read becomes authorized
+// (accept) so the caller trusts the roster it can now see.
+func (s *Service) pinRoster(ctx context.Context, sess *sharingSession, audienceID string) {
+	members, err := getMembers(ctx, s.http, sess.base, sess.token, audienceID)
+	if err != nil {
+		return
+	}
+	for _, m := range members {
+		if m.MemberID == sess.userID || m.Status != "active" {
+			continue
+		}
+		if _, pinned, ferr := s.pins.Fingerprint(m.MemberID); ferr != nil || pinned {
+			continue
+		}
+		row, rerr := getIdentity(ctx, s.http, sess.base, sess.token, m.MemberID)
+		if rerr != nil {
+			continue
+		}
+		pub, perr := publicFromRow(row)
+		if perr != nil {
+			continue
+		}
+		_ = s.pins.Pin(m.MemberID, sharing.Fingerprint(pub))
+	}
 }

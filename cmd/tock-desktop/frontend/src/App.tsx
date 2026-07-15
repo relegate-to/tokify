@@ -14,6 +14,7 @@ import {
     ListToday,
     Projects,
     RemoveActivity,
+    SharingSharedEntries,
     Start,
     StartAt,
     Stop,
@@ -21,9 +22,9 @@ import {
     UpdateActivity,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { neonauth, teams } from '../wailsjs/go/models';
+import { main, neonauth, teams } from '../wailsjs/go/models';
 
-import type { Activity, ActivityView, Theme, View } from '@/types';
+import type { Activity, ActivityItem, ActivityView, Theme, View } from '@/types';
 import { REMOVE_ANIM_MS } from '@/lib/motion';
 import { Toaster } from '@/components/ui/sonner';
 import { Masthead } from '@/components/Masthead';
@@ -84,6 +85,28 @@ function readTheme(): Theme {
 const REFRESH_MS = 30_000;
 const HISTORY_LIMIT = 500;
 
+// mapShared turns the backend's decrypted, author-verified shared activities into
+// list rows tagged with their author. These are display-only: they render in the
+// Activity view but are never written to the local log.
+function mapShared(entries: main.SharedActivity[]): ActivityItem[] {
+    return entries.map(
+        (e) =>
+            ({
+                description: e.activity.description,
+                project: e.activity.project,
+                start_time: e.activity.start_time,
+                end_time: e.activity.end_time,
+                notes: e.activity.notes,
+                tags: e.activity.tags,
+                shared: {
+                    authorId: e.author_id,
+                    authorName: e.author_name,
+                    teamName: e.team_name,
+                },
+            }) as ActivityItem,
+    );
+}
+
 function App() {
     const [view, setView] = useState<View>('now');
     const [sharingProject, setSharingProject] = useState<string | undefined>();
@@ -91,6 +114,7 @@ function App() {
     const [today, setToday] = useState<Activity[]>([]);
     const [pastYear, setPastYear] = useState<Activity[]>([]);
     const [recent, setRecent] = useState<Activity[]>([]);
+    const [shared, setShared] = useState<ActivityItem[]>([]);
     const [projects, setProjects] = useState<string[]>([]);
     const [removingKeys, setRemovingKeys] = useState<Set<string>>(new Set());
     const [showAccount, setShowAccount] = useState<boolean>(() => {
@@ -216,6 +240,13 @@ function App() {
                 setProjects(p ?? []);
             })
             .catch((e) => toast.error(String(e)));
+
+        // Shared entries are best-effort and independent: a sharing/network error
+        // (or sync being off) must never break the local activity refresh, so this
+        // runs on its own and silently clears on failure.
+        SharingSharedEntries()
+            .then((entries) => setShared(mapShared(entries ?? [])))
+            .catch(() => setShared([]));
     };
 
     useEffect(() => {
@@ -380,6 +411,7 @@ function App() {
                                 <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
                                         <HistoryView
                                             activities={recent}
+                                            sharedActivities={shared}
                                             graphActivities={pastYear}
                                             projects={projects}
                                             removingKeys={removingKeys}

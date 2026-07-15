@@ -12,6 +12,9 @@ const PROJECT_COLORS = [
 ];
 
 export function projectColor(project: string): string {
+    // Guard against an empty/missing key: a color hash must never throw and blank
+    // the whole view. Falls back to the first color deterministically.
+    if (!project) return PROJECT_COLORS[0];
     let h = 2166136261;
     for (let i = 0; i < project.length; i++) {
         h = Math.imul(h ^ project.charCodeAt(i), 16777619);

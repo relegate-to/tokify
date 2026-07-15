@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/go-faster/errors"
+
+	"github.com/kriuchkov/tock/internal/appdir"
 )
 
 // Settings are the user-controlled preferences for the Neon Auth integration.
@@ -18,11 +20,7 @@ type Settings struct {
 }
 
 func defaultSettingsPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", errors.Wrap(err, "home dir")
-	}
-	return filepath.Join(home, "Library", "Application Support", "Tokify", "neonauth.json"), nil
+	return appdir.Path("neonauth.json")
 }
 
 func loadSettings(path string) (Settings, error) {

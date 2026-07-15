@@ -122,6 +122,10 @@ export function SharingSetTeamShare(arg1, arg2, arg3) {
   return window['go']['main']['App']['SharingSetTeamShare'](arg1, arg2, arg3);
 }
 
+export function SharingSharedEntries() {
+  return window['go']['main']['App']['SharingSharedEntries']();
+}
+
 export function SharingTeamMembers(arg1) {
   return window['go']['main']['App']['SharingTeamMembers'](arg1);
 }

@@ -23,6 +23,8 @@ import (
 	"sync"
 
 	"github.com/go-faster/errors"
+
+	"github.com/kriuchkov/tock/internal/appdir"
 )
 
 // Project is a first-class Tokify project. Name is the exact string that appears
@@ -47,11 +49,7 @@ type registryFile struct {
 
 // DefaultPath is where the registry lives, next to the other Tokify state files.
 func DefaultPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", errors.Wrap(err, "home dir")
-	}
-	return filepath.Join(home, "Library", "Application Support", "Tokify", "projects.json"), nil
+	return appdir.Path("projects.json")
 }
 
 // Open loads the registry at path, returning an empty registry if the file does

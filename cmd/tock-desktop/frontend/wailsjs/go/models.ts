@@ -1,5 +1,43 @@
 export namespace main {
 	
+	export class SharedActivity {
+	    activity: models.Activity;
+	    audience_id: string;
+	    team_name: string;
+	    author_id: string;
+	    author_name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SharedActivity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.activity = this.convertValues(source["activity"], models.Activity);
+	        this.audience_id = source["audience_id"];
+	        this.team_name = source["team_name"];
+	        this.author_id = source["author_id"];
+	        this.author_name = source["author_name"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class TeamView {
 	    ID: string;
 	    Role: string;
@@ -7,6 +45,7 @@ export namespace main {
 	    CurrentEpoch: number;
 	    Pending: boolean;
 	    InvitedBy: string;
+	    SharedName: string;
 	    Name: string;
 	
 	    static createFrom(source: any = {}) {
@@ -21,6 +60,7 @@ export namespace main {
 	        this.CurrentEpoch = source["CurrentEpoch"];
 	        this.Pending = source["Pending"];
 	        this.InvitedBy = source["InvitedBy"];
+	        this.SharedName = source["SharedName"];
 	        this.Name = source["Name"];
 	    }
 	}

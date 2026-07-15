@@ -164,17 +164,17 @@ func doJSON(ctx context.Context, hc *http.Client, method, url, token string, bod
 	return data, nil
 }
 
-// apiErr carries PostgREST's structured error alongside the HTTP status so
-// callers can branch on it (e.g. a unique-violation on an idempotent insert)
+// apiStatusError carries PostgREST's structured error alongside the HTTP status
+// so callers can branch on it (e.g. a unique-violation on an idempotent insert)
 // while its Error() text stays the human-readable message for the UI.
-type apiErr struct {
+type apiStatusError struct {
 	status  int
 	code    string
 	message string
 	hint    string
 }
 
-func (e *apiErr) Error() string {
+func (e *apiStatusError) Error() string {
 	if e.message == "" {
 		return fmt.Sprintf("neonsync: request failed (%d)", e.status)
 	}
@@ -187,7 +187,7 @@ func (e *apiErr) Error() string {
 // apiError extracts PostgREST's `{ "message", "hint", "details", "code" }` error
 // body so the UI can show the real reason rather than a bare status.
 func apiError(status int, body []byte) error {
-	e := &apiErr{status: status}
+	e := &apiStatusError{status: status}
 	var parsed struct {
 		Message string `json:"message"`
 		Hint    string `json:"hint"`
@@ -203,6 +203,6 @@ func apiError(status int, body []byte) error {
 // (Postgres 23505, surfaced as HTTP 409) — the signal that an idempotent insert
 // hit an already-present row and can be treated as success.
 func isUniqueViolation(err error) bool {
-	var e *apiErr
+	var e *apiStatusError
 	return errors.As(err, &e) && (e.code == "23505" || e.status == http.StatusConflict)
 }

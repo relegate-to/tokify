@@ -21,6 +21,7 @@ import (
 	projectreg "github.com/kriuchkov/tock/internal/app/projects"
 	"github.com/kriuchkov/tock/internal/app/runtime"
 	teamreg "github.com/kriuchkov/tock/internal/app/teams"
+	"github.com/kriuchkov/tock/internal/appdir"
 	"github.com/kriuchkov/tock/internal/core/models"
 	"github.com/kriuchkov/tock/internal/integrations/neonauth"
 	"github.com/kriuchkov/tock/internal/integrations/neonsync"
@@ -67,7 +68,10 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	rt, err := runtime.Load(ctx, runtime.Request{})
+	// A TOKIFY_PROFILE-namespaced log (see internal/appdir) lets two signed-in
+	// users run side by side for local sharing tests; empty means the upstream
+	// default (~/.tock.txt, or TOCK_FILE).
+	rt, err := runtime.Load(ctx, runtime.Request{FilePath: appdir.LogPath()})
 	if err != nil {
 		return
 	}
@@ -1056,6 +1060,10 @@ func (a *App) SharingCreateTeam(name string) (TeamView, error) {
 	if err != nil {
 		return TeamView{}, err
 	}
+	// Publish the name encrypted to the audience so invitees see it (not
+	// "Untitled"). Best-effort: the local name already covers the creator, and a
+	// rename retries the publish, so a transient failure must not fail creation.
+	_ = a.neonSync.SetTeamName(ctx, id, name)
 	return TeamView{
 		TeamInfo: neonsync.TeamInfo{ID: id, Role: "admin", MemberCount: 1, CurrentEpoch: 1},
 		Name:     t.Name,
@@ -1076,9 +1084,15 @@ func (a *App) SharingListTeams() ([]TeamView, error) {
 	}
 	out := make([]TeamView, 0, len(infos))
 	for _, info := range infos {
+		// Prefer a device-local name (a rename this device made) over the
+		// creator's encrypted shared name; fall back to the shared name so a
+		// joiner sees the real team name instead of "Untitled".
 		name := ""
 		if a.teamNames != nil {
 			name = a.teamNames.Name(info.ID)
+		}
+		if name == "" {
+			name = info.SharedName
 		}
 		out = append(out, TeamView{TeamInfo: info, Name: name})
 	}
@@ -1169,13 +1183,23 @@ func (a *App) SharingDeclineInvite(audienceID string) error {
 	return nil
 }
 
-// SharingRenameTeam updates the local name for a team.
+// SharingRenameTeam updates the team name: the device-local name always, and —
+// when the caller is an admin — the encrypted shared name so other members see
+// the new name too. A non-admin's shared-name write is refused by RLS, which is
+// fine: their rename stays local to this device.
 func (a *App) SharingRenameTeam(audienceID, name string) error {
 	if a.teamNames == nil {
 		return errors.New("team registry unavailable")
 	}
-	_, err := a.teamNames.SetName(audienceID, name)
-	return err
+	if _, err := a.teamNames.SetName(audienceID, name); err != nil {
+		return err
+	}
+	if a.neonSync != nil {
+		ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+		defer cancel()
+		_ = a.neonSync.SetTeamName(ctx, strings.TrimSpace(audienceID), name)
+	}
+	return nil
 }
 
 // SharingAddMember adds a user to a team by their user id, pinning their
@@ -1272,4 +1296,58 @@ func (a *App) SharingSetTeamShare(audienceID string, projects []string, sinceDay
 	}
 	a.syncSoon()
 	return nil
+}
+
+// SharedActivity is one read-only activity another member shared with a team the
+// caller belongs to, decrypted and author-verified by the sharing service. It is
+// display-only and never merges into the local ~/.tock.txt log. AuthorName and
+// AuthorID drive the author badge in the merged Activity view; TeamName is the
+// caller's local name for the audience the entry came through.
+//
+// Activity is a NAMED field, not embedded: models.Activity has a custom
+// MarshalJSON, and embedding it would promote that method so json.Marshal emitted
+// only the activity fields and silently dropped author_id/team_name/author_name.
+type SharedActivity struct {
+	Activity   models.Activity `json:"activity"`
+	AudienceID string          `json:"audience_id"`
+	TeamName   string          `json:"team_name"`
+	AuthorID   string          `json:"author_id"`
+	AuthorName string          `json:"author_name"`
+}
+
+// SharingSharedEntries returns every activity shared with the caller across all
+// their teams, decrypted and author-verified. The result is read-only: the UI
+// folds it into the Activity view tagged by author but must never write it to the
+// local log. An unpinned author is a hard failure surfaced here rather than shown
+// as untrusted data.
+func (a *App) SharingSharedEntries() ([]SharedActivity, error) {
+	if a.neonSync == nil {
+		return nil, errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	entries, err := a.neonSync.ListSharedEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	authorIDs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		authorIDs = append(authorIDs, e.AuthorID)
+	}
+	names, _ := a.neonSync.ResolveDisplayNames(ctx, authorIDs)
+	out := make([]SharedActivity, 0, len(entries))
+	for _, e := range entries {
+		teamName := ""
+		if a.teamNames != nil {
+			teamName = a.teamNames.Name(e.AudienceID)
+		}
+		out = append(out, SharedActivity{
+			Activity:   e.Activity,
+			AudienceID: e.AudienceID,
+			TeamName:   teamName,
+			AuthorID:   e.AuthorID,
+			AuthorName: names[e.AuthorID],
+		})
+	}
+	return out, nil
 }
