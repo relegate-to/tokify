@@ -85,6 +85,16 @@ function readTheme(): Theme {
 const REFRESH_MS = 30_000;
 const HISTORY_LIMIT = 500;
 
+// Shared entries come off the network, not from local actions, so they poll on
+// their own attention-aware cadence rather than riding the local refresh: snappy
+// while the window is focused, gentler when it's merely visible, and paused
+// entirely when it's hidden to the menu bar. Nobody's watching a hidden window,
+// and a held-open poll would only keep the machine (and Neon's compute) awake for
+// nothing — the crossover where real-time push would pay for itself is well past
+// the scale a menu-bar tracker reaches.
+const SHARED_POLL_ACTIVE_MS = 10_000;
+const SHARED_POLL_IDLE_MS = 30_000;
+
 // mapShared turns the backend's decrypted, author-verified shared activities into
 // list rows tagged with their author. These are display-only: they render in the
 // Activity view but are never written to the local log.
@@ -240,19 +250,65 @@ function App() {
                 setProjects(p ?? []);
             })
             .catch((e) => toast.error(String(e)));
-
-        // Shared entries are best-effort and independent: a sharing/network error
-        // (or sync being off) must never break the local activity refresh, so this
-        // runs on its own and silently clears on failure.
-        SharingSharedEntries()
-            .then((entries) => setShared(mapShared(entries ?? [])))
-            .catch(() => setShared([]));
     };
 
     useEffect(() => {
         refresh();
         const id = setInterval(refresh, REFRESH_MS);
         return () => clearInterval(id);
+    }, []);
+
+    // Poll shared entries independently of the local refresh. A sharing/network
+    // error (or sync being off) is best-effort: it must never break local state,
+    // and a transient failure keeps the last-good rows rather than flickering the
+    // merged view empty. Cadence follows window attention, and the poll pauses
+    // while hidden, waking with an immediate pull when the window returns.
+    useEffect(() => {
+        let timer: number | null = null;
+        let cancelled = false;
+
+        const pull = () => {
+            SharingSharedEntries()
+                .then((entries) => {
+                    if (!cancelled) setShared(mapShared(entries ?? []));
+                })
+                .catch(() => {
+                    // keep last-good shared rows
+                });
+        };
+
+        const schedule = () => {
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            if (document.visibilityState === 'hidden') return;
+            const delay = document.hasFocus()
+                ? SHARED_POLL_ACTIVE_MS
+                : SHARED_POLL_IDLE_MS;
+            timer = window.setTimeout(() => {
+                pull();
+                schedule();
+            }, delay);
+        };
+
+        const wake = () => {
+            if (document.visibilityState !== 'hidden') pull();
+            schedule();
+        };
+
+        pull();
+        schedule();
+        document.addEventListener('visibilitychange', wake);
+        window.addEventListener('focus', wake);
+        window.addEventListener('blur', schedule);
+        return () => {
+            cancelled = true;
+            if (timer !== null) clearTimeout(timer);
+            document.removeEventListener('visibilitychange', wake);
+            window.removeEventListener('focus', wake);
+            window.removeEventListener('blur', schedule);
+        };
     }, []);
 
     const handleStart = (description: string, project: string) =>
