@@ -70,10 +70,12 @@ export function ExportDialog({
     open,
     onOpenChange,
     projects,
+    hasShared,
 }: {
     open: boolean;
     onOpenChange: (v: boolean) => void;
     projects: string[];
+    hasShared: boolean;
 }) {
     const [format, setFormat] = useState<ExportFormat>('txt');
     const [range, setRange] = useState<ExportRange>('all');
@@ -82,6 +84,7 @@ export function ExportDialog({
     const [fromOpen, setFromOpen] = useState(false);
     const [toOpen, setToOpen] = useState(false);
     const [project, setProject] = useState('');
+    const [includeShared, setIncludeShared] = useState(false);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -91,6 +94,7 @@ export function ExportDialog({
         setFromDate(startOfDay(new Date()));
         setToDate(startOfDay(new Date()));
         setProject('');
+        setIncludeShared(false);
         setSaving(false);
     }, [open]);
 
@@ -101,7 +105,7 @@ export function ExportDialog({
         }
         const { from, to } = resolveExportRange(range, fromDate, toDate);
         setSaving(true);
-        Export(format, from, to, project.trim())
+        Export(format, from, to, project.trim(), hasShared && includeShared)
             .then((path) => {
                 if (path) {
                     toast.success('Exported', { description: path });
@@ -174,10 +178,40 @@ export function ExportDialog({
                             value={project}
                             onChange={setProject}
                             suggestions={projects}
-                            onSubmit={submit}
                             placeholder="all projects"
                         />
                     </div>
+                    {hasShared && (
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="flex min-w-0 flex-col">
+                                <span className="text-sm">
+                                    Include shared team activity
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    Off by default; exports only your own log.
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={includeShared}
+                                onClick={() => setIncludeShared((v) => !v)}
+                                className={cn(
+                                    'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+                                    includeShared ? 'bg-foreground' : 'bg-muted',
+                                )}
+                            >
+                                <span
+                                    className={cn(
+                                        'inline-block size-4 rounded-full bg-background shadow transition-transform',
+                                        includeShared
+                                            ? 'translate-x-[1.125rem]'
+                                            : 'translate-x-0.5',
+                                    )}
+                                />
+                            </button>
+                        </div>
+                    )}
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>

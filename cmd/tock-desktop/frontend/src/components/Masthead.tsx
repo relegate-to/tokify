@@ -10,6 +10,7 @@ import {
     Download,
     FileText,
     List,
+    Mail,
     Settings as SettingsIcon,
     Share2,
     User,
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react';
 
 import type { Activity, View } from '@/types';
-import type { neonauth } from '../../wailsjs/go/models';
+import type { main, neonauth } from '../../wailsjs/go/models';
 import { cn } from '@/lib/utils';
 import { accountDisplayName, accountInitials } from '@/lib/account';
 import { formatDuration } from '@/lib/time';
@@ -69,6 +70,8 @@ export function Masthead({
     showAccount,
     account,
     projects,
+    invites,
+    hasShared,
 }: {
     view: View;
     onView: (v: View) => void;
@@ -76,6 +79,8 @@ export function Masthead({
     showAccount: boolean;
     account: neonauth.Status | null;
     projects: string[];
+    invites: main.TeamView[];
+    hasShared: boolean;
 }) {
     const date = new Date()
         .toLocaleDateString(undefined, {
@@ -354,7 +359,8 @@ export function Masthead({
                     </div>
                 </div>
             </div>
-            <div style={noDragStyle}>
+            <div className="flex items-center gap-2" style={noDragStyle}>
+                <InviteBadge invites={invites} onOpen={() => onView('teams')} />
                 <DropdownMenu open={open} onOpenChange={handleOpenChange}>
                     <DropdownMenuTrigger asChild>
                         {showAccount ? (
@@ -482,8 +488,42 @@ export function Masthead({
             open={exportOpen}
             onOpenChange={setExportOpen}
             projects={projects}
+            hasShared={hasShared}
         />
         </>
+    );
+}
+
+// An invitation waiting to be accepted: an incoming, gentle signal, so it wears
+// the app's amber attention accent and reads as a plain fact ("Invitation")
+// rather than a count until there's more than one. Clicking opens Teams, where
+// the invite can be accepted or declined.
+function InviteBadge({
+    invites,
+    onOpen,
+}: {
+    invites: main.TeamView[];
+    onOpen: () => void;
+}) {
+    if (invites.length === 0) return null;
+    const count = invites.length;
+    const label = count === 1 ? 'Invitation' : `${count} invitations`;
+    const inviter = invites[0].InvitedBy.trim() || 'Someone';
+    const title =
+        count === 1
+            ? `${inviter} invited you to their team`
+            : `You have ${count} team invitations`;
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            title={title}
+            aria-label={title}
+            className="flex select-none items-center gap-1.5 rounded-[9px] border border-amber-300/60 bg-amber-100/70 py-1.5 pl-2 pr-2.5 text-[13px] font-medium leading-none text-amber-900 outline-none transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-0 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/15 animate-in fade-in-0 slide-in-from-right-1 duration-300 [&_svg]:size-3.5"
+        >
+            <Mail />
+            {label}
+        </button>
     );
 }
 

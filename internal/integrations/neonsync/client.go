@@ -30,6 +30,11 @@ type userKeysRow struct {
 	// account is provisioned for sharing; populated by patchIdentityColumns.
 	WrappedIdentity string `json:"wrapped_identity,omitempty"`
 	IdentityNonce   string `json:"identity_nonce,omitempty"`
+	// Cross-device pin store (fingerprint pins + epoch watermarks), sealed under
+	// the account DEK. Empty until this device pushes its pins; populated by
+	// patchPinsColumns. See PinStore.MergeRemote for the sync semantics.
+	WrappedPins string `json:"wrapped_pins,omitempty"`
+	PinsNonce   string `json:"pins_nonce,omitempty"`
 }
 
 type entryRow struct {

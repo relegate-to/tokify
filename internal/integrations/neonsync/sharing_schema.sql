@@ -86,6 +86,19 @@ ALTER TABLE public.user_keys
 ALTER TABLE public.user_keys
     ADD COLUMN IF NOT EXISTS identity_nonce text;                             -- base64 24-byte nonce for wrapped_identity
 
+-- wrapped_pins: the caller's fingerprint-pin store (the §9 out-of-band trust
+-- decisions: which member keys they've pinned, plus per-audience epoch
+-- high-water marks), sealed under the account DEK so it syncs across the user's
+-- own devices. Without it a second device starts with an empty pin store and
+-- shows every teammate as unverified (and shared reads hard-fail on ErrNotPinned)
+-- until it re-observes them. Own-row-only under the existing user_keys RLS, so a
+-- user's trust decisions never leak to anyone else. Nullable until first push;
+-- holds only public fingerprints and epoch counts, nothing secret.
+ALTER TABLE public.user_keys
+    ADD COLUMN IF NOT EXISTS wrapped_pins text;                               -- base64 pin-store ciphertext, wrapped by the DEK
+ALTER TABLE public.user_keys
+    ADD COLUMN IF NOT EXISTS pins_nonce text;                                 -- base64 24-byte nonce for wrapped_pins
+
 -- ===========================================================================
 -- SECTION 1 — New tables
 -- ===========================================================================

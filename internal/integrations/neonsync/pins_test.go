@@ -3,6 +3,8 @@ package neonsync
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/kriuchkov/tock/internal/integrations/neonsync/sharing"
 )
 
 func newTestPins(t *testing.T) *PinStore {
@@ -92,6 +94,103 @@ func TestEpochWatermark(t *testing.T) {
 	// Watermarks are per-audience.
 	if err := p.CheckEpochWatermark("other", 1); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMergeRemoteSeedsAndPreservesLocal(t *testing.T) {
+	// A fresh device (empty local store) inherits another device's pins wholesale.
+	device1 := newTestPins(t)
+	if err := device1.Pin("alice", "fp-alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := device1.Pin("bob", "fp-bob"); err != nil {
+		t.Fatal(err)
+	}
+	if err := device1.CheckEpochWatermark("aud", 4); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := device1.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	device2 := newTestPins(t)
+	if err := device2.MergeRemote(blob); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := device2.Verify("alice", "fp-alice"); !ok {
+		t.Fatal("merge should seed alice's pin")
+	}
+	if ok, _ := device2.Verify("bob", "fp-bob"); !ok {
+		t.Fatal("merge should seed bob's pin")
+	}
+	if wm, _ := device2.EpochWatermark("aud"); wm != 4 {
+		t.Fatalf("merge should carry the watermark: got %d", wm)
+	}
+
+	// A conflicting remote fingerprint never overwrites a locally pinned one, and
+	// the watermark only ratchets up (a lower remote count is ignored).
+	device2Local := newTestPins(t)
+	if err := device2Local.Pin("alice", "fp-alice-local"); err != nil {
+		t.Fatal(err)
+	}
+	if err := device2Local.CheckEpochWatermark("aud", 9); err != nil {
+		t.Fatal(err)
+	}
+	if err := device2Local.MergeRemote(blob); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := device2Local.Verify("alice", "fp-alice-local"); !ok {
+		t.Fatal("local pin must win a conflict, not be overwritten by remote")
+	}
+	if ok, _ := device2Local.Verify("bob", "fp-bob"); !ok {
+		t.Fatal("non-conflicting remote pin should still be merged in")
+	}
+	if wm, _ := device2Local.EpochWatermark("aud"); wm != 9 {
+		t.Fatalf("watermark must not regress below local: got %d", wm)
+	}
+}
+
+func TestWrapPinsRoundTrip(t *testing.T) {
+	device1 := newTestPins(t)
+	if err := device1.Pin("alice", "fp-alice"); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := device1.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dek := make([]byte, 32)
+	for i := range dek {
+		dek[i] = byte(i)
+	}
+	ct, nonce, err := sharing.WrapPins(blob, dek, "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Correct DEK + user id round-trips.
+	got, err := sharing.UnwrapPins(ct, nonce, dek, "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	device2 := newTestPins(t)
+	if err := device2.MergeRemote(got); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := device2.Verify("alice", "fp-alice"); !ok {
+		t.Fatal("round-tripped pins should verify after merge")
+	}
+
+	// A different user id in the AAD fails authentication (no cross-account splice).
+	if _, err := sharing.UnwrapPins(ct, nonce, dek, "user-2"); err == nil {
+		t.Fatal("unwrap under a different user id must fail")
+	}
+	// A wrong DEK fails authentication.
+	wrong := make([]byte, 32)
+	if _, err := sharing.UnwrapPins(ct, nonce, wrong, "user-1"); err == nil {
+		t.Fatal("unwrap under a wrong DEK must fail")
 	}
 }
 

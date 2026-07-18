@@ -154,10 +154,12 @@ function Avatar({
 export function TeamsView({
     projects,
     selfUserID,
+    onInviteResolved,
     onBack,
 }: {
     projects: string[];
     selfUserID?: string;
+    onInviteResolved?: (teamID: string) => void;
     onBack: () => void;
 }) {
     const [teams, setTeams] = useState<main.TeamView[]>([]);
@@ -299,6 +301,9 @@ export function TeamsView({
                                                 cur.filter((t) => t.ID !== team.ID),
                                             );
                                         }
+                                        // Drop the masthead badge for this invite
+                                        // right away rather than waiting on the poll.
+                                        onInviteResolved?.(team.ID);
                                     }}
                                 />
                             ))}
@@ -487,6 +492,20 @@ function TeamCard({
     const sortedProjects = useMemo(
         () => [...projects].filter(Boolean).sort((a, b) => a.localeCompare(b)),
         [projects],
+    );
+
+    // Admins pick which of their own projects to share, so they toggle over the
+    // local project list. A member has no say and may not even own the shared
+    // projects locally, so they see the team's actual shared set (share.Projects)
+    // read-only — otherwise a project they don't track themselves is invisible.
+    const displayProjects = useMemo(
+        () =>
+            isAdmin
+                ? sortedProjects
+                : [...(share?.Projects ?? [])]
+                      .filter(Boolean)
+                      .sort((a, b) => a.localeCompare(b)),
+        [isAdmin, sortedProjects, share],
     );
 
     const load = () => {
@@ -845,14 +864,16 @@ function TeamCard({
                         Shared projects
                     </div>
 
-                    {sortedProjects.length === 0 ? (
+                    {displayProjects.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
-                            No projects yet. Track some time or create a project first.
+                            {isAdmin
+                                ? 'No projects yet. Track some time or create a project first.'
+                                : 'This team is not sharing any projects yet.'}
                         </p>
                     ) : (
                         <div className="flex flex-wrap gap-1.5">
-                            {sortedProjects.map((p) => {
-                                const on = selProjects.includes(p);
+                            {displayProjects.map((p) => {
+                                const on = isAdmin ? selProjects.includes(p) : true;
                                 return (
                                     <button
                                         key={p}

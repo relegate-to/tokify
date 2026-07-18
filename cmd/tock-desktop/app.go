@@ -42,6 +42,9 @@ type App struct {
 	// teamNames is the client-side audience-id -> local name map for sharing
 	// teams (distinct from the Microsoft Teams integration in `teams` above).
 	teamNames *teamreg.Registry
+	// sharedCache serves the last-good decrypted shared activity instantly while a
+	// refresh runs in the background — see sharedCache and refreshSharedAsync.
+	sharedCache *sharedCache
 
 	mu       sync.Mutex
 	trayStop chan struct{}
@@ -49,6 +52,7 @@ type App struct {
 
 	teamsReconnecting atomic.Bool
 	syncing           atomic.Bool
+	sharedRefreshing  atomic.Bool
 }
 
 // Encrypted sync runs on its own without the user clicking "Sync now": once
@@ -90,6 +94,13 @@ func (a *App) startup(ctx context.Context) {
 		if reg, oerr := teamreg.Open(p); oerr == nil {
 			a.teamNames = reg
 		}
+	}
+	// The shared-activity cache paints the merged Activity view from the previous
+	// session's rows before the first network read returns. Non-fatal like the
+	// registries — a failure just means we can't reach ~/Library and cold starts
+	// stay slow.
+	if p, perr := sharedCachePath(); perr == nil {
+		a.sharedCache = openSharedCache(p)
 	}
 	// Teams integration is opt-in; we still construct the service eagerly so
 	// the settings page can render its disabled state without a round-trip
@@ -564,7 +575,7 @@ func (a *App) ListRecent(limit int) ([]models.Activity, error) {
 // project filters by exact project name (empty means no project filter).
 // Reuses tock's own RenderOutput so the GUI and CLI produce byte-identical
 // exports.
-func (a *App) Export(format, fromDate, toDate, project string) (string, error) {
+func (a *App) Export(format, fromDate, toDate, project string, includeShared bool) (string, error) {
 	if err := a.requireRuntime(); err != nil {
 		return "", err
 	}
@@ -605,6 +616,17 @@ func (a *App) Export(format, fromDate, toDate, project string) (string, error) {
 	report, err := a.rt.ActivityService.GetReport(a.ctx, filter)
 	if err != nil {
 		return "", errors.Wrap(err, "generate report")
+	}
+	// Opt-in: fold read-only shared activity from other members into the export.
+	// Default (own-only) leaves the report as the local log, so a teammate's data
+	// never lands in an export unless the user asked for it.
+	if includeShared && a.sharedCache != nil {
+		cached := a.sharedCache.get()
+		shared := make([]models.Activity, 0, len(cached))
+		for _, s := range cached {
+			shared = append(shared, s.Activity)
+		}
+		foldSharedIntoReport(report, shared, filter)
 	}
 	output, err := exportapp.RenderOutput(format, report, a.rt.TimeFormatter)
 	if err != nil {
@@ -830,6 +852,11 @@ func (a *App) AuthSignOut() error {
 	defer cancel()
 	if a.neonSync != nil {
 		_ = a.neonSync.Lock(ctx)
+	}
+	// Drop the on-disk shared-activity cache so another member's decrypted rows
+	// don't linger past sign-out.
+	if a.sharedCache != nil {
+		a.sharedCache.clear()
 	}
 	return a.neonAuth.SignOut(ctx)
 }
@@ -1324,8 +1351,37 @@ func (a *App) SharingSharedEntries() ([]SharedActivity, error) {
 	if a.neonSync == nil {
 		return nil, errors.New("sharing unavailable")
 	}
+	// Signed out means there's nothing to show — don't serve the cached rows of a
+	// previous session, which would leak another member's data past sign-out. The
+	// check is a local session-file read, not a network call.
+	if a.neonAuth == nil || !a.neonAuth.Status().SignedIn {
+		return []SharedActivity{}, nil
+	}
+	// Serve the cache instantly and reconcile in the background: the poll returns
+	// the last-good rows without waiting on the network walk, and the refresh
+	// pushes any change via the shared:updated event. Only a truly cold cache (no
+	// prior session, no disk file) falls through to a synchronous fetch so the
+	// merged view isn't left empty on a brand-new install.
+	if a.sharedCache != nil && a.sharedCache.warm() {
+		a.refreshSharedAsync()
+		return a.sharedCache.get(), nil
+	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
+	out, err := a.fetchSharedEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if a.sharedCache != nil {
+		a.sharedCache.set(out)
+	}
+	return out, nil
+}
+
+// fetchSharedEntries runs the full shared read path: list decrypted entries,
+// resolve author display names, and tag each with the caller's local team name.
+// This is the expensive network + crypto walk that the cache exists to hide.
+func (a *App) fetchSharedEntries(ctx context.Context) ([]SharedActivity, error) {
 	entries, err := a.neonSync.ListSharedEntries(ctx)
 	if err != nil {
 		return nil, err
@@ -1350,4 +1406,29 @@ func (a *App) SharingSharedEntries() ([]SharedActivity, error) {
 		})
 	}
 	return out, nil
+}
+
+// refreshSharedAsync reconciles the cache with the network in the background,
+// single-flighted so a burst of polls collapses into one walk. On a real change
+// it persists the snapshot and emits shared:updated so the UI updates without
+// waiting for its next poll; a transient failure keeps the last-good rows.
+func (a *App) refreshSharedAsync() {
+	if a.neonSync == nil || a.sharedCache == nil {
+		return
+	}
+	if !a.sharedRefreshing.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer a.sharedRefreshing.Store(false)
+		ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+		defer cancel()
+		out, err := a.fetchSharedEntries(ctx)
+		if err != nil {
+			return
+		}
+		if a.sharedCache.set(out) {
+			wailsruntime.EventsEmit(a.ctx, "shared:updated", out)
+		}
+	}()
 }

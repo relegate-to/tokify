@@ -47,6 +47,80 @@ func (s *Service) Pins() *PinStore {
 	return s.pins
 }
 
+// pushPins seals the local pin store under the account DEK and writes it to the
+// caller's user_keys row so the user's other devices inherit these trust
+// decisions (fixing the "everyone unverified on a new device" problem). Called
+// after any pin mutation. Best-effort: a pin already recorded locally is the
+// source of truth for this session, and a failed push retries on the next
+// mutation or the next Unlock — so a transport error must never fail the sharing
+// operation that produced the pin.
+func (s *Service) pushPins(ctx context.Context, sess *sharingSession) {
+	blob, err := s.pins.Export()
+	if err != nil {
+		return
+	}
+	ct, nonce, err := sharing.WrapPins(blob, sess.dek, sess.userID)
+	if err != nil {
+		return
+	}
+	_ = patchPinsColumns(ctx, s.http, sess.base, sess.token, b64(ct), b64(nonce))
+}
+
+// mergePinsFromRow decrypts the wrapped pin store carried on a user_keys row and
+// folds it into the local store. A row without pins, a decode failure, or a
+// wrong-DEK unwrap are all silently skipped — the local pins remain authoritative
+// and the caller keeps working with whatever it already had.
+func (s *Service) mergePinsFromRow(row *userKeysRow, dek []byte, userID string) {
+	if row == nil || row.WrappedPins == "" || row.PinsNonce == "" {
+		return
+	}
+	ct, err := unb64(row.WrappedPins)
+	if err != nil {
+		return
+	}
+	nonce, err := unb64(row.PinsNonce)
+	if err != nil {
+		return
+	}
+	blob, err := sharing.UnwrapPins(ct, nonce, dek, userID)
+	if err != nil {
+		return
+	}
+	_ = s.pins.MergeRemote(blob)
+}
+
+// syncPins reconciles the local pin store with the copy on the server at Unlock:
+// merge the stored pins (if any) into the local store (MergeRemote never
+// overwrites a locally pinned fingerprint), then push the merged result back so
+// the server and every device converge. Runs inside Unlock where the DEK is
+// freshly available; entirely best-effort, like the identity provisioning it
+// follows — a failure just leaves pins to sync next time.
+func (s *Service) syncPins(ctx context.Context, base, token, userID string, dek []byte, row *userKeysRow) {
+	s.mergePinsFromRow(row, dek, userID)
+	blob, err := s.pins.Export()
+	if err != nil {
+		return
+	}
+	ct, nonce, err := sharing.WrapPins(blob, dek, userID)
+	if err != nil {
+		return
+	}
+	_ = patchPinsColumns(ctx, s.http, base, token, b64(ct), b64(nonce))
+}
+
+// pullPins converges the local pin store from the server using only the cached
+// DEK (no password), so a device that was provisioned in a past session — and so
+// never re-ran the Unlock-time sync — still inherits trust decisions made
+// elsewhere. Read-only: it merges but does not push (pushes ride the pin
+// mutations and Unlock). Best-effort; called on the background shared-read path.
+func (s *Service) pullPins(ctx context.Context, sess *sharingSession) {
+	row, err := getUserKeys(ctx, s.http, sess.base, sess.token)
+	if err != nil {
+		return
+	}
+	s.mergePinsFromRow(row, sess.dek, sess.userID)
+}
+
 // provisionIdentity is the identity-provisioning step folded into Unlock — the
 // only place the KEK exists. If the user_keys row has no wrapped_identity yet it
 // mints a fresh identity, wraps it under the KEK, PATCHes user_keys, upserts the
@@ -293,6 +367,7 @@ func (s *Service) CreateAudience(ctx context.Context) (string, error) {
 	if perr := s.pins.Repin(sess.userID, sharing.Fingerprint(sess.id.Public())); perr != nil {
 		return "", perr
 	}
+	s.pushPins(ctx, sess)
 	return audienceID, nil
 }
 

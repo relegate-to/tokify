@@ -34,8 +34,8 @@ export function CreateProject(arg1) {
   return window['go']['main']['App']['CreateProject'](arg1);
 }
 
-export function Export(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['Export'](arg1, arg2, arg3, arg4);
+export function Export(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['Export'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function GetRunning() {

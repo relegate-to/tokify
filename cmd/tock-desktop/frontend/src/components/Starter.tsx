@@ -109,7 +109,6 @@ export function Starter({
                 value={project}
                 onChange={setProject}
                 suggestions={projects}
-                onSubmit={submit}
             />
             <div className="flex h-6 items-center">
                 {startAt === null ? (

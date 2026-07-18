@@ -201,6 +201,10 @@ func (s *Service) Unlock(ctx context.Context, email, password, userID, token str
 	if perr := s.provisionIdentity(ctx, base, token, userID, email, kek, row); perr != nil {
 		return nil //nolint:nilerr // sharing setup is best-effort; DEK unlock already succeeded
 	}
+	// Pull down and merge this account's pin store so a freshly signed-in device
+	// inherits the trust decisions made on other devices instead of rendering
+	// every teammate as unverified. Best-effort, like the identity step above.
+	s.syncPins(ctx, base, token, userID, dek, row)
 	return nil
 }
 

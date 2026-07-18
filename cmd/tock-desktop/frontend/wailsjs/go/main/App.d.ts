@@ -23,7 +23,7 @@ export function AuthVerifyEmail(arg1:string,arg2:string,arg3:string):Promise<neo
 
 export function CreateProject(arg1:string):Promise<projects.Project>;
 
-export function Export(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+export function Export(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<string>;
 
 export function GetRunning():Promise<models.Activity>;
 

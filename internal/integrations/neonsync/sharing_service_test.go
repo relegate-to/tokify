@@ -158,7 +158,7 @@ func (f *fakePostgREST) handleMembers(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeJSON(w, f.members)
+	writeJSON(w, selectRows(r, f.members, "audience_id", func(m audienceMemberRow) string { return m.AudienceID }))
 }
 
 func (f *fakePostgREST) hasMember(audienceID, memberID string) bool {
@@ -301,7 +301,7 @@ func (f *fakePostgREST) handleIdentities(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusCreated)
 		return
 	}
-	writeJSON(w, filterByAudience(f.identities, eqParam(r, "user_id"), func(i identityRow) string { return i.UserID }))
+	writeJSON(w, selectRows(r, f.identities, "user_id", func(i identityRow) string { return i.UserID }))
 }
 
 // filterByAudience returns rows whose key equals want, or all rows when want is
@@ -339,6 +339,38 @@ func readBody(r *http.Request) []byte {
 func eqParam(r *http.Request, key string) string {
 	v := r.URL.Query().Get(key)
 	return strings.TrimPrefix(v, "eq.")
+}
+
+// paramMatch reports whether v satisfies the PostgREST filter on the request's
+// `key` query param, supporting the eq. and in.(...) forms the client emits (and
+// treating an absent filter as "match all").
+func paramMatch(r *http.Request, key, v string) bool {
+	raw := r.URL.Query().Get(key)
+	if raw == "" {
+		return true
+	}
+	if rest, ok := strings.CutPrefix(raw, "in.("); ok {
+		rest = strings.TrimSuffix(rest, ")")
+		for item := range strings.SplitSeq(rest, ",") {
+			if strings.Trim(strings.TrimSpace(item), `"`) == v {
+				return true
+			}
+		}
+		return false
+	}
+	return strings.TrimPrefix(raw, "eq.") == v
+}
+
+// selectRows filters rows by the eq./in. filter on one column — the fake's GET
+// equivalent of an RLS-less PostgREST read.
+func selectRows[T any](r *http.Request, rows []T, key string, col func(T) string) []T {
+	out := make([]T, 0, len(rows))
+	for _, row := range rows {
+		if paramMatch(r, key, col(row)) {
+			out = append(out, row)
+		}
+	}
+	return out
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -529,6 +561,41 @@ func TestWrapEpochToMembersReWrap(t *testing.T) {
 	}
 	if len(fake.epochKeys) != 1 {
 		t.Fatalf("want 1 epoch key row after re-wrap, got %d", len(fake.epochKeys))
+	}
+}
+
+// TestInsertEpochKeysIdempotent guards re-inviting a previously removed member:
+// their old-epoch key row can outlive the delete-first (e.g. an RLS/schema quirk
+// on the live DB), so the wrap's batch INSERT hits the (audience, epoch, member)
+// PK. That is not a real conflict — the epoch key is fixed per epoch number, so
+// the surviving wrap is still valid — and the insert must recover by swallowing
+// the duplicate rather than failing the whole re-invite.
+func TestInsertEpochKeysIdempotent(t *testing.T) {
+	fake := &fakePostgREST{}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+	ctx := context.Background()
+
+	stale := audienceEpochKeyRow{AudienceID: "aud-1", Epoch: 1, MemberID: "m1", WrappedEpochPrivkey: "old"}
+	if err := insertEpochKeys(ctx, http.DefaultClient, srv.URL, "tok", []audienceEpochKeyRow{stale}); err != nil {
+		t.Fatalf("seed insert failed: %v", err)
+	}
+
+	// A batch re-wrapping the surviving row alongside a brand-new one: the batch
+	// POST 409s on the stale row, and the row-by-row fallback must swallow that
+	// duplicate while still landing the new member's wrap.
+	batch := []audienceEpochKeyRow{
+		{AudienceID: "aud-1", Epoch: 1, MemberID: "m1", WrappedEpochPrivkey: "new"},
+		{AudienceID: "aud-1", Epoch: 1, MemberID: "m2", WrappedEpochPrivkey: "new"},
+	}
+	if err := insertEpochKeys(ctx, http.DefaultClient, srv.URL, "tok", batch); err != nil {
+		t.Fatalf("re-wrap over a surviving row must succeed, got: %v", err)
+	}
+	if !fake.hasEpochKey(audienceEpochKeyRow{AudienceID: "aud-1", Epoch: 1, MemberID: "m2"}) {
+		t.Fatal("new member wrap was not inserted after the duplicate")
+	}
+	if got := len(fake.epochKeys); got != 2 {
+		t.Fatalf("want 2 epoch key rows (m1 kept, m2 added), got %d", got)
 	}
 }
 

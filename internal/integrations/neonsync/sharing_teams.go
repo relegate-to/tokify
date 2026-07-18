@@ -75,6 +75,9 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Converge pins from the account's other devices so the roster renders with
+	// the trust decisions made elsewhere rather than showing everyone unverified.
+	s.pullPins(ctx, sess)
 	auds, err := getAudiences(ctx, s.http, sess.base, sess.token)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "list audiences")
@@ -88,15 +91,39 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 		linkAud[l.AudienceID] = struct{}{}
 	}
 
-	out := make([]TeamInfo, 0, len(auds))
+	// Team audiences only (drop the caller's link-share audiences), then fetch
+	// every audience's roster in one request rather than one per team.
+	teamAuds := make([]audienceRow, 0, len(auds))
+	audIDs := make([]string, 0, len(auds))
 	for _, aud := range auds {
 		if _, isLink := linkAud[aud.ID]; isLink {
 			continue
 		}
-		members, merr := getMembers(ctx, s.http, sess.base, sess.token, aud.ID)
-		if merr != nil {
-			return nil, gerrors.Wrapf(merr, "members of %s", aud.ID)
+		teamAuds = append(teamAuds, aud)
+		audIDs = append(audIDs, aud.ID)
+	}
+	membersByAud, err := getMembersByAudiences(ctx, s.http, sess.base, sess.token, audIDs)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "list members")
+	}
+
+	// Resolve every inviter's name for pending invites in a single identity lookup.
+	inviterIDs := make([]string, 0)
+	for _, aud := range teamAuds {
+		for _, m := range membersByAud[aud.ID] {
+			if m.MemberID == sess.userID && m.Status == "invited" {
+				inviterIDs = append(inviterIDs, aud.CreatedBy)
+			}
 		}
+	}
+	inviters, err := getIdentities(ctx, s.http, sess.base, sess.token, inviterIDs)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "inviter identities")
+	}
+
+	out := make([]TeamInfo, 0, len(teamAuds))
+	for _, aud := range teamAuds {
+		members := membersByAud[aud.ID]
 		role, status := "", ""
 		for _, m := range members {
 			if m.MemberID == sess.userID {
@@ -110,9 +137,7 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 		if pending {
 			// The invitee can read identities (public), so surface the inviter's
 			// name for the invitation. A missing/nameless identity is not an error.
-			if idRow, ierr := getIdentity(ctx, s.http, sess.base, sess.token, aud.CreatedBy); ierr == nil {
-				invitedBy = idRow.DisplayName
-			}
+			invitedBy = inviters[aud.CreatedBy].DisplayName
 		} else {
 			// Active members decrypt the shared team name; best-effort, a failure
 			// just leaves it empty and the app falls back to a local name.
@@ -200,6 +225,7 @@ func (s *Service) AddMemberTOFU(ctx context.Context, audienceID, userID, role st
 	if aerr := s.AddMember(ctx, audienceID, userID, role, withHistory); aerr != nil {
 		return "", aerr
 	}
+	s.pushPins(ctx, sess)
 	return fp, nil
 }
 
@@ -267,14 +293,13 @@ func (s *Service) ResolveDisplayNames(ctx context.Context, userIDs []string) (ma
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]string, len(userIDs))
-	for _, id := range userIDs {
-		if _, done := out[id]; done {
-			continue
-		}
-		if row, ierr := getIdentity(ctx, s.http, sess.base, sess.token, id); ierr == nil {
-			out[id] = row.DisplayName
-		}
+	rows, err := getIdentities(ctx, s.http, sess.base, sess.token, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for id, row := range rows {
+		out[id] = row.DisplayName
 	}
 	return out, nil
 }
@@ -317,21 +342,25 @@ func (s *Service) ListMembers(ctx context.Context, audienceID string) ([]TeamMem
 	if err != nil {
 		return nil, gerrors.Wrap(err, "list members")
 	}
+	ids := make([]string, len(members))
+	for i, m := range members {
+		ids[i] = m.MemberID
+	}
+	identities, err := getIdentities(ctx, s.http, sess.base, sess.token, ids)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "member identities")
+	}
 	out := make([]TeamMember, 0, len(members))
 	for _, m := range members {
 		_, pinned, ferr := s.pins.Fingerprint(m.MemberID)
 		if ferr != nil {
 			return nil, ferr
 		}
-		name := ""
-		if idRow, ierr := getIdentity(ctx, s.http, sess.base, sess.token, m.MemberID); ierr == nil {
-			name = idRow.DisplayName
-		}
 		out = append(out, TeamMember{
 			UserID:      m.MemberID,
 			Role:        m.Role,
 			Pinned:      pinned,
-			DisplayName: name,
+			DisplayName: identities[m.MemberID].DisplayName,
 			Status:      m.Status,
 		})
 	}
@@ -360,6 +389,7 @@ func (s *Service) AcceptInvite(ctx context.Context, audienceID string) error {
 		return gerrors.Wrap(uerr, "accept invite")
 	}
 	s.pinRoster(ctx, sess, audienceID)
+	s.pushPins(ctx, sess)
 	return nil
 }
 

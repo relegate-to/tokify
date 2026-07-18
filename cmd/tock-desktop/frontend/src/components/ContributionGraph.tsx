@@ -44,12 +44,13 @@ function contributionLevel(ms: number) {
 
 export function ContributionGraph({ activities }: { activities: Activity[] }) {
     const todayKey = format(new Date(), 'yyyy-MM-dd');
-    const { data, dominantProjects, totalMs } = useMemo(() => {
+    const { data, dominantProjects, totalMs, activityCount } = useMemo(() => {
         const end = startOfDay(new Date());
         const start = subDays(end, GRAPH_DAYS - 1);
         const startKey = format(start, 'yyyy-MM-dd');
         const durations = new Map<string, number>();
         const projectDurations = new Map<string, Map<string, number>>();
+        let count = 0;
 
         for (const activity of activities) {
             if (!activity.end_time) continue;
@@ -63,6 +64,7 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
 
             const key = format(activityStart, 'yyyy-MM-dd');
             if (key < startKey || key > todayKey) continue;
+            count += 1;
             durations.set(key, (durations.get(key) ?? 0) + duration);
 
             const project = activity.project ?? '';
@@ -107,6 +109,7 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
             data: calendarData,
             dominantProjects: dominantByDate,
             totalMs: total,
+            activityCount: count,
         };
     }, [activities, todayKey]);
 
@@ -124,6 +127,9 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
                     Activity, past year
                 </CardTitle>
                 <CardAction className="text-xs tabular-nums text-muted-foreground">
+                    {activityCount.toLocaleString()}{' '}
+                    {activityCount === 1 ? 'activity' : 'activities'}
+                    <span className="mx-1.5 opacity-40">·</span>
                     {formatTotal(totalMs)} logged
                 </CardAction>
             </CardHeader>

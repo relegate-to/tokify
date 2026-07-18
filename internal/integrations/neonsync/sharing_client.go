@@ -122,6 +122,39 @@ func getIdentity(ctx context.Context, hc *http.Client, base, token, userID strin
 // The read path treats it as an unpinnable identity (a hard failure to trust).
 var errIdentityNotFound = gerrors.New("neonsync: no published identity")
 
+// getIdentities fetches published identities for many users in one request,
+// keyed by user_id — the batched form of getIdentity that a roster or an author
+// list uses instead of a per-user round-trip. A user with no published identity
+// is simply absent from the map; empty in, empty out.
+func getIdentities(ctx context.Context, hc *http.Client, base, token string, userIDs []string) (map[string]identityRow, error) {
+	out := make(map[string]identityRow, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	quoted := make([]string, 0, len(userIDs))
+	seen := make(map[string]struct{}, len(userIDs))
+	for _, id := range userIDs {
+		if _, dup := seen[id]; dup || id == "" {
+			continue
+		}
+		seen[id] = struct{}{}
+		quoted = append(quoted, q(id))
+	}
+	path := "/identities?select=*&user_id=in.(" + strings.Join(quoted, ",") + ")"
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []identityRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode identities")
+	}
+	for _, r := range rows {
+		out[r.UserID] = r
+	}
+	return out, nil
+}
+
 // getIdentitiesByEmailHash finds published identities whose email_hash matches —
 // the invite discovery lookup. Returns all matches (normally zero or one); the
 // caller resolves ambiguity.
@@ -155,6 +188,21 @@ func patchIdentityColumns(ctx context.Context, hc *http.Client, base, token, wra
 	body, err := json.Marshal(map[string]string{
 		"wrapped_identity": wrappedIdentity,
 		"identity_nonce":   identityNonce,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = doJSON(ctx, hc, http.MethodPatch, endpoint(base, "/user_keys"), token, body, "return=minimal")
+	return err
+}
+
+// patchPinsColumns writes the wrapped_pins + pins_nonce columns onto the
+// caller's user_keys row (RLS-scoped to the JWT owner), syncing the fingerprint
+// pin store across the user's own devices.
+func patchPinsColumns(ctx context.Context, hc *http.Client, base, token, wrappedPins, pinsNonce string) error {
+	body, err := json.Marshal(map[string]string{
+		"wrapped_pins": wrappedPins,
+		"pins_nonce":   pinsNonce,
 	})
 	if err != nil {
 		return err
@@ -247,6 +295,33 @@ func getMembers(ctx context.Context, hc *http.Client, base, token, audienceID st
 	return rows, nil
 }
 
+// getMembersByAudiences fetches members for many audiences in one request,
+// grouped by audience_id — the batched form of getMembers so a roster over N
+// teams costs one round-trip, not N. Empty in, empty map out.
+func getMembersByAudiences(ctx context.Context, hc *http.Client, base, token string, audienceIDs []string) (map[string][]audienceMemberRow, error) {
+	out := make(map[string][]audienceMemberRow, len(audienceIDs))
+	if len(audienceIDs) == 0 {
+		return out, nil
+	}
+	quoted := make([]string, len(audienceIDs))
+	for i, id := range audienceIDs {
+		quoted[i] = q(id)
+	}
+	path := "/audience_members?select=*&audience_id=in.(" + strings.Join(quoted, ",") + ")"
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []audienceMemberRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode members")
+	}
+	for _, r := range rows {
+		out[r.AudienceID] = append(out[r.AudienceID], r)
+	}
+	return out, nil
+}
+
 func deleteMember(ctx context.Context, hc *http.Client, base, token, audienceID, memberID string) error {
 	path := "/audience_members?audience_id=eq." + q(audienceID) + "&member_id=eq." + q(memberID)
 	_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
@@ -281,11 +356,38 @@ func insertEpochKeys(ctx context.Context, hc *http.Client, base, token string, r
 	// auth.user_id()). Postgres applies a table's SELECT policy as an extra
 	// WITH CHECK on any INSERT that carries ON CONFLICT (WCO_RLS_CONFLICT_CHECK) —
 	// so merge-/ignore-duplicates both fail here with an RLS violation the moment
-	// member_id != the caller. Idempotency for re-wraps is handled by the caller
-	// deleting the target rows first (DELETE is admin-gated, no such check).
+	// member_id != the caller. The caller deletes the target rows first so the
+	// batch normally lands clean.
 	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_epoch_keys"), token,
 		body, "return=minimal")
-	return err
+	if !isUniqueViolation(err) {
+		return err
+	}
+	// A surviving (audience, epoch, member) row — e.g. re-inviting a member whose
+	// old-epoch keys outlived the delete-first — is not a real conflict: the epoch
+	// private key is fixed per epoch number, so any existing wrap already decrypts
+	// to the same key. Re-insert row by row and swallow the duplicates, so one
+	// stale row can't fail the whole batch (an ON-CONFLICT retry can't be used —
+	// see above).
+	return insertEpochKeysIdempotent(ctx, hc, base, token, rows)
+}
+
+// insertEpochKeysIdempotent inserts epoch-key rows one at a time, treating a
+// duplicate-PK conflict as success. Used only as the fallback when a batch
+// insert hits an already-present wrap; the happy path stays a single request.
+func insertEpochKeysIdempotent(ctx context.Context, hc *http.Client, base, token string, rows []audienceEpochKeyRow) error {
+	for i := range rows {
+		body, err := json.Marshal([]audienceEpochKeyRow{rows[i]})
+		if err != nil {
+			return err
+		}
+		_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_epoch_keys"), token,
+			body, "return=minimal")
+		if err != nil && !isUniqueViolation(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // deleteEpochKeys removes the (audience, epoch, member) wraps for the given

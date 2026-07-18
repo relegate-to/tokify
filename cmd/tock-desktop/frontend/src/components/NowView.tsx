@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 
 import type { Activity, ActivityView } from '@/types';
-import nowMascotBadge from '@/assets/images/now-mascot-badge.png';
 import { dayLabel, startOfDay } from '@/lib/time';
 import {
     Empty,
@@ -131,18 +130,6 @@ export function NowView({
             )}
 
             {isColdStart && <EmptyDay />}
-
-            <div
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 bottom-0 hidden justify-center [@media(min-height:900px)]:flex"
-            >
-                <img
-                    src={nowMascotBadge}
-                    alt=""
-                    draggable={false}
-                    className="size-36 shrink-0 animate-in fade-in-0 duration-700 opacity-[var(--mascot-badge-opacity)] [filter:var(--mascot-badge-filter)] [mix-blend-mode:var(--mascot-badge-blend-mode)] motion-reduce:animate-none"
-                />
-            </div>
         </div>
     );
 }

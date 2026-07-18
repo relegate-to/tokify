@@ -136,7 +136,6 @@ function AddPastDialog({
                             value={project}
                             onChange={setProject}
                             suggestions={projects}
-                            onSubmit={submit}
                             placeholder="project (optional)"
                         />
                     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { Swiper as SwiperInstance } from 'swiper';
 import { Mousewheel } from 'swiper/modules';
@@ -14,6 +14,7 @@ import {
     ListToday,
     Projects,
     RemoveActivity,
+    SharingListTeams,
     SharingSharedEntries,
     Start,
     StartAt,
@@ -95,6 +96,12 @@ const HISTORY_LIMIT = 500;
 const SHARED_POLL_ACTIVE_MS = 10_000;
 const SHARED_POLL_IDLE_MS = 30_000;
 
+// Listing teams fans out per-team member/share/name queries, so the masthead's
+// pending-invite check runs on a slow, coarse cadence of its own — invitations
+// are rare, arriving-once events, not a live feed. It only runs while the window
+// is visible and signed in, and wakes on focus for a prompt check when you return.
+const INVITE_POLL_MS = 90_000;
+
 // mapShared turns the backend's decrypted, author-verified shared activities into
 // list rows tagged with their author. These are display-only: they render in the
 // Activity view but are never written to the local log.
@@ -125,6 +132,7 @@ function App() {
     const [pastYear, setPastYear] = useState<Activity[]>([]);
     const [recent, setRecent] = useState<Activity[]>([]);
     const [shared, setShared] = useState<ActivityItem[]>([]);
+    const [pendingInvites, setPendingInvites] = useState<main.TeamView[]>([]);
     const [projects, setProjects] = useState<string[]>([]);
     const [removingKeys, setRemovingKeys] = useState<Set<string>>(new Set());
     const [showAccount, setShowAccount] = useState<boolean>(() => {
@@ -297,6 +305,13 @@ function App() {
             schedule();
         };
 
+        // The backend serves its cache instantly and refreshes in the background;
+        // when that refresh finds a change it pushes the fresh rows here, so the UI
+        // updates without waiting for the next poll tick.
+        const offUpdated = EventsOn('shared:updated', (entries: main.SharedActivity[]) => {
+            if (!cancelled) setShared(mapShared(entries ?? []));
+        });
+
         pull();
         schedule();
         document.addEventListener('visibilitychange', wake);
@@ -305,11 +320,71 @@ function App() {
         return () => {
             cancelled = true;
             if (timer !== null) clearTimeout(timer);
+            offUpdated();
             document.removeEventListener('visibilitychange', wake);
             window.removeEventListener('focus', wake);
             window.removeEventListener('blur', schedule);
         };
     }, []);
+
+    // Drop one invitation from the badge the moment the user acts on it, instead
+    // of re-listing every team (an expensive fan-out reserved for INVITE_POLL_MS).
+    // The accept/decline already succeeded server-side; the poll reconciles anything
+    // that arrived meanwhile.
+    const dismissInvite = useCallback((teamID: string) => {
+        setPendingInvites((cur) => cur.filter((t) => t.ID !== teamID));
+    }, []);
+
+    // Pending team invitations for the masthead badge. Gated on being signed in
+    // (a signed-out session has no teams to list) and kept off the hot shared-entries
+    // cadence because listing teams is expensive — see INVITE_POLL_MS.
+    useEffect(() => {
+        if (!authStatus?.signed_in) {
+            setPendingInvites([]);
+            return;
+        }
+        let timer: number | null = null;
+        let cancelled = false;
+
+        const pull = () => {
+            SharingListTeams()
+                .then((teams) => {
+                    if (!cancelled)
+                        setPendingInvites((teams ?? []).filter((t) => t.Pending));
+                })
+                .catch(() => {
+                    // keep last-good invites
+                });
+        };
+
+        const schedule = () => {
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            if (document.visibilityState === 'hidden') return;
+            timer = window.setTimeout(() => {
+                pull();
+                schedule();
+            }, INVITE_POLL_MS);
+        };
+
+        const wake = () => {
+            if (document.visibilityState !== 'hidden') pull();
+            schedule();
+        };
+
+        pull();
+        schedule();
+        document.addEventListener('visibilitychange', wake);
+        window.addEventListener('focus', wake);
+        return () => {
+            cancelled = true;
+            if (timer !== null) clearTimeout(timer);
+            document.removeEventListener('visibilitychange', wake);
+            window.removeEventListener('focus', wake);
+        };
+    }, [authStatus?.signed_in]);
 
     const handleStart = (description: string, project: string) =>
         Start(description, project).then(refresh).catch((e) => toast.error(String(e)));
@@ -404,6 +479,24 @@ function App() {
 
     const isSwipeView = SWIPE_VIEWS.includes(view);
 
+    // Projects for filtering, autocomplete, and export come from the local log, but
+    // a recipient's shared entries carry projects they don't track locally. Fold
+    // those in (appended, so the local order stays familiar) wherever the merged
+    // activity view is what the user is looking at. Sharing/Settings deliberately
+    // stay on local projects — you can only share or expose your own.
+    const mergedProjects = useMemo(() => {
+        const seen = new Set(projects);
+        const extra: string[] = [];
+        for (const s of shared) {
+            const p = s.project;
+            if (p && !seen.has(p)) {
+                seen.add(p);
+                extra.push(p);
+            }
+        }
+        return extra.length ? [...projects, ...extra] : projects;
+    }, [projects, shared]);
+
     return (
         <div className="flex h-screen flex-col overflow-y-hidden bg-background text-foreground">
             <Masthead
@@ -412,7 +505,9 @@ function App() {
                 running={running}
                 showAccount={showAccount}
                 account={authStatus}
-                projects={projects}
+                projects={mergedProjects}
+                invites={pendingInvites}
+                hasShared={shared.length > 0}
             />
             <main className={`flex-1 overflow-x-visible overscroll-none ${isSwipeView ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                 <div className="flex h-full w-full flex-col">
@@ -448,7 +543,7 @@ function App() {
                                             running={running}
                                             today={today}
                                             recent={recent}
-                                            projects={projects}
+                                            projects={mergedProjects}
                                             removingKeys={removingKeys}
                                             activityView={activityView}
                                             dailyGoal={dailyGoal}
@@ -469,7 +564,7 @@ function App() {
                                             activities={recent}
                                             sharedActivities={shared}
                                             graphActivities={pastYear}
-                                            projects={projects}
+                                            projects={mergedProjects}
                                             removingKeys={removingKeys}
                                             onUpdate={handleUpdate}
                                             onRemove={handleRemove}
@@ -543,6 +638,7 @@ function App() {
                             <TeamsView
                                 projects={projects}
                                 selfUserID={authStatus?.user_id}
+                                onInviteResolved={dismissInvite}
                                 onBack={() => setView('now')}
                             />
                         </div>
