@@ -4,13 +4,13 @@ set -e
 # Tokify installer for macOS.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/finchett/tokify/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/relegate-to/tokify/main/install.sh | sh
 #
 # Environment overrides:
 #   VERSION=v0.1.0   pin a specific tag instead of "latest"
 #   INSTALL_DIR=...  install destination (default: /Applications)
 
-OWNER="finchett"
+OWNER="relegate-to"
 REPO="tokify"
 APP_NAME="Tokify.app"
 INSTALL_DIR="${INSTALL_DIR:-/Applications}"

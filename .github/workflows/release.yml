@@ -123,7 +123,7 @@ jobs:
             ### One-liner
 
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/finchett/tokify/main/install.sh | sh
+            curl -fsSL https://raw.githubusercontent.com/relegate-to/tokify/main/install.sh | sh
             ```
 
             ### Manual
@@ -134,5 +134,5 @@ jobs:
                `xattr -dr com.apple.quarantine /Applications/Tokify.app`.
 
             Tokify releases are not yet signed with an Apple Developer ID;
-            see the [README](https://github.com/finchett/tokify#install) for
+            see the [README](https://github.com/relegate-to/tokify#install) for
             details.
