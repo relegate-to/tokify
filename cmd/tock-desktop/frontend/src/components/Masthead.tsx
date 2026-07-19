@@ -4,6 +4,7 @@ import {
   BarChart3,
   Download,
   FileText,
+  FolderKanban,
   List,
   Mail,
   Settings as SettingsIcon,
@@ -370,6 +371,11 @@ export function Masthead({
                   <DropdownMenuSeparator />
                 </>
               )}
+              <DropdownMenuItem onSelect={() => onView("projects")}>
+                <FolderKanban className="size-4 opacity-70" />
+                Projects
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => onView("settings")}>
                 <SettingsIcon className="size-4 opacity-70" />
                 Settings

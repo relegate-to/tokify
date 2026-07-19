@@ -50,6 +50,10 @@ export function CreateProject(arg1) {
   return window['go']['main']['App']['CreateProject'](arg1);
 }
 
+export function DeleteProject(arg1) {
+  return window['go']['main']['App']['DeleteProject'](arg1);
+}
+
 export function Export(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['Export'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -88,6 +92,14 @@ export function Projects() {
 
 export function RemoveActivity(arg1) {
   return window['go']['main']['App']['RemoveActivity'](arg1);
+}
+
+export function RenameProject(arg1, arg2) {
+  return window['go']['main']['App']['RenameProject'](arg1, arg2);
+}
+
+export function SetProjectColor(arg1, arg2) {
+  return window['go']['main']['App']['SetProjectColor'](arg1, arg2);
 }
 
 export function SharingAcceptInvite(arg1) {

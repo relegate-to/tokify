@@ -426,3 +426,99 @@ func TestRepository_Remove_WhitespaceHandling(t *testing.T) {
 	fullContent := string(bytes)
 	assert.NotContains(t, fullContent, "\n\n\n", "Should not have triple newlines")
 }
+
+// TestRepository_RenameProject guards against re-saving each renamed row through
+// Save, whose minute-precision keying would land a renamed entry on a different
+// project's row that shares the same clock-minute and destroy it. The bulk
+// substitution must rename only the target project's rows and leave every other
+// row — including a same-minute neighbor and seconds precision — untouched.
+func TestRepository_RenameProject(t *testing.T) {
+	f, createErr := os.CreateTemp(t.TempDir(), "tock_test_rename_*.txt")
+	require.NoError(t, createErr)
+	defer os.Remove(f.Name())
+
+	content := `2026-07-18 09:00 - 2026-07-18 10:00 | Alpha | morning
+2026-07-18 13:00:15 - 2026-07-18 14:00:40 | Alpha | seconds
+2026-07-18 13:00:50 - 2026-07-18 13:30:00 | Beta | sameminute
+2026-07-19 09:00 | Alpha | running
+`
+	_, createErr = f.WriteString(content)
+	require.NoError(t, createErr)
+	f.Close()
+
+	repo := file.NewRepository(f.Name())
+	ctx := context.Background()
+
+	renamer, ok := repo.(interface {
+		RenameProject(ctx context.Context, oldName, newName string) (int, error)
+	})
+	require.True(t, ok)
+
+	changed, err := renamer.RenameProject(ctx, "Alpha", "Gamma")
+	require.NoError(t, err)
+	assert.Equal(t, 3, changed)
+
+	activities, err := repo.Find(ctx, models.ActivityFilter{})
+	require.NoError(t, err)
+	require.Len(t, activities, 4, "no row may be dropped")
+
+	counts := map[string]int{}
+	for _, a := range activities {
+		counts[a.Project]++
+	}
+	assert.Zero(t, counts["Alpha"])
+	assert.Equal(t, 3, counts["Gamma"])
+	assert.Equal(t, 1, counts["Beta"], "the same-minute Beta row must survive")
+
+	// Timestamps (including seconds) and descriptions are preserved verbatim.
+	raw, err := os.ReadFile(f.Name())
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "2026-07-18 13:00:15 - 2026-07-18 14:00:40 | Gamma | seconds")
+	assert.Contains(t, string(raw), "2026-07-18 13:00:50 - 2026-07-18 13:30:00 | Beta | sameminute")
+}
+
+// TestRepository_DeleteProject asserts the bulk delete drops exactly the target
+// project's rows — including a running (no-end) row and a same-minute neighbour's
+// sibling — while leaving every other project's rows intact and not tearing gaps
+// into the file.
+func TestRepository_DeleteProject(t *testing.T) {
+	f, createErr := os.CreateTemp(t.TempDir(), "tock_test_delete_*.txt")
+	require.NoError(t, createErr)
+	defer os.Remove(f.Name())
+
+	content := `2026-07-18 09:00 - 2026-07-18 10:00 | Alpha | morning
+2026-07-18 13:00:15 - 2026-07-18 14:00:40 | Alpha | seconds
+2026-07-18 13:00:50 - 2026-07-18 13:30:00 | Beta | sameminute
+2026-07-19 09:00 | Alpha | running
+`
+	_, createErr = f.WriteString(content)
+	require.NoError(t, createErr)
+	f.Close()
+
+	repo := file.NewRepository(f.Name())
+	ctx := context.Background()
+
+	deleter, ok := repo.(interface {
+		DeleteProject(ctx context.Context, name string) (int, error)
+	})
+	require.True(t, ok)
+
+	removed, err := deleter.DeleteProject(ctx, "Alpha")
+	require.NoError(t, err)
+	assert.Equal(t, 3, removed)
+
+	activities, err := repo.Find(ctx, models.ActivityFilter{})
+	require.NoError(t, err)
+	require.Len(t, activities, 1, "only Beta should remain")
+	assert.Equal(t, "Beta", activities[0].Project)
+
+	raw, err := os.ReadFile(f.Name())
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "Alpha")
+	assert.NotContains(t, string(raw), "\n\n", "no ragged gaps left behind")
+
+	// Deleting a name with no rows is a no-op, not an error.
+	removed, err = deleter.DeleteProject(ctx, "Ghost")
+	require.NoError(t, err)
+	assert.Zero(t, removed)
+}

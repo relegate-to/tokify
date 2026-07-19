@@ -246,6 +246,113 @@ func (s *Service) ProjectShares(ctx context.Context) ([]ProjectShare, error) {
 	return out, nil
 }
 
+// RenameProjectInShares rewrites every share filter the caller administers so a
+// renamed project keeps sharing with the same audiences under its new name. A
+// team's members see the renamed activities because the filter now matches them;
+// a filter left on the old name would silently drop those activities, so a write
+// failure is returned rather than swallowed. Teams the caller has only joined are
+// skipped — their shares are not the caller's to change — as are teams whose
+// filter never mentioned the project.
+func (s *Service) RenameProjectInShares(ctx context.Context, oldName, newName string) error {
+	oldName = strings.TrimSpace(oldName)
+	newName = strings.TrimSpace(newName)
+	if oldName == "" || newName == "" || oldName == newName {
+		return nil
+	}
+	teams, err := s.ListAudiences(ctx)
+	if err != nil {
+		return err
+	}
+	sess, err := s.session(ctx)
+	if err != nil {
+		return err
+	}
+	for _, t := range teams {
+		if t.Pending || t.Role != "admin" {
+			continue
+		}
+		filter, _, ok, ferr := s.currentFilter(ctx, sess, t.ID)
+		if ferr != nil {
+			return ferr
+		}
+		if !ok {
+			continue
+		}
+		projects, changed := renameProject(filter.Projects, oldName, newName)
+		if !changed {
+			continue
+		}
+		if serr := s.SetShareFilter(ctx, t.ID, projects, filter.SinceDays); serr != nil {
+			return serr
+		}
+	}
+	return nil
+}
+
+// RemoveProjectFromShares drops a project from every share filter the caller
+// administers, so deleting the project also stops sharing it. It mirrors
+// RenameProjectInShares: teams the caller only joined and teams whose filter never
+// named the project are skipped, and a write failure is surfaced rather than
+// swallowed — a filter still naming a deleted project would keep advertising rows
+// that no longer exist.
+func (s *Service) RemoveProjectFromShares(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	teams, err := s.ListAudiences(ctx)
+	if err != nil {
+		return err
+	}
+	sess, err := s.session(ctx)
+	if err != nil {
+		return err
+	}
+	for _, t := range teams {
+		if t.Pending || t.Role != "admin" {
+			continue
+		}
+		filter, _, ok, ferr := s.currentFilter(ctx, sess, t.ID)
+		if ferr != nil {
+			return ferr
+		}
+		if !ok || !containsString(filter.Projects, name) {
+			continue
+		}
+		projects := make([]string, 0, len(filter.Projects))
+		for _, p := range filter.Projects {
+			if p != name {
+				projects = append(projects, p)
+			}
+		}
+		if serr := s.SetShareFilter(ctx, t.ID, projects, filter.SinceDays); serr != nil {
+			return serr
+		}
+	}
+	return nil
+}
+
+// renameProject returns the project list with oldName replaced by newName,
+// collapsing the result if newName was already present, and reports whether it
+// changed anything.
+func renameProject(projects []string, oldName, newName string) ([]string, bool) {
+	hasNew := containsString(projects, newName)
+	out := make([]string, 0, len(projects))
+	changed := false
+	for _, p := range projects {
+		if p == oldName {
+			changed = true
+			if !hasNew {
+				out = append(out, newName)
+				hasNew = true
+			}
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, changed
+}
+
 // ShareView is a team's current share: which projects its members can see and
 // how far back (SinceDays 0 means "no lower bound" — the whole history of those
 // projects). HasShare is false when the team has no share row yet, in which case

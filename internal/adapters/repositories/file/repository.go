@@ -232,6 +232,89 @@ func (r *repository) Remove(_ context.Context, activity models.Activity) error {
 	return nil
 }
 
+// RenameProject rewrites every entry whose project equals oldName so it reads
+// newName, leaving each row's timestamp and description byte-for-byte intact. It
+// is a whole-file field substitution rather than a per-entry Save loop on
+// purpose: Save re-keys a row by its minute-truncated start, so re-saving each
+// renamed entry would land it on whatever line shares that clock-minute —
+// clobbering a different project's row. Substituting only the project field can
+// never mis-target. Returns the number of rows changed.
+func (r *repository) RenameProject(_ context.Context, oldName, newName string) (int, error) {
+	lines, err := r.readLines()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, errors.Wrap(err, "read lines")
+	}
+
+	changed := 0
+	for i, v := range lines {
+		parts := strings.Split(v, "|")
+		if len(parts) < 3 {
+			continue // not an activity line
+		}
+		if strings.TrimSpace(parts[1]) != oldName {
+			continue
+		}
+		parts[1] = " " + newName + " "
+		lines[i] = strings.Join(parts, "|")
+		changed++
+	}
+
+	if changed == 0 {
+		return 0, nil
+	}
+	if err = r.writeLines(lines); err != nil {
+		return 0, errors.Wrap(err, "write lines")
+	}
+	return changed, nil
+}
+
+// DeleteProject removes every entry whose project equals name, dropping the whole
+// line so the rows are gone from the log. It is the actual delete behind the
+// Projects UI's destructive action, distinct from RenameProject which only
+// rewrites the project field. Empty lines are collapsed the same way Remove does
+// so a delete leaves no ragged gaps. Returns the number of rows removed.
+func (r *repository) DeleteProject(_ context.Context, name string) (int, error) {
+	lines, err := r.readLines()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, errors.Wrap(err, "read lines")
+	}
+
+	removed := 0
+	newLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			if len(newLines) == 0 || strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+				continue
+			}
+			newLines = append(newLines, line)
+			continue
+		}
+		parts := strings.Split(line, "|")
+		if len(parts) >= 3 && strings.TrimSpace(parts[1]) == name {
+			removed++
+			continue
+		}
+		newLines = append(newLines, line)
+	}
+	if len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+		newLines = newLines[:len(newLines)-1]
+	}
+
+	if removed == 0 {
+		return 0, nil
+	}
+	if err = r.writeLines(newLines); err != nil {
+		return 0, errors.Wrap(err, "write lines")
+	}
+	return removed, nil
+}
+
 func (r *repository) readLines() ([]string, error) {
 	f, err := os.Open(r.filePath)
 	if err != nil {

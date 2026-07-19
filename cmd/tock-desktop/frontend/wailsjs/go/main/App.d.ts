@@ -31,6 +31,8 @@ export function CheckForUpdate():Promise<main.UpdateInfo>;
 
 export function CreateProject(arg1:string):Promise<projects.Project>;
 
+export function DeleteProject(arg1:string):Promise<void>;
+
 export function Export(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<string>;
 
 export function GetRunning():Promise<models.Activity>;
@@ -50,6 +52,10 @@ export function OpenApplicationDataDirectory():Promise<void>;
 export function Projects():Promise<Array<string>>;
 
 export function RemoveActivity(arg1:models.Activity):Promise<void>;
+
+export function RenameProject(arg1:string,arg2:string):Promise<projects.Project>;
+
+export function SetProjectColor(arg1:string,arg2:string):Promise<projects.Project>;
 
 export function SharingAcceptInvite(arg1:string):Promise<void>;
 

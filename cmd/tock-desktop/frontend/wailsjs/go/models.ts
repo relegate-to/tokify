@@ -317,6 +317,7 @@ export namespace projects {
 	export class Project {
 	    name: string;
 	    audience_id?: string;
+	    color?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Project(source);
@@ -326,6 +327,7 @@ export namespace projects {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.audience_id = source["audience_id"];
+	        this.color = source["color"];
 	    }
 	}
 

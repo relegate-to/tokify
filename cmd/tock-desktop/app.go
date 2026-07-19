@@ -1080,6 +1080,22 @@ func (a *App) Projects() ([]string, error) {
 			break
 		}
 	}
+	// Fold in registered projects that have no recent activity yet, so a
+	// project created on the Projects page (but never tracked) still shows up
+	// as a preset in the Starter and anywhere else the name list feeds.
+	if a.projects != nil {
+		for _, p := range a.projects.List() {
+			name := strings.TrimSpace(p.Name)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
 	return out, nil
 }
 
@@ -1116,6 +1132,225 @@ func (a *App) CreateProject(name string) (projectreg.Project, error) {
 		return projectreg.Project{}, errors.New("project registry unavailable")
 	}
 	return a.projects.Create(name)
+}
+
+// RenameProject renames one of the caller's own projects everywhere it lives: the
+// activity log, the project registry, and the share filters of any team the
+// caller shares it with — so teammates keep seeing it under the new name. Only
+// projects in the local log are the caller's; shared entries from other people
+// are never in this catalog, so there is nothing here to rename that isn't yours.
+//
+// Merging into an existing project is refused: if both names already name a real
+// project the caller is told to pick a different name rather than silently fusing
+// two histories. The rewrite keeps each entry's start time, so notes and ordering
+// survive; only the project field (and thus the entry's sync identity) changes,
+// so the pre-rename cloud copies are tombstoned for the next sync to delete.
+func (a *App) RenameProject(oldName, newName string) (projectreg.Project, error) {
+	if err := a.requireRuntime(); err != nil {
+		return projectreg.Project{}, err
+	}
+	if a.projects == nil {
+		return projectreg.Project{}, errors.New("project registry unavailable")
+	}
+	oldName = strings.TrimSpace(oldName)
+	newName = strings.TrimSpace(newName)
+	if oldName == "" || newName == "" {
+		return projectreg.Project{}, errors.New("project name is empty")
+	}
+	if oldName == newName {
+		return a.projects.Create(newName)
+	}
+
+	acts, err := a.rt.ActivityService.List(a.ctx, models.ActivityFilter{})
+	if err != nil {
+		return projectreg.Project{}, err
+	}
+	oldHasRows := false
+	newHasRows := false
+	for _, act := range acts {
+		switch strings.TrimSpace(act.Project) {
+		case oldName:
+			oldHasRows = true
+		case newName:
+			newHasRows = true
+		}
+	}
+	newInRegistry := false
+	for _, p := range a.projects.List() {
+		if p.Name == newName {
+			newInRegistry = true
+			break
+		}
+	}
+	// Refuse a merge, but let a retried rename through: once the old name's rows
+	// are gone it no longer names a project, so renaming it onto the (now real)
+	// new name is a no-op finish, not a merge.
+	if (newHasRows || newInRegistry) && oldHasRows {
+		return projectreg.Project{}, errors.Errorf("a project named %q already exists", newName)
+	}
+
+	// Substitute the project name across the log in one pass. This must not go
+	// through ActivityRepo.Save per row: Save re-keys a row by its
+	// minute-truncated start, so a renamed entry can land on — and overwrite — a
+	// different project's row that happens to share that clock-minute, silently
+	// deleting it. The repository's RenameProject swaps only the project field.
+	renamer, ok := a.rt.ActivityRepo.(interface {
+		RenameProject(ctx context.Context, oldName, newName string) (int, error)
+	})
+	if !ok {
+		return projectreg.Project{}, errors.New("this storage backend can't rename projects")
+	}
+	if _, serr := renamer.RenameProject(a.ctx, oldName, newName); serr != nil {
+		return projectreg.Project{}, serr
+	}
+	// Tombstone the pre-rename rows so the next sync marks their cloud copies
+	// deleted; the renamed rows push as fresh entries under the new name.
+	if a.neonSync != nil {
+		for _, act := range acts {
+			if strings.TrimSpace(act.Project) == oldName {
+				_ = a.neonSync.RecordDeletion(act)
+			}
+		}
+	}
+
+	renamed, err := a.projects.Rename(oldName, newName)
+	if err != nil {
+		return projectreg.Project{}, err
+	}
+
+	// Carry the rename into the teams the project is shared with. Skipped entirely
+	// when there's nothing to update (signed out has no shares); a failure here is
+	// surfaced because a filter left on the old name would drop the renamed
+	// activities from that team. The local rename above still stands, so the toast
+	// tells the user to retry rather than implying nothing changed.
+	if a.neonSync != nil && a.neonAuth != nil && a.neonAuth.Status().SignedIn {
+		ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+		serr := a.neonSync.RenameProjectInShares(ctx, oldName, newName)
+		cancel()
+		if serr != nil {
+			a.syncSoon()
+			a.refreshTrayTitle()
+			return renamed, errors.Wrap(serr, "renamed, but updating who you share it with failed — try again")
+		}
+	}
+
+	if a.neonSync != nil {
+		a.syncSoon()
+	}
+	a.refreshTrayTitle()
+	return renamed, nil
+}
+
+// DeleteProject removes a project outright: every one of its activity rows is
+// deleted from the log, the project is dropped from the registry, and it is pulled
+// from any share filters so teams stop expecting it. This is the destructive
+// counterpart to RenameProject — the frontend gates it behind retyping the project
+// name. The rows are gone for good locally; sync then propagates the removal by
+// tombstoning each row's cloud copy.
+func (a *App) DeleteProject(name string) error {
+	if err := a.requireRuntime(); err != nil {
+		return err
+	}
+	if a.projects == nil {
+		return errors.New("project registry unavailable")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("project name is empty")
+	}
+
+	acts, err := a.rt.ActivityService.List(a.ctx, models.ActivityFilter{})
+	if err != nil {
+		return err
+	}
+
+	// Delete the rows in one pass. As with rename this must not loop through
+	// ActivityRepo.Save/Remove per row keyed by minute-truncated start; the
+	// repository's DeleteProject drops exactly the rows whose project matches.
+	deleter, ok := a.rt.ActivityRepo.(interface {
+		DeleteProject(ctx context.Context, name string) (int, error)
+	})
+	if !ok {
+		return errors.New("this storage backend can't delete projects")
+	}
+	if _, derr := deleter.DeleteProject(a.ctx, name); derr != nil {
+		return derr
+	}
+	// Tombstone the removed rows so the next sync deletes their cloud copies
+	// instead of pulling them back. Running rows were never pushed and are skipped
+	// by RecordDeletion.
+	if a.neonSync != nil {
+		for _, act := range acts {
+			if strings.TrimSpace(act.Project) == name {
+				_ = a.neonSync.RecordDeletion(act)
+			}
+		}
+	}
+
+	if _, _, derr := a.projects.Delete(name); derr != nil {
+		return derr
+	}
+
+	// Stop sharing the now-deleted project. As with rename, a failure here is
+	// surfaced (the local delete already stands) so the user can retry.
+	if a.neonSync != nil && a.neonAuth != nil && a.neonAuth.Status().SignedIn {
+		ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+		serr := a.neonSync.RemoveProjectFromShares(ctx, name)
+		cancel()
+		if serr != nil {
+			a.syncSoon()
+			a.refreshTrayTitle()
+			return errors.Wrap(serr, "deleted, but updating who you share it with failed — try again")
+		}
+	}
+
+	if a.neonSync != nil {
+		a.syncSoon()
+	}
+	a.refreshTrayTitle()
+	return nil
+}
+
+// SetProjectColor pins a project's display color, or clears it back to the
+// name-derived default when color is empty. Color is presentation-only: it lives
+// in the local registry, never in the activity log or a share, so there is no
+// rewrite or sync to do. The project is registered if it was only implicit in the
+// log so a color can be chosen before any time is tracked.
+func (a *App) SetProjectColor(name, color string) (projectreg.Project, error) {
+	if a.projects == nil {
+		return projectreg.Project{}, errors.New("project registry unavailable")
+	}
+	color = strings.TrimSpace(color)
+	if !validProjectColor(color) {
+		return projectreg.Project{}, errors.New("invalid color")
+	}
+	return a.projects.SetColor(name, color)
+}
+
+// validProjectColor accepts an empty string (clear), a Tokify palette variable,
+// or a plain hex color. The frontend only ever sends the first two; the check
+// keeps an arbitrary string out of the value that ends up in an inline style.
+func validProjectColor(c string) bool {
+	switch {
+	case c == "":
+		return true
+	case strings.HasPrefix(c, "var(--project-color-") && strings.HasSuffix(c, ")"):
+		return true
+	case strings.HasPrefix(c, "#"):
+		hex := c[1:]
+		if len(hex) != 3 && len(hex) != 6 {
+			return false
+		}
+		for _, r := range hex {
+			isHex := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+			if !isHex {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 // TeamView is a sharing team (an audience) joined with its client-side name.

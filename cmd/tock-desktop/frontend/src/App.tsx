@@ -10,6 +10,7 @@ import {
     AuthStatus,
     GetRunning,
     ListPastYear,
+    ListProjects,
     ListRecent,
     ListToday,
     Projects,
@@ -28,6 +29,7 @@ import { main, neonauth, teams } from '../wailsjs/go/models';
 
 import type { Activity, ActivityItem, ActivityView, Theme, View } from '@/types';
 import { REMOVE_ANIM_MS } from '@/lib/motion';
+import { setProjectColorOverrides } from '@/lib/colors';
 import {
     ProjectSharesContext,
     type ProjectSharesMap,
@@ -41,6 +43,7 @@ import { SettingsView } from '@/components/SettingsView';
 import { AccountView } from '@/components/AccountView';
 import { SharingView } from '@/components/SharingView';
 import { TeamsView } from '@/components/TeamsView';
+import { ProjectsView } from '@/components/ProjectsView';
 import { ReportsView } from '@/components/ReportsView';
 import { ChartsView } from '@/components/ChartsView';
 import { StatsView } from '@/components/StatsView';
@@ -275,6 +278,30 @@ function App() {
         refresh();
         const id = setInterval(refresh, REFRESH_MS);
         return () => clearInterval(id);
+    }, []);
+
+    // Pinned project colors live in the registry. Load them into the module-level
+    // override map so every projectColor caller picks them up, then re-fetch the
+    // activity data so the memoized charts recompute against the new colors. This
+    // also runs after a rename or color change on the Projects page (onChanged),
+    // which is what refreshes the stats under a project's new name promptly.
+    const loadColors = () => {
+        ListProjects()
+            .then((list) => {
+                const map: Record<string, string> = {};
+                for (const p of list ?? []) {
+                    if (p.color) map[p.name] = p.color;
+                }
+                setProjectColorOverrides(map);
+                refresh();
+            })
+            .catch(() => {
+                // colors are cosmetic; a failure just keeps the derived defaults
+            });
+    };
+
+    useEffect(() => {
+        loadColors();
     }, []);
 
     // Poll shared entries independently of the local refresh. A sharing/network
@@ -652,6 +679,16 @@ function App() {
                                 projects={projects}
                                 teamsStatus={teamsStatus}
                                 onTeamsRefresh={refreshTeams}
+                                onBack={() => setView('now')}
+                            />
+                        </div>
+                    )}
+                    {view === 'projects' && (
+                        <div className="px-8 pb-12 pt-[70px]">
+                            <ProjectsView
+                                activities={summaryActivities}
+                                running={running}
+                                onChanged={loadColors}
                                 onBack={() => setView('now')}
                             />
                         </div>

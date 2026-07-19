@@ -256,7 +256,7 @@ export function TeamsView({
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && createTeam()}
-                        placeholder="Name a team — Design crew, Acme client…"
+                        placeholder="team name"
                         disabled={creating}
                     />
                     <Button

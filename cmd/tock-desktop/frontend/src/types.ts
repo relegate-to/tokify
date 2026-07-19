@@ -21,6 +21,7 @@ export type View =
     | 'reports'
     | 'charts'
     | 'stats'
+    | 'projects'
     | 'sharing'
     | 'teams'
     | 'settings'

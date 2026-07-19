@@ -29,10 +29,13 @@ import (
 
 // Project is a first-class Tokify project. Name is the exact string that appears
 // as an activity's project. AudienceID, when set, binds the project to a sharing
-// audience (its team); it stays client-side by design.
+// audience (its team); it stays client-side by design. Color, when set, pins the
+// project's display color instead of deriving it from the name hash; it is a
+// presentation choice and is never part of the shared activity data.
 type Project struct {
 	Name       string `json:"name"`
 	AudienceID string `json:"audience_id,omitempty"`
+	Color      string `json:"color,omitempty"`
 }
 
 // Registry is the persisted set of known projects. Safe for concurrent use.
@@ -136,6 +139,106 @@ func (r *Registry) Create(name string) (Project, error) {
 		return Project{}, err
 	}
 	return p, nil
+}
+
+// Rename changes a project's name in place, carrying its audience binding to the
+// new name. It is the registry half of a project rename; the caller is
+// responsible for rewriting the activity log and any share filters. If oldName is
+// not registered (its rows were only implicit in the log), the new name is simply
+// ensured, which keeps a retried rename idempotent. Renaming onto a name that is
+// already a distinct project is rejected by the caller, not here.
+func (r *Registry) Rename(oldName, newName string) (Project, error) {
+	oldName = strings.TrimSpace(oldName)
+	newName = strings.TrimSpace(newName)
+	if oldName == "" || newName == "" {
+		return Project{}, errors.New("project name is empty")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if oldName == newName {
+		if i, ok := r.index[oldName]; ok {
+			return r.items[i], nil
+		}
+	}
+	renamed := Project{Name: newName}
+	items := make([]Project, 0, len(r.items)+1)
+	for _, it := range r.items {
+		switch it.Name {
+		case oldName:
+			renamed.AudienceID = it.AudienceID
+			renamed.Color = it.Color
+		case newName:
+			// Drop any pre-existing new-name entry so the carried audience wins and
+			// the list holds one row per name.
+		default:
+			items = append(items, it)
+		}
+	}
+	items = append(items, renamed)
+	r.items = items
+	r.index = make(map[string]int, len(r.items))
+	for i, it := range r.items {
+		r.index[it.Name] = i
+	}
+	if err := r.save(); err != nil {
+		return Project{}, err
+	}
+	return renamed, nil
+}
+
+// SetColor pins (or, with an empty color, clears) a project's display color,
+// registering the project first if it was only implicit in the log. Idempotent
+// and persisted. The color is opaque to the registry — the caller validates it.
+func (r *Registry) SetColor(name, color string) (Project, error) {
+	name = strings.TrimSpace(name)
+	color = strings.TrimSpace(color)
+	if name == "" {
+		return Project{}, errors.New("project name is empty")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if i, ok := r.index[name]; ok {
+		r.items[i].Color = color
+		if err := r.save(); err != nil {
+			return Project{}, err
+		}
+		return r.items[i], nil
+	}
+	p := Project{Name: name, Color: color}
+	r.index[name] = len(r.items)
+	r.items = append(r.items, p)
+	if err := r.save(); err != nil {
+		return Project{}, err
+	}
+	return p, nil
+}
+
+// Delete removes a project from the registry, returning the removed entry (so the
+// caller can act on its audience binding) and whether it was present. Deleting a
+// project the registry never knew about — its rows lived only in the log — is not
+// an error: the caller still deletes those rows, so an absent name reports
+// (zero, false) and persists nothing.
+func (r *Registry) Delete(name string) (Project, bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Project{}, false, errors.New("project name is empty")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	i, ok := r.index[name]
+	if !ok {
+		return Project{}, false, nil
+	}
+	removed := r.items[i]
+	r.items = append(r.items[:i:i], r.items[i+1:]...)
+	r.index = make(map[string]int, len(r.items))
+	for j, it := range r.items {
+		r.index[it.Name] = j
+	}
+	if err := r.save(); err != nil {
+		return Project{}, false, err
+	}
+	return removed, true, nil
 }
 
 // save writes the registry to disk. Callers hold r.mu.
