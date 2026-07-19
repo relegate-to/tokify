@@ -1,36 +1,48 @@
 # Tokify
 
-> A calm desktop time tracker for macOS.
+> An end-to-end encrypted time tracker for macOS — for individuals and teams.
 
 <p align="center">
   <img src="cmd/tock-desktop/build/appicon.png" width="128" alt="Tokify app icon" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/finchett/tokify/releases">
-    <img src="https://img.shields.io/github/v/release/finchett/tokify?style=flat-square" alt="Release" />
+  <a href="https://github.com/relegate-to/tokify/releases">
+    <img src="https://img.shields.io/github/v/release/relegate-to/tokify?style=flat-square" alt="Release" />
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/finchett/tokify?style=flat-square" alt="License" />
+    <img src="https://img.shields.io/github/license/relegate-to/tokify?style=flat-square" alt="License" />
   </a>
   <img src="https://img.shields.io/badge/platform-macOS%2011%2B-lightgrey?style=flat-square" alt="Platform" />
 </p>
 
-Tokify is a small, focused time tracker that lives in your menu bar. Start an
-activity, get on with your work, glance at the bar to see how long you've been
-at it. Close the window and Tokify keeps tracking from the menu bar; click it to
-bring the window back, or quit when you're done.
+Tokify is an end-to-end encrypted time tracker for macOS. Use it privately on
+your own or with a team: shared activities sync to every team member, while the
+sync service cannot read what you worked on.
+
+The desktop app is where you start and stop activities, browse your history,
+and understand time by project. The menu bar is a compact timer and status view
+that stays visible while you work.
 
 Activities are stored as a plain-text log in your home directory — the same
 human-readable file format used by the [tock][tock] command-line tool, so you
 can read, grep, edit, or back up your data with anything that handles text.
+
+## Encrypted sync and teams
+
+Encrypted sync is opt-in. Activities are encrypted on your device before they
+leave it, so the sync service never sees what you or your team worked on.
+Everyone on a team shares the same activity history: when one person updates
+an activity, it is synced to the other team members.
+
+For local-only tracking, simply keep using Tokify without enabling sync.
 
 ## Install
 
 ### macOS — one-liner
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/finchett/tokify/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/relegate-to/tokify/main/install.sh | sh
 ```
 
 This downloads the latest release, unpacks `Tokify.app` into `/Applications`, and
@@ -39,7 +51,7 @@ clears the macOS quarantine flag so it opens cleanly the first time.
 ### macOS — manual
 
 1. Grab `Tokify-<version>-macos-universal.zip` from the
-   [Releases page](https://github.com/finchett/tokify/releases/latest).
+   [Releases page](https://github.com/relegate-to/tokify/releases/latest).
 2. Unzip and drag `Tokify.app` into `/Applications`.
 3. On first launch macOS may warn that the app is from an unidentified
    developer (Tokify is not yet signed with an Apple Developer ID). Either:
@@ -52,7 +64,7 @@ You'll need Go (matching `go.mod`), Node 18+, and the [Wails CLI][wails]:
 
 ```sh
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
-git clone https://github.com/finchett/tokify
+git clone https://github.com/relegate-to/tokify
 cd tokify
 make desktop-build-universal
 open cmd/tock-desktop/build/bin/Tokify.app
@@ -60,20 +72,11 @@ open cmd/tock-desktop/build/bin/Tokify.app
 
 `make desktop-doctor` will verify the toolchain is ready.
 
-## What it looks like
+## In the app
 
-<!-- <p align="center">
-  <img src="screenshots/Now-Light.png" alt="Tokify — tracking an activity" width="720" />
-</p>
-
-<p align="center">
-  <img src="screenshots/History-Dark.png" alt="Tokify — activity history (dark)" width="720" />
-</p> -->
-
-The menu bar shows `● 0:42` while tracking, `○` when idle. The window has a
-single input for what you're working on, a list of today's activities (and any
-earlier days you scroll back to), and an account/settings page reachable from
-the title bar.
+The menu bar shows `● 0:42` while tracking and `○` when idle. Open the desktop
+app to start an activity, review your timeline, explore reports, manage
+projects, and configure encrypted team sharing and account settings.
 
 ## Microsoft Teams status (optional)
 
@@ -119,6 +122,9 @@ This means you can use Tokify and `tock` side by side, sync the log file with an
 tool that handles text, or move to a different backend (TimeWarrior, TodoTXT,
 SQLite) by editing the config. See [`tock.yaml.example`](tock.yaml.example) for
 the full list of options.
+
+When encrypted sync is enabled, shared activity data is kept up to date for your
+team without making that activity history readable to the sync service.
 
 ## Relationship to tock
 

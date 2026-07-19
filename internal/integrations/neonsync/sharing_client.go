@@ -298,7 +298,12 @@ func getMembers(ctx context.Context, hc *http.Client, base, token, audienceID st
 // getMembersByAudiences fetches members for many audiences in one request,
 // grouped by audience_id — the batched form of getMembers so a roster over N
 // teams costs one round-trip, not N. Empty in, empty map out.
-func getMembersByAudiences(ctx context.Context, hc *http.Client, base, token string, audienceIDs []string) (map[string][]audienceMemberRow, error) {
+func getMembersByAudiences(
+	ctx context.Context,
+	hc *http.Client,
+	base, token string,
+	audienceIDs []string,
+) (map[string][]audienceMemberRow, error) {
 	out := make(map[string][]audienceMemberRow, len(audienceIDs))
 	if len(audienceIDs) == 0 {
 		return out, nil
