@@ -36,7 +36,9 @@ func loadSettings(path string) (Settings, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Settings{}, nil
+			// A first sign-in should begin syncing without an extra opt-in step.
+			// An existing setting is reconciled to enabled once its user signs in.
+			return Settings{Enabled: true}, nil
 		}
 		return Settings{}, errors.Wrap(err, "read settings")
 	}

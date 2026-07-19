@@ -48,6 +48,11 @@ type TeamInfo struct {
 	// it cannot be decrypted; the app layer prefers a device-local name over it.
 	// Only populated for active members — a pending invitee cannot read it yet.
 	SharedName string
+	// Members is the team's full roster (names + pin status), populated for active
+	// teams from the same batched fetch used to derive MemberCount, so the UI can
+	// render the roster without a follow-up per-team call. Nil for pending invites:
+	// RLS shows an invitee only their own row until they accept.
+	Members []TeamMember
 }
 
 // TeamMember is one row of an audience's roster plus whether the caller has
@@ -107,18 +112,23 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 		return nil, gerrors.Wrap(err, "list members")
 	}
 
-	// Resolve every inviter's name for pending invites in a single identity lookup.
-	inviterIDs := make([]string, 0)
+	// Resolve display names in one identity lookup covering every roster member
+	// (for the folded-in rosters) and every inviter (for the "X invited you"
+	// label on pending invites).
+	idSet := make(map[string]struct{})
 	for _, aud := range teamAuds {
+		idSet[aud.CreatedBy] = struct{}{}
 		for _, m := range membersByAud[aud.ID] {
-			if m.MemberID == sess.userID && m.Status == "invited" {
-				inviterIDs = append(inviterIDs, aud.CreatedBy)
-			}
+			idSet[m.MemberID] = struct{}{}
 		}
 	}
-	inviters, err := getIdentities(ctx, s.http, sess.base, sess.token, inviterIDs)
+	idList := make([]string, 0, len(idSet))
+	for id := range idSet {
+		idList = append(idList, id)
+	}
+	identities, err := getIdentities(ctx, s.http, sess.base, sess.token, idList)
 	if err != nil {
-		return nil, gerrors.Wrap(err, "inviter identities")
+		return nil, gerrors.Wrap(err, "member identities")
 	}
 
 	out := make([]TeamInfo, 0, len(teamAuds))
@@ -134,14 +144,29 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 		pending := status == "invited"
 		invitedBy := ""
 		sharedName := ""
+		var roster []TeamMember
 		if pending {
 			// The invitee can read identities (public), so surface the inviter's
 			// name for the invitation. A missing/nameless identity is not an error.
-			invitedBy = inviters[aud.CreatedBy].DisplayName
+			invitedBy = identities[aud.CreatedBy].DisplayName
 		} else {
 			// Active members decrypt the shared team name; best-effort, a failure
 			// just leaves it empty and the app falls back to a local name.
 			sharedName, _ = s.teamName(ctx, sess, aud.ID)
+			roster = make([]TeamMember, 0, len(members))
+			for _, m := range members {
+				_, pinned, ferr := s.pins.Fingerprint(m.MemberID)
+				if ferr != nil {
+					return nil, ferr
+				}
+				roster = append(roster, TeamMember{
+					UserID:      m.MemberID,
+					Role:        m.Role,
+					Pinned:      pinned,
+					DisplayName: identities[m.MemberID].DisplayName,
+					Status:      m.Status,
+				})
+			}
 		}
 		out = append(out, TeamInfo{
 			ID:           aud.ID,
@@ -151,7 +176,72 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 			Pending:      pending,
 			InvitedBy:    invitedBy,
 			SharedName:   sharedName,
+			Members:      roster,
 		})
+	}
+	return out, nil
+}
+
+// ProjectShare is who can see one project and through which teams: the union of
+// member rosters (caller excluded) and the ids of the audiences whose current
+// share includes it. The app layer resolves AudienceIDs to local team names.
+// It is returned as a slice rather than a map keyed by Project so the Wails
+// binding generator discovers the struct (it does not traverse map value types).
+type ProjectShare struct {
+	Project     string
+	AudienceIDs []string
+	Members     []TeamMember
+}
+
+// ProjectShares returns, per shared project, who can see it: the audiences
+// (teams) whose current share filter includes the project, and the union of their
+// member rosters with the caller excluded. It drives the shared-with hover card
+// on a project badge. Pending teams and teams with no share are skipped; a team
+// whose filter fails to decrypt is skipped rather than failing the whole result.
+func (s *Service) ProjectShares(ctx context.Context) ([]ProjectShare, error) {
+	teams, err := s.ListAudiences(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sess, err := s.session(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byProject := map[string]*ProjectShare{}
+	order := []string{}
+	seen := map[string]map[string]struct{}{}
+	for _, t := range teams {
+		if t.Pending {
+			continue
+		}
+		filter, _, ok, ferr := s.currentFilter(ctx, sess, t.ID)
+		if ferr != nil || !ok {
+			continue
+		}
+		for _, proj := range filter.Projects {
+			share := byProject[proj]
+			if share == nil {
+				share = &ProjectShare{Project: proj}
+				byProject[proj] = share
+				order = append(order, proj)
+				seen[proj] = map[string]struct{}{}
+			}
+			share.AudienceIDs = append(share.AudienceIDs, t.ID)
+			for _, m := range t.Members {
+				if m.UserID == sess.userID {
+					continue
+				}
+				if _, dup := seen[proj][m.UserID]; dup {
+					continue
+				}
+				seen[proj][m.UserID] = struct{}{}
+				share.Members = append(share.Members, m)
+			}
+		}
+	}
+	out := make([]ProjectShare, 0, len(order))
+	for _, proj := range order {
+		out = append(out, *byProject[proj])
 	}
 	return out, nil
 }

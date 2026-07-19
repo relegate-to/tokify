@@ -32,12 +32,22 @@ import {
 import { main, neonsync } from '../../wailsjs/go/models';
 
 import { authErrorText } from '@/lib/errors';
+import { readInviteEmails, rememberInviteEmail } from '@/lib/invite-emails';
 import { cn } from '@/lib/utils';
 import { projectColor } from '@/lib/colors';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import {
     Empty,
     EmptyDescription,
@@ -58,30 +68,6 @@ const SINCE_OPTIONS = [
 
 function shortID(userID: string): string {
     return userID.length <= 10 ? userID : `…${userID.slice(-6)}`;
-}
-
-// Invite emails are a local, display-only convenience: the address you invited
-// someone with, keyed by their user id. It never leaves this device (the server
-// only ever knows an email hash) and exists to label a pending invitee — who has
-// not published a name yet — as the person you actually invited.
-const INVITE_EMAILS_KEY = 'tokify.inviteEmails';
-
-function readInviteEmails(): Record<string, string> {
-    try {
-        return JSON.parse(localStorage.getItem(INVITE_EMAILS_KEY) || '{}');
-    } catch {
-        return {};
-    }
-}
-
-function rememberInviteEmail(userID: string, email: string) {
-    try {
-        const map = readInviteEmails();
-        map[userID] = email;
-        localStorage.setItem(INVITE_EMAILS_KEY, JSON.stringify(map));
-    } catch {
-        // ignore
-    }
 }
 
 // A member's roster label prefers the name they published for themselves
@@ -155,11 +141,13 @@ export function TeamsView({
     projects,
     selfUserID,
     onInviteResolved,
+    onOpenAccount,
     onBack,
 }: {
     projects: string[];
     selfUserID?: string;
     onInviteResolved?: (teamID: string) => void;
+    onOpenAccount?: () => void;
     onBack: () => void;
 }) {
     const [teams, setTeams] = useState<main.TeamView[]>([]);
@@ -170,10 +158,24 @@ export function TeamsView({
 
     const load = () => {
         setLoading(true);
-        Promise.all([SyncStatus(), SharingListTeams()])
-            .then(([s, t]) => {
+        // Teams ride the same encrypted identity as sync, so there's nothing to
+        // list until the user has signed in and unlocked on this device. Gate the
+        // team fetch on that — otherwise SharingListTeams fails reaching for a
+        // Keychain item that isn't there and surfaces a raw "keychain item not
+        // found" toast instead of pointing the user at Account.
+        Promise.resolve(SyncStatus())
+            .then((s) => {
                 setStatus(s);
-                setTeams(t ?? []);
+                if (!s?.configured || !s?.unlocked) {
+                    setTeams([]);
+                    return;
+                }
+                return SharingListTeams()
+                    .then((t) => setTeams(t ?? []))
+                    .catch((e) => {
+                        setTeams([]);
+                        toast.error(authErrorText(e));
+                    });
             })
             .catch((e) => {
                 setTeams([]);
@@ -233,10 +235,17 @@ export function TeamsView({
             {!loading && !canManage && (
                 <Alert>
                     <ShieldCheck />
-                    <AlertTitle>Sign in and unlock sync first</AlertTitle>
-                    <AlertDescription>
-                        Teams use the same encrypted identity as sync. Open Account,
-                        sign in, and make sure sync is set up on this device.
+                    <AlertTitle>Sign in to use Teams</AlertTitle>
+                    <AlertDescription className="flex flex-col items-start gap-3">
+                        <span>
+                            Teams use the same encrypted identity as sync. Sign in
+                            and set up sync on this device to create or join a team.
+                        </span>
+                        {onOpenAccount && (
+                            <Button size="sm" onClick={onOpenAccount}>
+                                Go to Account
+                            </Button>
+                        )}
                     </AlertDescription>
                 </Alert>
             )}
@@ -435,7 +444,11 @@ function TeamCard({
     onMemberCountChange: (count: number) => void;
     onDeleted: () => void;
 }) {
-    const [members, setMembers] = useState<neonsync.TeamMember[]>([]);
+    // The roster arrives with the team (SharingListTeams folds it in), so members
+    // render immediately from the prop; only the share filter still loads per card.
+    const [members, setMembers] = useState<neonsync.TeamMember[]>(
+        team.Members ?? [],
+    );
     const [share, setShare] = useState<neonsync.ShareView | null>(null);
     const [loading, setLoading] = useState(true);
     const [inviteEmails, setInviteEmails] = useState(readInviteEmails);
@@ -508,11 +521,16 @@ function TeamCard({
         [isAdmin, sortedProjects, share],
     );
 
-    const load = () => {
+    // Keep the roster in sync when the parent reloads teams (a fresh SharingListTeams
+    // carries an updated Members slice).
+    useEffect(() => {
+        setMembers(team.Members ?? []);
+    }, [team.Members]);
+
+    const loadShare = () => {
         setLoading(true);
-        Promise.all([SharingTeamMembers(team.ID), SharingTeamShare(team.ID)])
-            .then(([m, s]) => {
-                setMembers(m ?? []);
+        SharingTeamShare(team.ID)
+            .then((s) => {
                 setShare(s);
                 setSelProjects(s?.Projects ?? []);
                 setSinceDays(s?.SinceDays ?? 0);
@@ -521,7 +539,14 @@ function TeamCard({
             .finally(() => setLoading(false));
     };
 
-    useEffect(load, [team.ID]);
+    useEffect(loadShare, [team.ID]);
+
+    // Refetch just the roster after a mutation that the folded-in prop won't reflect
+    // until the parent reloads (inviting a new member).
+    const refreshMembers = () =>
+        SharingTeamMembers(team.ID)
+            .then((m) => setMembers(m ?? []))
+            .catch((e) => toast.error(authErrorText(e)));
 
     const invite = () => {
         const email = inviteEmail.trim();
@@ -533,7 +558,7 @@ function TeamCard({
                 setInviteEmails(readInviteEmails());
                 setInviteEmail('');
                 toast.success(`Invited ${email}`);
-                load();
+                refreshMembers();
             })
             .catch((e) => toast.error(inviteErrorText(e, email)))
             .finally(() => setInviting(false));
@@ -610,7 +635,7 @@ function TeamCard({
         <Card className="overflow-hidden">
             <CardContent className="flex flex-col gap-5 p-5">
                 <div className="flex items-start gap-4">
-                    {!loading && members.length > 0 && (
+                    {members.length > 0 && (
                         <div className="mt-0.5 flex items-center">
                             {members.slice(0, 4).map((m, i) => (
                                 <Avatar
@@ -645,7 +670,7 @@ function TeamCard({
                                         setEditingName(false);
                                     }
                                 }}
-                                className="h-7 max-w-[16rem] text-sm font-semibold"
+                                className="h-8 max-w-[16rem] text-base font-semibold"
                             />
                         ) : (
                             <button
@@ -655,91 +680,110 @@ function TeamCard({
                                     setEditingName(true);
                                 }}
                                 title="Rename team"
-                                className="max-w-full truncate rounded text-left text-sm font-semibold outline-none hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring/50"
+                                className="max-w-full truncate rounded text-left text-base font-semibold outline-none hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring/50"
                             >
                                 {team.Name || 'Untitled team'}
                             </button>
                         )}
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {scopeSummary(share)}
+                            {loading ? 'Loading sharing…' : scopeSummary(share)}
                         </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                         <Badge variant="outline" className="font-normal">
                             {isAdmin ? 'Admin' : 'Member'}
                         </Badge>
-                        {isAdmin &&
-                            (confirmDelete ? (
-                                <div className="flex items-center gap-1">
-                                    <Button
-                                        variant="destructive"
-                                        size="sm"
-                                        disabled={deleting}
-                                        onClick={deleteTeam}
-                                    >
-                                        {deleting && (
-                                            <Loader2
-                                                data-icon="inline-start"
-                                                className="animate-spin"
-                                            />
-                                        )}
-                                        Delete team
-                                    </Button>
+                        {isAdmin ? (
+                            <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+                                <DialogTrigger asChild>
                                     <Button
                                         variant="ghost"
-                                        size="sm"
-                                        disabled={deleting}
-                                        onClick={() => setConfirmDelete(false)}
+                                        size="icon-xs"
+                                        title="Delete team"
                                     >
-                                        Cancel
+                                        <Trash2 />
                                     </Button>
-                                </div>
-                            ) : (
-                                <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() => setConfirmDelete(true)}
-                                    title="Delete team"
-                                >
-                                    <Trash2 />
-                                </Button>
-                            ))}
-                        {!isAdmin &&
-                            (confirmLeave ? (
-                                <div className="flex items-center gap-1">
-                                    <Button
-                                        variant="destructive"
-                                        size="sm"
-                                        disabled={leaving}
-                                        onClick={leaveTeam}
-                                    >
-                                        {leaving && (
-                                            <Loader2
-                                                data-icon="inline-start"
-                                                className="animate-spin"
-                                            />
-                                        )}
-                                        Leave team
-                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            Delete {team.Name || 'this team'}?
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            This deletes the team for everyone and stops
+                                            sharing these projects. It can't be undone.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <DialogFooter>
+                                        <Button
+                                            variant="ghost"
+                                            onClick={() => setConfirmDelete(false)}
+                                            disabled={deleting}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            onClick={deleteTeam}
+                                            disabled={deleting}
+                                        >
+                                            {deleting && (
+                                                <Loader2
+                                                    data-icon="inline-start"
+                                                    className="animate-spin"
+                                                />
+                                            )}
+                                            Delete team
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        ) : (
+                            <Dialog open={confirmLeave} onOpenChange={setConfirmLeave}>
+                                <DialogTrigger asChild>
                                     <Button
                                         variant="ghost"
-                                        size="sm"
-                                        disabled={leaving}
-                                        onClick={() => setConfirmLeave(false)}
+                                        size="icon-xs"
+                                        title="Leave team"
                                     >
-                                        Cancel
+                                        <LogOut />
                                     </Button>
-                                </div>
-                            ) : (
-                                <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() => setConfirmLeave(true)}
-                                    title="Leave team"
-                                >
-                                    <LogOut />
-                                </Button>
-                            ))}
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            Leave {team.Name || 'this team'}?
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            You'll stop seeing what this team shares, and
+                                            they'll no longer see your shared projects.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <DialogFooter>
+                                        <Button
+                                            variant="ghost"
+                                            onClick={() => setConfirmLeave(false)}
+                                            disabled={leaving}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            onClick={leaveTeam}
+                                            disabled={leaving}
+                                        >
+                                            {leaving && (
+                                                <Loader2
+                                                    data-icon="inline-start"
+                                                    className="animate-spin"
+                                                />
+                                            )}
+                                            Leave team
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        )}
                     </div>
                 </div>
 
@@ -747,83 +791,75 @@ function TeamCard({
                     <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                         People
                     </div>
-                    {loading ? (
-                        <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
-                            <Loader2 className="size-4 animate-spin" />
-                            Loading
-                        </div>
-                    ) : (
-                        <div className="flex flex-col">
-                            {members.map((m) => {
-                                const self = m.UserID === selfUserID;
-                                const label = memberLabel(m, self, inviteEmails);
-                                const invited = m.Status === 'invited';
-                                return (
-                                    <div
-                                        key={m.UserID}
-                                        className="group flex items-center gap-3 py-1.5"
-                                    >
-                                        <Avatar userID={m.UserID} label={label} />
-                                        <div className="min-w-0 flex-1">
-                                            <div className="truncate text-sm">
-                                                {label}
-                                            </div>
-                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                                <span>
-                                                    {m.Role === 'admin'
-                                                        ? 'Admin'
-                                                        : 'Member'}
-                                                </span>
-                                                {invited && (
-                                                    <span
-                                                        className="inline-flex items-center gap-1"
-                                                        title="Invited — waiting for them to accept"
-                                                    >
-                                                        <span className="size-1.5 rounded-full bg-sky-400/80" />
-                                                        <span>invited</span>
-                                                    </span>
-                                                )}
-                                                {!self &&
-                                                    !invited &&
-                                                    (m.Pinned ? (
-                                                        <span
-                                                            className="inline-flex items-center gap-1"
-                                                            title="Verified on this device"
-                                                        >
-                                                            <ShieldCheck className="size-3 text-emerald-500/80" />
-                                                        </span>
-                                                    ) : (
-                                                        <span
-                                                            className="inline-flex items-center gap-1"
-                                                            title="Trusted on first use — key not verified on this device"
-                                                        >
-                                                            <span className="size-1.5 rounded-full bg-amber-400/80" />
-                                                            <span>unverified</span>
-                                                        </span>
-                                                    ))}
-                                            </div>
-                                        </div>
-                                        {isAdmin && !self && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon-xs"
-                                                className="opacity-0 transition-opacity group-hover:opacity-100"
-                                                disabled={removing === m.UserID}
-                                                onClick={() => remove(m.UserID)}
-                                                title="Remove from team"
-                                            >
-                                                {removing === m.UserID ? (
-                                                    <Loader2 className="animate-spin" />
-                                                ) : (
-                                                    <Trash2 />
-                                                )}
-                                            </Button>
-                                        )}
+                    <div className="flex flex-col">
+                        {members.map((m) => {
+                            const self = m.UserID === selfUserID;
+                            const label = memberLabel(m, self, inviteEmails);
+                            const invited = m.Status === 'invited';
+                            return (
+                                <div
+                                    key={m.UserID}
+                                    className="group flex items-center gap-3 py-2"
+                                >
+                                    <Avatar userID={m.UserID} label={label} />
+                                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                                        <span className="min-w-0 truncate text-sm">
+                                            {label}
+                                        </span>
+                                        <Badge
+                                            variant="secondary"
+                                            className="shrink-0 font-normal"
+                                        >
+                                            {m.Role === 'admin' ? 'Admin' : 'Member'}
+                                        </Badge>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                    {invited ? (
+                                        <span
+                                            className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+                                            title="Invited — waiting for them to accept"
+                                        >
+                                            <span className="size-1.5 rounded-full bg-sky-400/80" />
+                                            invited
+                                        </span>
+                                    ) : (
+                                        !self &&
+                                        (m.Pinned ? (
+                                            <span
+                                                className="inline-flex shrink-0"
+                                                title="Verified on this device"
+                                            >
+                                                <ShieldCheck className="size-3.5 text-emerald-500/80" />
+                                            </span>
+                                        ) : (
+                                            <span
+                                                className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+                                                title="Trusted on first use — key not verified on this device"
+                                            >
+                                                <span className="size-1.5 rounded-full bg-amber-400/80" />
+                                                unverified
+                                            </span>
+                                        ))
+                                    )}
+                                    {isAdmin && !self && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className="-my-1 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                                            disabled={removing === m.UserID}
+                                            onClick={() => remove(m.UserID)}
+                                            title="Remove from team"
+                                        >
+                                            {removing === m.UserID ? (
+                                                <Loader2 className="animate-spin" />
+                                            ) : (
+                                                <Trash2 />
+                                            )}
+                                        </Button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
 
                     {isAdmin && (
                         <div className="mt-1 flex items-center gap-2">
@@ -908,7 +944,7 @@ function TeamCard({
                                 key={option.value}
                                 type="button"
                                 variant={
-                                    sinceDays === option.value ? 'secondary' : 'outline'
+                                    sinceDays === option.value ? 'default' : 'outline'
                                 }
                                 size="sm"
                                 disabled={!isAdmin}

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft,
     Clock,
+    FileText,
     FolderKanban,
+    FolderOpen,
     ListChecks,
     Loader2,
     LogOut,
@@ -17,6 +19,10 @@ import {
     AuthSignUp,
     AuthStatus,
     AuthVerifyEmail,
+    ApplicationDataDirectory,
+    ActivityLogPath,
+    OpenActivityLog,
+    OpenApplicationDataDirectory,
 } from '../../wailsjs/go/main/App';
 import { neonauth } from '../../wailsjs/go/models';
 
@@ -36,6 +42,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SyncCard } from '@/components/SyncCard';
+import { toast } from 'sonner';
 
 export function AccountView({
     running,
@@ -69,6 +76,11 @@ export function AccountView({
     const [pendingEmail, setPendingEmail] = useState('');
     const [code, setCode] = useState('');
     const [notice, setNotice] = useState('');
+    const [applicationDataDirectory, setApplicationDataDirectory] = useState('');
+    const [openingApplicationDataDirectory, setOpeningApplicationDataDirectory] =
+        useState(false);
+    const [activityLogPath, setActivityLogPath] = useState('');
+    const [openingActivityLog, setOpeningActivityLog] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -81,6 +93,36 @@ export function AccountView({
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        ActivityLogPath()
+            .then((path) => {
+                if (!cancelled) setActivityLogPath(path);
+            })
+            .catch(() => {
+                // The log shortcut remains available if the display path is
+                // temporarily unavailable during startup.
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        ApplicationDataDirectory()
+            .then((directory) => {
+                if (!cancelled) setApplicationDataDirectory(directory);
+            })
+            .catch(() => {
+                // The Finder shortcut still gives the user a way to reach the
+                // directory if resolving the display path fails at startup.
             });
         return () => {
             cancelled = true;
@@ -173,6 +215,30 @@ export function AccountView({
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const openApplicationDataDirectory = () => {
+        if (openingApplicationDataDirectory) return;
+        setOpeningApplicationDataDirectory(true);
+        OpenApplicationDataDirectory()
+            .catch((err) =>
+                toast.error('Unable to open local files', {
+                    description: authErrorText(err),
+                }),
+            )
+            .finally(() => setOpeningApplicationDataDirectory(false));
+    };
+
+    const openActivityLog = () => {
+        if (openingActivityLog) return;
+        setOpeningActivityLog(true);
+        OpenActivityLog()
+            .catch((err) =>
+                toast.error('Unable to open activity log', {
+                    description: authErrorText(err),
+                }),
+            )
+            .finally(() => setOpeningActivityLog(false));
     };
 
     const stats = useMemo(() => {
@@ -499,83 +565,71 @@ export function AccountView({
                 </CardContent>
             </Card>
 
+            <SyncCard signedIn={!!status?.signed_in} />
+
             <Card>
                 <CardHeader>
-                    <CardTitle>Overview</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                        <FolderOpen className="size-4 opacity-70" />
+                        Local files
+                    </CardTitle>
                     <CardDescription>
-                        A snapshot of your tracked time so far.
+                        Your JSON settings and activity log are stored locally
+                        on this Mac.
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <StatBlock
-                            icon={<Timer className="size-3.5" />}
-                            label="Total time"
-                            value={formatTotal(stats.totalMs)}
-                        />
-                        <StatBlock
-                            icon={<ListChecks className="size-3.5" />}
-                            label="Activities"
-                            value={stats.activityCount.toString()}
-                        />
-                        <StatBlock
-                            icon={<FolderKanban className="size-3.5" />}
-                            label="Projects"
-                            value={stats.projectCount.toString()}
-                        />
-                        <StatBlock
-                            icon={<Clock className="size-3.5" />}
-                            label="Active days"
-                            value={stats.days.toString()}
-                        />
+                <CardContent className="flex flex-col items-start gap-3">
+                    <div className="flex w-full flex-col items-start gap-2">
+                        <span className="text-sm">Application settings</span>
+                        {applicationDataDirectory && (
+                            <code className="max-w-full break-all rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                                {applicationDataDirectory}
+                            </code>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={openApplicationDataDirectory}
+                            disabled={openingApplicationDataDirectory}
+                        >
+                            {openingApplicationDataDirectory ? (
+                                <Loader2
+                                    data-icon="inline-start"
+                                    className="animate-spin"
+                                />
+                            ) : (
+                                <FolderOpen data-icon="inline-start" />
+                            )}
+                            Show Application Support folder
+                        </Button>
                     </div>
-                    {(stats.longestMs > 0 || stats.firstStart !== null) && (
-                        <>
-                            <Separator className="my-4" />
-                            <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                                {stats.longestMs > 0 && (
-                                    <div className="flex items-center justify-between gap-3">
-                                        <dt className="text-muted-foreground">
-                                            Longest session
-                                        </dt>
-                                        <dd className="font-mono tabular-nums">
-                                            {formatTotal(stats.longestMs)}
-                                        </dd>
-                                    </div>
-                                )}
-                                {stats.days > 0 && (
-                                    <div className="flex items-center justify-between gap-3">
-                                        <dt className="text-muted-foreground">
-                                            Avg per active day
-                                        </dt>
-                                        <dd className="font-mono tabular-nums">
-                                            {formatTotal(stats.avgPerDayMs)}
-                                        </dd>
-                                    </div>
-                                )}
-                                {stats.firstStart !== null && (
-                                    <div className="flex items-center justify-between gap-3 sm:col-span-2">
-                                        <dt className="text-muted-foreground">
-                                            Tracking since
-                                        </dt>
-                                        <dd className="tabular-nums">
-                                            {new Date(
-                                                stats.firstStart,
-                                            ).toLocaleDateString(undefined, {
-                                                day: '2-digit',
-                                                month: 'short',
-                                                year: 'numeric',
-                                            })}
-                                        </dd>
-                                    </div>
-                                )}
-                            </dl>
-                        </>
-                    )}
+                    <Separator />
+                    <div className="flex w-full flex-col items-start gap-2">
+                        <span className="text-sm">Activity log</span>
+                        {activityLogPath && (
+                            <code className="max-w-full break-all rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                                {activityLogPath}
+                            </code>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={openActivityLog}
+                            disabled={openingActivityLog}
+                        >
+                            {openingActivityLog ? (
+                                <Loader2
+                                    data-icon="inline-start"
+                                    className="animate-spin"
+                                />
+                            ) : (
+                                <FileText data-icon="inline-start" />
+                            )}
+                            Show activity log
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
-
-            <SyncCard signedIn={!!status?.signed_in} />
         </div>
     );
 }

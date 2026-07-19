@@ -7,6 +7,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -121,6 +122,9 @@ func (a *App) startup(ctx context.Context) {
 	if a.neonAuth != nil {
 		if sync, err := neonsync.NewService(rt.ActivityService, a.neonAuth); err == nil {
 			a.neonSync = sync
+			if a.neonAuth.Status().SignedIn {
+				a.forceSyncEnabled()
+			}
 			a.syncKick = make(chan struct{}, 1)
 			go a.autoSyncLoop()
 			go a.syncDebouncer()
@@ -719,6 +723,49 @@ func (a *App) AuthStatus() neonauth.Status {
 	return a.neonAuth.Status()
 }
 
+// ApplicationDataDirectory returns the profile-aware directory containing
+// Tokify's local JSON settings and cache files.
+func (a *App) ApplicationDataDirectory() (string, error) {
+	return appdir.Dir()
+}
+
+// OpenApplicationDataDirectory creates the local data directory when needed
+// and reveals it in Finder.
+func (a *App) OpenApplicationDataDirectory() error {
+	dir, err := a.ApplicationDataDirectory()
+	if err != nil {
+		return errors.Wrap(err, "get application data directory")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return errors.Wrap(err, "create application data directory")
+	}
+	if err := exec.Command("open", dir).Run(); err != nil {
+		return errors.Wrap(err, "open application data directory")
+	}
+	return nil
+}
+
+// ActivityLogPath returns the active local activity-log path. It is normally
+// ~/.tock.txt, though it can be changed through Tokify's runtime configuration.
+func (a *App) ActivityLogPath() (string, error) {
+	if a.rt == nil || strings.TrimSpace(a.rt.DataPath) == "" {
+		return "", errors.New("activity log unavailable")
+	}
+	return a.rt.DataPath, nil
+}
+
+// OpenActivityLog reveals the active activity log in Finder.
+func (a *App) OpenActivityLog() error {
+	path, err := a.ActivityLogPath()
+	if err != nil {
+		return err
+	}
+	if err := exec.Command("open", "-R", path).Run(); err != nil {
+		return errors.Wrap(err, "reveal activity log")
+	}
+	return nil
+}
+
 // AuthSignIn authenticates with email + password and persists the session in
 // Keychain. Returns the resulting Status.
 //
@@ -811,6 +858,7 @@ func (a *App) unlockSync(ctx context.Context, email, password, userID string) {
 	if a.neonSync == nil {
 		return
 	}
+	a.forceSyncEnabled()
 	token, err := a.neonAuth.Token(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "neonsync: mint data-api token: %v\n", err)
@@ -821,6 +869,18 @@ func (a *App) unlockSync(ctx context.Context, email, password, userID string) {
 		return
 	}
 	a.publishSelfName(ctx)
+}
+
+// forceSyncEnabled keeps sync on for every signed-in session. A failure to
+// persist the preference is non-fatal to sign-in; the in-memory setting is
+// still enabled and the next successful write will persist it.
+func (a *App) forceSyncEnabled() {
+	if a.neonSync == nil {
+		return
+	}
+	if err := a.neonSync.SetEnabled(true); err != nil {
+		fmt.Fprintf(os.Stderr, "neonsync: enable: %v\n", err)
+	}
 }
 
 // publishSelfName best-effort republishes the signed-in user's name (from the
@@ -870,11 +930,14 @@ func (a *App) SyncStatus() neonsync.SyncStatus {
 	return a.neonSync.Status()
 }
 
-// SyncSetEnabled flips the sync master switch. Stored key and rows are left
-// intact so it can be turned back on without re-entering the password.
+// SyncSetEnabled is retained for compatibility with the desktop binding. Sync
+// cannot be disabled while a user is signed in.
 func (a *App) SyncSetEnabled(enabled bool) (neonsync.SyncStatus, error) {
 	if a.neonSync == nil {
 		return neonsync.SyncStatus{}, errors.New("sync unavailable")
+	}
+	if !enabled && a.neonAuth != nil && a.neonAuth.Status().SignedIn {
+		return a.neonSync.Status(), errors.New("sync must remain enabled while signed in")
 	}
 	if err := a.neonSync.SetEnabled(enabled); err != nil {
 		return a.neonSync.Status(), err
@@ -1134,6 +1197,19 @@ func (a *App) SharingTeamMembers(audienceID string) ([]neonsync.TeamMember, erro
 	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
 	defer cancel()
 	return a.neonSync.ListMembers(ctx, strings.TrimSpace(audienceID))
+}
+
+// SharingProjectShares returns, per shared project, who can see it (the teammates
+// and the teams sharing it, minus the caller), for the shared-with hover card on
+// a project badge. Sharing being unavailable is not an error here: the badge is
+// decorative, so it simply returns nothing.
+func (a *App) SharingProjectShares() ([]neonsync.ProjectShare, error) {
+	if a.neonSync == nil {
+		return []neonsync.ProjectShare{}, nil
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonSync.ProjectShares(ctx)
 }
 
 // SharingDeleteTeam deletes a team the caller created (server-side cascade) and

@@ -15,35 +15,23 @@ import { ProjectField } from '@/components/ProjectField';
 
 export function Starter({
     projects,
-    lastProject,
     onStart,
     onStartAt,
 }: {
     projects: string[];
-    lastProject: string;
     onStart: (description: string, project: string) => void;
     onStartAt: (description: string, project: string, startISO: string) => void;
 }) {
     const [text, setText] = useState('');
-    const [project, setProject] = useState(lastProject);
+    const [project, setProject] = useState('');
     const [startAt, setStartAt] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const startAtRef = useRef<HTMLInputElement>(null);
     const startAtOpen = startAt !== null;
-    // Track the default we last seeded so we can follow updates to
-    // `lastProject` only while the user hasn't taken over the field.
-    const seededRef = useRef(lastProject);
 
     useEffect(() => {
         inputRef.current?.focus();
     }, []);
-
-    useEffect(() => {
-        setProject((current) =>
-            current === seededRef.current ? lastProject : current,
-        );
-        seededRef.current = lastProject;
-    }, [lastProject]);
 
     useEffect(() => {
         if (startAtOpen) startAtRef.current?.focus();
@@ -75,7 +63,7 @@ export function Starter({
     return (
         <section
             aria-label="Start a new activity"
-            className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-400"
+            className="flex min-h-[140px] flex-col justify-center gap-3 rounded-xl border bg-card p-4 shadow-sm animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-400"
             style={{ animationTimingFunction: EASE_THUNK }}
         >
             <div className="flex items-center gap-2">

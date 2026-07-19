@@ -165,20 +165,20 @@
     --sidebar-border: #2e2e2e;
     --sidebar-ring: #737373;
     --navigation: #262626;
-    --navigation-active: #2e2e2e;
+    --navigation-active: #3d3d3d;
     --navigation-active-foreground: #fafafa;
     --navigation-muted-foreground: #a1a1a1;
     --day-total-foreground: #d4d4d4;
     --navigation-shadow: 0 1px 3px rgb(0 0 0 / 40%);
-    --running-card: #24262c;
-    --running-card-border: #454851;
-    --running-card-control-hover: #3a3d45;
-    --running-card-foreground: #fafafa;
-    --running-card-muted: #c6c8ce;
-    --running-card-track: #4a4d55;
-    --running-stop: #542f35;
-    --running-stop-hover: #65373e;
-    --running-stop-foreground: #ff918e;
+    --running-card: #e8e8e8;
+    --running-card-border: #e8e8e8;
+    --running-card-control-hover: rgb(17 19 24 / 6%);
+    --running-card-foreground: #1b1d22;
+    --running-card-muted: #7a7f8a;
+    --running-card-track: rgb(17 19 24 / 10%);
+    --running-stop: #d43f2e;
+    --running-stop-hover: #c0392b;
+    --running-stop-foreground: #ffffff;
     --subtle-surface: #171717;
     --subtle-surface-border: #2e2e2e;
     --contribution-0: #181818;
@@ -224,12 +224,6 @@
   html {
     @apply font-sans;
     }
-}
-
-@keyframes tokify-nudge {
-  0%   { scale: 1; }
-  45%  { scale: 1.08; }
-  100% { scale: 1; }
 }
 
 /* Hide scrollbars by default; the `show-scrollbars` class on the root opts in. */

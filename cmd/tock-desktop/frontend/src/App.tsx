@@ -15,6 +15,7 @@ import {
     Projects,
     RemoveActivity,
     SharingListTeams,
+    SharingProjectShares,
     SharingSharedEntries,
     Start,
     StartAt,
@@ -27,6 +28,11 @@ import { main, neonauth, teams } from '../wailsjs/go/models';
 
 import type { Activity, ActivityItem, ActivityView, Theme, View } from '@/types';
 import { REMOVE_ANIM_MS } from '@/lib/motion';
+import {
+    ProjectSharesContext,
+    type ProjectSharesMap,
+} from '@/lib/project-shares';
+import { TeamsCacheContext } from '@/lib/teams-cache';
 import { Toaster } from '@/components/ui/sonner';
 import { Masthead } from '@/components/Masthead';
 import { NowView } from '@/components/NowView';
@@ -35,6 +41,9 @@ import { SettingsView } from '@/components/SettingsView';
 import { AccountView } from '@/components/AccountView';
 import { SharingView } from '@/components/SharingView';
 import { TeamsView } from '@/components/TeamsView';
+import { ReportsView } from '@/components/ReportsView';
+import { ChartsView } from '@/components/ChartsView';
+import { StatsView } from '@/components/StatsView';
 
 const SHOW_ACCOUNT_KEY = 'tokify.showAccount';
 const ACTIVITY_VIEW_KEY = 'tokify.activityView';
@@ -133,13 +142,15 @@ function App() {
     const [recent, setRecent] = useState<Activity[]>([]);
     const [shared, setShared] = useState<ActivityItem[]>([]);
     const [pendingInvites, setPendingInvites] = useState<main.TeamView[]>([]);
+    const [teams, setTeams] = useState<main.TeamView[]>([]);
     const [projects, setProjects] = useState<string[]>([]);
+    const [projectShares, setProjectShares] = useState<ProjectSharesMap>({});
     const [removingKeys, setRemovingKeys] = useState<Set<string>>(new Set());
     const [showAccount, setShowAccount] = useState<boolean>(() => {
         try {
-            return localStorage.getItem(SHOW_ACCOUNT_KEY) === '1';
+            return localStorage.getItem(SHOW_ACCOUNT_KEY) !== '0';
         } catch {
-            return false;
+            return true;
         }
     });
     const [showScrollbars, setShowScrollbars] = useState<boolean>(() => {
@@ -341,6 +352,8 @@ function App() {
     useEffect(() => {
         if (!authStatus?.signed_in) {
             setPendingInvites([]);
+            setTeams([]);
+            setProjectShares({});
             return;
         }
         let timer: number | null = null;
@@ -348,12 +361,27 @@ function App() {
 
         const pull = () => {
             SharingListTeams()
-                .then((teams) => {
-                    if (!cancelled)
-                        setPendingInvites((teams ?? []).filter((t) => t.Pending));
+                .then((list) => {
+                    if (cancelled) return;
+                    const all = list ?? [];
+                    setTeams(all);
+                    setPendingInvites(all.filter((t) => t.Pending));
                 })
                 .catch(() => {
                     // keep last-good invites
+                });
+            // The shared-with badge data rides the same slow, signed-in cadence:
+            // team membership and share filters change rarely, so this need not sit
+            // on the hot refresh loop. The slice is keyed by project for lookup.
+            SharingProjectShares()
+                .then((shares) => {
+                    if (cancelled) return;
+                    const map: ProjectSharesMap = {};
+                    for (const s of shares ?? []) map[s.Project] = s;
+                    setProjectShares(map);
+                })
+                .catch(() => {
+                    // keep last-good badge data
                 });
         };
 
@@ -497,7 +525,20 @@ function App() {
         return extra.length ? [...projects, ...extra] : projects;
     }, [projects, shared]);
 
+    // The Reports/Charts/Stats summaries read the full local year. ListPastYear
+    // already spans today, but a session stopped between refresh ticks can land
+    // in `today` first, so fold in any today rows not yet in the year snapshot.
+    const summaryActivities = useMemo<Activity[]>(() => {
+        const seen = new Set(pastYear.map((a) => String(a.start_time)));
+        const extra = today.filter(
+            (a) => a.end_time && !seen.has(String(a.start_time)),
+        );
+        return extra.length ? [...pastYear, ...extra] : pastYear;
+    }, [pastYear, today]);
+
     return (
+        <ProjectSharesContext.Provider value={projectShares}>
+        <TeamsCacheContext.Provider value={teams}>
         <div className="flex h-screen flex-col overflow-y-hidden bg-background text-foreground">
             <Masthead
                 view={view}
@@ -579,26 +620,17 @@ function App() {
                             </SwiperSlide>
                             <SwiperSlide>
                                 <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
-                                    <LogPlaceholderView
-                                            title="Reports"
-                                            description="Weekly and monthly summaries will live here."
-                                        />
+                                    <ReportsView activities={summaryActivities} />
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
                                 <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
-                                    <LogPlaceholderView
-                                            title="Charts"
-                                            description="Project and time breakdown charts will live here."
-                                        />
+                                    <ChartsView activities={summaryActivities} />
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
                                 <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
-                                    <LogPlaceholderView
-                                            title="Stats"
-                                            description="Streaks, averages, and totals will live here."
-                                        />
+                                    <StatsView activities={summaryActivities} />
                                     </div>
                                 </SwiperSlide>
                             </Swiper>
@@ -639,6 +671,7 @@ function App() {
                                 projects={projects}
                                 selfUserID={authStatus?.user_id}
                                 onInviteResolved={dismissInvite}
+                                onOpenAccount={() => setView('account')}
                                 onBack={() => setView('now')}
                             />
                         </div>
@@ -658,26 +691,9 @@ function App() {
             </main>
             <Toaster position="bottom-right" richColors closeButton />
         </div>
+        </TeamsCacheContext.Provider>
+        </ProjectSharesContext.Provider>
     );
 }
 
 export default App;
-
-function LogPlaceholderView({
-    title,
-    description,
-}: {
-    title: string;
-    description: string;
-}) {
-    return (
-        <div className="flex min-h-[360px] items-center justify-center rounded-xl border bg-muted/30 p-8 text-center">
-            <div className="max-w-sm">
-                <div className="mb-2 text-sm font-semibold tracking-wide text-foreground">
-                    {title}
-                </div>
-                <p className="text-sm text-muted-foreground">{description}</p>
-            </div>
-        </div>
-    );
-}

@@ -9,7 +9,7 @@ import { useNow } from '@/lib/use-now';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ProjectTag } from '@/components/ProjectTag';
-import { MemberAvatar } from '@/components/MemberAvatar';
+import { SharedAuthorBadge } from '@/components/SharedAuthorBadge';
 
 const ROW_HEIGHT = 'h-11';
 const ROW_GRID =
@@ -155,6 +155,7 @@ export function ActivityRow({
                     {activity.project && (
                         <ProjectTag
                             project={activity.project}
+                            team={shared ? true : undefined}
                             className="w-full text-sm"
                         />
                     )}
@@ -208,14 +209,7 @@ export function ActivityRow({
 
             <div className="flex items-center justify-end gap-1">
                 {shared ? (
-                    <MemberAvatar
-                        seed={shared.authorId}
-                        label={
-                            shared.teamName
-                                ? `${shared.authorName || 'Someone'} · shared via ${shared.teamName}`
-                                : `${shared.authorName || 'Someone'} · shared`
-                        }
-                    />
+                    <SharedAuthorBadge shared={shared} />
                 ) : editing ? (
                     <Button
                         size="icon-xs"

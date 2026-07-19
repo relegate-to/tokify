@@ -25,7 +25,15 @@ export function groupByLocalDate<T extends Activity>(
     }
 
     return Array.from(buckets.entries())
-        .map(([dateKey, value]) => ({ dateKey, ...value }))
+        .map(([dateKey, value]) => ({
+            dateKey,
+            ...value,
+            items: [...value.items].sort(
+                (a, b) =>
+                    new Date(b.start_time as any).getTime() -
+                    new Date(a.start_time as any).getTime(),
+            ),
+        }))
         .sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 

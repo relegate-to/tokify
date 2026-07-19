@@ -42,7 +42,7 @@ export function NowRunning({
     <section
       aria-label="Currently running"
       className={cn(
-        "relative overflow-hidden rounded-[16px] border border-running-card-border bg-running-card px-[26px] py-[22px] text-running-card-foreground shadow-[0_16px_32px_-16px_rgba(17,19,24,0.35)]",
+        "relative flex min-h-[140px] flex-col justify-center overflow-hidden rounded-[16px] border border-running-card-border bg-running-card px-[26px] py-[26px] text-running-card-foreground shadow-[0_16px_32px_-16px_rgba(17,19,24,0.35)]",
         stopping
           ? "animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-2 fill-mode-forwards"
           : "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-6",
@@ -80,7 +80,7 @@ export function NowRunning({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button
+          {/*<Button
             type="button"
             onClick={onShare}
             variant="ghost"
@@ -90,13 +90,13 @@ export function NowRunning({
             className="text-[var(--activity-accent)] hover:bg-running-card-control-hover hover:text-[var(--activity-accent)]"
           >
             <Share2 />
-          </Button>
+          </Button>*/}
           <Button
             type="button"
             onClick={handleStop}
             variant="destructive"
             disabled={stopping}
-            className="bg-running-stop px-3 text-running-stop-foreground shadow-[0_10px_24px_-14px_rgba(239,68,68,0.6)] transition-transform hover:bg-running-stop-hover active:scale-95"
+            className="bg-running-stop px-3 text-running-stop-foreground shadow-[0_10px_24px_-14px_rgba(239,68,68,0.6)] transition-transform hover:bg-running-stop-hover active:scale-95 dark:bg-running-stop dark:hover:bg-running-stop-hover"
           >
             <Square
               data-icon="inline-start"

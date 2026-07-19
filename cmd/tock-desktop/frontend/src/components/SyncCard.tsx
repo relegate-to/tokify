@@ -3,11 +3,10 @@ import { Cloud, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-import { SyncNow, SyncSetEnabled, SyncStatus } from '../../wailsjs/go/main/App';
+import { SyncNow, SyncStatus } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { neonsync } from '../../wailsjs/go/models';
 
-import { cn } from '@/lib/utils';
 import { authErrorText } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,11 +16,9 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 
 export function SyncCard({ signedIn }: { signedIn: boolean }) {
     const [status, setStatus] = useState<neonsync.SyncStatus | null>(null);
-    const [toggling, setToggling] = useState(false);
     const [syncing, setSyncing] = useState(false);
 
     useEffect(() => {
@@ -49,15 +46,6 @@ export function SyncCard({ signedIn }: { signedIn: boolean }) {
         return EventsOn('sync:updated', (s: neonsync.SyncStatus) => setStatus(s));
     }, [signedIn]);
 
-    const toggleEnabled = (v: boolean) => {
-        if (toggling) return;
-        setToggling(true);
-        SyncSetEnabled(v)
-            .then(setStatus)
-            .catch((e) => toast.error(authErrorText(e)))
-            .finally(() => setToggling(false));
-    };
-
     const runSync = () => {
         if (syncing) return;
         setSyncing(true);
@@ -77,7 +65,6 @@ export function SyncCard({ signedIn }: { signedIn: boolean }) {
     };
 
     const configured = !!status?.configured;
-    const enabled = !!status?.enabled;
     const lastSyncLabel = status?.last_sync
         ? format(new Date(status.last_sync), "d MMM yyyy 'at' HH:mm")
         : 'Never';
@@ -105,81 +92,47 @@ export function SyncCard({ signedIn }: { signedIn: boolean }) {
                     </p>
                 ) : (
                     <>
-                        <div className="flex items-center justify-between gap-4">
-                            <div className="flex min-w-0 flex-col">
-                                <span className="text-sm">
-                                    Sync across devices
+                        <div className="flex flex-col gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                                <span className="text-muted-foreground">
+                                    Last synced
                                 </span>
-                                <span className="text-xs text-muted-foreground">
-                                    Your local log stays the source of truth.
+                                <span className="tabular-nums">
+                                    {lastSyncLabel}
                                 </span>
                             </div>
-                            <button
-                                type="button"
-                                role="switch"
-                                aria-checked={enabled}
-                                disabled={toggling}
-                                onClick={() => toggleEnabled(!enabled)}
-                                className={cn(
-                                    'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50',
-                                    enabled ? 'bg-foreground' : 'bg-muted',
-                                )}
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                                <span className="text-muted-foreground">
+                                    Entries in the cloud
+                                </span>
+                                <span className="font-mono tabular-nums">
+                                    {status?.entry_count ?? 0}
+                                </span>
+                            </div>
+                            {!status?.unlocked && (
+                                <p className="text-xs text-muted-foreground">
+                                    Sign in again to unlock your encryption key
+                                    on this device.
+                                </p>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="self-start"
+                                onClick={runSync}
+                                disabled={syncing || !status?.unlocked}
                             >
-                                <span
-                                    className={cn(
-                                        'inline-block size-4 rounded-full bg-background shadow transition-transform',
-                                        enabled
-                                            ? 'translate-x-[1.125rem]'
-                                            : 'translate-x-0.5',
-                                    )}
-                                />
-                            </button>
-                        </div>
-
-                        {enabled && (
-                            <div className="flex flex-col gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                                <Separator />
-                                <div className="flex items-center justify-between gap-3 text-sm">
-                                    <span className="text-muted-foreground">
-                                        Last synced
-                                    </span>
-                                    <span className="tabular-nums">
-                                        {lastSyncLabel}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between gap-3 text-sm">
-                                    <span className="text-muted-foreground">
-                                        Entries in the cloud
-                                    </span>
-                                    <span className="font-mono tabular-nums">
-                                        {status?.entry_count ?? 0}
-                                    </span>
-                                </div>
-                                {!status?.unlocked && (
-                                    <p className="text-xs text-muted-foreground">
-                                        Sign in again to unlock your encryption
-                                        key on this device.
-                                    </p>
+                                {syncing ? (
+                                    <Loader2
+                                        data-icon="inline-start"
+                                        className="animate-spin"
+                                    />
+                                ) : (
+                                    <RefreshCw data-icon="inline-start" />
                                 )}
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="self-start"
-                                    onClick={runSync}
-                                    disabled={syncing || !status?.unlocked}
-                                >
-                                    {syncing ? (
-                                        <Loader2
-                                            data-icon="inline-start"
-                                            className="animate-spin"
-                                        />
-                                    ) : (
-                                        <RefreshCw data-icon="inline-start" />
-                                    )}
-                                    Sync now
-                                </Button>
-                            </div>
-                        )}
+                                Sync now
+                            </Button>
+                        </div>
                     </>
                 )}
             </CardContent>

@@ -55,11 +55,6 @@ export function NowView({
         [today, removingKeys],
     );
 
-    const lastProject = useMemo(
-        () => recent.find((a) => a.project)?.project ?? '',
-        [recent],
-    );
-
     const quickStarts = useMemo(() => {
         const runningKey = running ? quickStartKey(running) : null;
         const seen = new Set<string>();
@@ -98,20 +93,24 @@ export function NowView({
 
     return (
         <div className="relative flex min-h-full flex-1 flex-col gap-8">
-            {running ? (
-                <NowRunning
-                    activity={running}
-                    onStop={onStop}
-                    onShare={() => onShare(running.project || undefined)}
+            <div>
+                <SectionHeading
+                    title={running ? 'Currently tracking' : 'Start tracking'}
                 />
-            ) : (
-                <Starter
-                    projects={projects}
-                    lastProject={lastProject}
-                    onStart={onStart}
-                    onStartAt={onStartAt}
-                />
-            )}
+                {running ? (
+                    <NowRunning
+                        activity={running}
+                        onStop={onStop}
+                        onShare={() => onShare(running.project || undefined)}
+                    />
+                ) : (
+                    <Starter
+                        projects={projects}
+                        onStart={onStart}
+                        onStartAt={onStartAt}
+                    />
+                )}
+            </div>
 
             {showSummary && (
                 <TodayGoal
@@ -130,6 +129,21 @@ export function NowView({
             )}
 
             {isColdStart && <EmptyDay />}
+        </div>
+    );
+}
+
+// Section heading matching JumpBackIn, so the activity page reads as a set of
+// titled sections rather than a loose stack of cards.
+function SectionHeading({ title, context }: { title: string; context?: string }) {
+    return (
+        <div className="mb-3.5 flex items-center justify-between">
+            <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
+            {context && (
+                <span className="text-xs text-navigation-muted-foreground">
+                    {context}
+                </span>
+            )}
         </div>
     );
 }
