@@ -32,14 +32,16 @@ export function AddPastButton({
     const [open, setOpen] = useState(false);
     return (
         <>
-            <button
+            <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setOpen(true)}
-                className="mx-auto mt-2 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="font-normal text-muted-foreground"
             >
-                <Plus className="size-3.5" />
+                <Plus data-icon="inline-start" />
                 Add past activity
-            </button>
+            </Button>
             <AddPastDialog
                 open={open}
                 onOpenChange={setOpen}
@@ -134,7 +136,6 @@ function AddPastDialog({
                             value={project}
                             onChange={setProject}
                             suggestions={projects}
-                            onSubmit={submit}
                             placeholder="project (optional)"
                         />
                     </div>

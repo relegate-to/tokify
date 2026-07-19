@@ -105,6 +105,27 @@ func (p *PinStore) Pin(userID, fingerprint string) error {
 	return p.save(f)
 }
 
+// Repin unconditionally records a fingerprint, overwriting any existing pin.
+// Unlike Pin it does NOT treat a changed fingerprint as a conflict, so it is
+// only ever correct for the caller's OWN identity: you hold your own private
+// key and cannot be the victim of a key-swap against yourself, so a self
+// fingerprint that no longer matches the pin is legitimate rotation / a
+// re-provisioned identity, not an attack. Never call this for another user's
+// identity — that path must stay TOFU (Pin), which hard-fails on conflict.
+func (p *PinStore) Repin(userID, fingerprint string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	f, err := p.load()
+	if err != nil {
+		return err
+	}
+	if f.Fingerprints[userID] == fingerprint {
+		return nil
+	}
+	f.Fingerprints[userID] = fingerprint
+	return p.save(f)
+}
+
 // Unpin removes a user's pin, allowing a subsequent Pin to record a new
 // fingerprint (identity-key rotation / device-compromise response, plan §9).
 func (p *PinStore) Unpin(userID string) error {
@@ -146,6 +167,57 @@ func (p *PinStore) Fingerprint(userID string) (string, bool, error) {
 	}
 	fp, ok := f.Fingerprints[userID]
 	return fp, ok, nil
+}
+
+// Export serializes the pin file for cross-device sync (wrapped under the DEK by
+// the caller before it leaves the device). It is the plaintext JSON already on
+// disk — only public fingerprints and epoch counts, nothing secret.
+func (p *PinStore) Export() ([]byte, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	f, err := p.load()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(f)
+}
+
+// MergeRemote folds another device's pin file (as produced by Export) into the
+// local one so a freshly signed-in device inherits the trust decisions made
+// elsewhere instead of showing every teammate as unverified. Fingerprints union
+// with the LOCAL value winning any conflict — a remote fingerprint that
+// disagrees with one already pinned here is never silently accepted, preserving
+// the same key-swap protection as Pin. Epoch high-water marks take the max, so
+// the truncation detector only ever ratchets up. Persists only if the local file
+// actually changed.
+func (p *PinStore) MergeRemote(remote []byte) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var r pinFile
+	if err := json.Unmarshal(remote, &r); err != nil {
+		return errors.Wrap(err, "unmarshal remote pins")
+	}
+	f, err := p.load()
+	if err != nil {
+		return err
+	}
+	changed := false
+	for userID, fp := range r.Fingerprints {
+		if _, ok := f.Fingerprints[userID]; !ok {
+			f.Fingerprints[userID] = fp
+			changed = true
+		}
+	}
+	for aud, epoch := range r.Epochs {
+		if epoch > f.Epochs[aud] {
+			f.Epochs[aud] = epoch
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return p.save(f)
 }
 
 // CheckEpochWatermark validates an observed epoch count for an audience against

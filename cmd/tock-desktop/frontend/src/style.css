@@ -1,13 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'SF Mono', Menlo, Consolas, monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -37,6 +37,22 @@
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
     --color-card: var(--card);
+    --color-subtle-surface-border: var(--subtle-surface-border);
+    --color-subtle-surface: var(--subtle-surface);
+    --color-navigation-active-foreground: var(--navigation-active-foreground);
+    --color-navigation-active: var(--navigation-active);
+    --color-navigation-muted-foreground: var(--navigation-muted-foreground);
+    --color-navigation: var(--navigation);
+    --color-day-total-foreground: var(--day-total-foreground);
+    --color-running-card-border: var(--running-card-border);
+    --color-running-card-control-hover: var(--running-card-control-hover);
+    --color-running-card-foreground: var(--running-card-foreground);
+    --color-running-card-muted: var(--running-card-muted);
+    --color-running-card-track: var(--running-card-track);
+    --color-running-card: var(--running-card);
+    --color-running-stop-foreground: var(--running-stop-foreground);
+    --color-running-stop-hover: var(--running-stop-hover);
+    --color-running-stop: var(--running-stop);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
     --radius-sm: calc(var(--radius) * 0.6);
@@ -49,72 +65,138 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --background: #fafbfc;
+    --foreground: #1b1d22;
+    --card: #ffffff;
+    --card-foreground: #1b1d22;
+    --popover: #ffffff;
+    --popover-foreground: #1b1d22;
+    --primary: #1b1d22;
+    --primary-foreground: #ffffff;
+    --secondary: #edeff2;
+    --secondary-foreground: #33363d;
+    --muted: #edeff2;
+    --muted-foreground: #7a7f8a;
+    --accent: #edeff2;
+    --accent-foreground: #1b1d22;
+    --destructive: #e74c3c;
+    --border: #e7e9ec;
+    --input: #e2e4e8;
+    --ring: #9aa0aa;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --sidebar: #f1f3f6;
+    --sidebar-foreground: #1b1d22;
+    --sidebar-primary: #1b1d22;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #edeff2;
+    --sidebar-accent-foreground: #1b1d22;
+    --sidebar-border: #e7e9ec;
+    --sidebar-ring: #9aa0aa;
+    --navigation: #edeff2;
+    --navigation-active: #ffffff;
+    --navigation-active-foreground: #1b1d22;
+    --navigation-muted-foreground: #9aa0aa;
+    --day-total-foreground: #5c616b;
+    --navigation-shadow: 0 1px 3px rgb(17 19 24 / 12%);
+    --running-card: #1b1d22;
+    --running-card-border: #1b1d22;
+    --running-card-control-hover: rgb(255 255 255 / 6%);
+    --running-card-foreground: #ffffff;
+    --running-card-muted: #b8b8bd;
+    --running-card-track: rgb(255 255 255 / 10%);
+    --running-stop: #e74c3c;
+    --running-stop-hover: #d43f2e;
+    --running-stop-foreground: #ffffff;
+    --subtle-surface: #f1f3f6;
+    --subtle-surface-border: #e8ebef;
+    --contribution-0: #e7e9ec;
+    --contribution-1: #f0e6cf;
+    --contribution-2: #e3cd97;
+    --contribution-3: #cbab5f;
+    --contribution-4: #b8932e;
+    --project-color-0: #c46b62;
+    --project-color-1: #5d9a8d;
+    --project-color-2: #b8932e;
+    --project-color-3: #6e8fb8;
+    --project-color-4: #2bb3a3;
+    --project-color-5: #b66a8f;
+    --project-color-6: #8b8be0;
+    --project-color-7: #c57c48;
+    --mascot-badge-filter: grayscale(1);
+    --mascot-badge-blend-mode: multiply;
+    --mascot-badge-opacity: 0.3;
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --background: #0a0a0a;
+    --foreground: #fafafa;
+    --card: #171717;
+    --card-foreground: #fafafa;
+    --popover: #171717;
+    --popover-foreground: #fafafa;
+    --primary: #fafafa;
+    --primary-foreground: #171717;
+    --secondary: #262626;
+    --secondary-foreground: #fafafa;
+    --muted: #262626;
+    --muted-foreground: #a1a1a1;
+    --accent: #262626;
+    --accent-foreground: #fafafa;
+    --destructive: #ee6e6c;
+    --border: #2e2e2e;
+    --input: #2e2e2e;
+    --ring: #737373;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --sidebar: #171717;
+    --sidebar-foreground: #fafafa;
+    --sidebar-primary: #fafafa;
+    --sidebar-primary-foreground: #171717;
+    --sidebar-accent: #262626;
+    --sidebar-accent-foreground: #fafafa;
+    --sidebar-border: #2e2e2e;
+    --sidebar-ring: #737373;
+    --navigation: #262626;
+    --navigation-active: #3d3d3d;
+    --navigation-active-foreground: #fafafa;
+    --navigation-muted-foreground: #a1a1a1;
+    --day-total-foreground: #d4d4d4;
+    --navigation-shadow: 0 1px 3px rgb(0 0 0 / 40%);
+    --running-card: #e8e8e8;
+    --running-card-border: #e8e8e8;
+    --running-card-control-hover: rgb(17 19 24 / 6%);
+    --running-card-foreground: #1b1d22;
+    --running-card-muted: #7a7f8a;
+    --running-card-track: rgb(17 19 24 / 10%);
+    --running-stop: #d43f2e;
+    --running-stop-hover: #c0392b;
+    --running-stop-foreground: #ffffff;
+    --subtle-surface: #171717;
+    --subtle-surface-border: #2e2e2e;
+    --contribution-0: #181818;
+    --contribution-1: #302d1d;
+    --contribution-2: #554b22;
+    --contribution-3: #78652e;
+    --contribution-4: #a18f45;
+    --project-color-0: #b56f69;
+    --project-color-1: #65988d;
+    --project-color-2: #a18f45;
+    --project-color-3: #718eae;
+    --project-color-4: #49a1a3;
+    --project-color-5: #aa718d;
+    --project-color-6: #8885ca;
+    --project-color-7: #b47d55;
+    --mascot-badge-filter: grayscale(1) invert(0);
+    --mascot-badge-blend-mode: normal;
+    --mascot-badge-opacity: 0.9;
 }
 
 @layer base {
@@ -123,16 +205,25 @@
     }
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Desktop chrome shouldn't behave like a document: clicking a control
+       (e.g. the account pill) with `user-select: none` otherwise drops the
+       selection anchor onto the nearest selectable text elsewhere in WebKit.
+       Default everything to non-selectable and opt real text fields back in. */
+    -webkit-user-select: none;
+    user-select: none;
+    }
+  input,
+  textarea,
+  [contenteditable="true"],
+  .select-text {
+    -webkit-user-select: text;
+    user-select: text;
     }
   html {
     @apply font-sans;
     }
-}
-
-@keyframes tokify-nudge {
-  0%   { scale: 1; }
-  45%  { scale: 1.08; }
-  100% { scale: 1; }
 }
 
 /* Hide scrollbars by default; the `show-scrollbars` class on the root opts in. */
@@ -143,4 +234,64 @@
 }
 :root:not(.show-scrollbars) * {
   scrollbar-width: none;
+}
+
+.tokify-log-swiper {
+  overflow: visible;
+}
+
+.tokify-log-swiper .swiper-slide {
+  height: 100%;
+}
+
+.react-activity-calendar__tooltip {
+  width: max-content;
+  max-width: calc(100vw - 20px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 0.25rem 0.5rem;
+  box-shadow: 0 10px 30px -12px rgb(0 0 0 / 35%);
+  font-size: 0.75rem;
+}
+
+.tokify-contribution-calendar rect {
+  stroke: none !important;
+}
+
+.tokify-contribution-calendar .react-activity-calendar__calendar {
+  width: auto;
+  max-width: calc(100% - 2.125rem);
+  height: auto;
+}
+
+.tokify-contribution-calendar .react-activity-calendar__legend-month,
+.tokify-contribution-calendar .react-activity-calendar__legend-weekday {
+  color: var(--muted-foreground);
+  opacity: 0.55;
+}
+
+.tokify-contribution-calendar .react-activity-calendar__legend-colors rect {
+  fill: var(--muted-foreground) !important;
+}
+
+.tokify-contribution-calendar .react-activity-calendar__legend-colors svg:nth-of-type(1) rect {
+  fill-opacity: 0.12;
+}
+
+.tokify-contribution-calendar .react-activity-calendar__legend-colors svg:nth-of-type(2) rect {
+  fill-opacity: 0.28;
+}
+
+.tokify-contribution-calendar .react-activity-calendar__legend-colors svg:nth-of-type(3) rect {
+  fill-opacity: 0.46;
+}
+
+.tokify-contribution-calendar .react-activity-calendar__legend-colors svg:nth-of-type(4) rect {
+  fill-opacity: 0.66;
+}
+
+.tokify-contribution-calendar .react-activity-calendar__legend-colors svg:nth-of-type(5) rect {
+  fill-opacity: 0.88;
 }

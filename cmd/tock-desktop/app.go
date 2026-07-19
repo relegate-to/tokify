@@ -7,6 +7,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -18,7 +19,10 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	exportapp "github.com/kriuchkov/tock/internal/app/export"
+	projectreg "github.com/kriuchkov/tock/internal/app/projects"
 	"github.com/kriuchkov/tock/internal/app/runtime"
+	teamreg "github.com/kriuchkov/tock/internal/app/teams"
+	"github.com/kriuchkov/tock/internal/appdir"
 	"github.com/kriuchkov/tock/internal/core/models"
 	"github.com/kriuchkov/tock/internal/integrations/neonauth"
 	"github.com/kriuchkov/tock/internal/integrations/neonsync"
@@ -35,6 +39,13 @@ type App struct {
 	teams    *teams.Service
 	neonAuth *neonauth.Service
 	neonSync *neonsync.Service
+	projects *projectreg.Registry
+	// teamNames is the client-side audience-id -> local name map for sharing
+	// teams (distinct from the Microsoft Teams integration in `teams` above).
+	teamNames *teamreg.Registry
+	// sharedCache serves the last-good decrypted shared activity instantly while a
+	// refresh runs in the background — see sharedCache and refreshSharedAsync.
+	sharedCache *sharedCache
 
 	mu       sync.Mutex
 	trayStop chan struct{}
@@ -42,6 +53,7 @@ type App struct {
 
 	teamsReconnecting atomic.Bool
 	syncing           atomic.Bool
+	sharedRefreshing  atomic.Bool
 }
 
 // Encrypted sync runs on its own without the user clicking "Sync now": once
@@ -61,11 +73,36 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	rt, err := runtime.Load(ctx, runtime.Request{})
+	// A TOKIFY_PROFILE-namespaced log (see internal/appdir) lets two signed-in
+	// users run side by side for local sharing tests; empty means the upstream
+	// default (~/.tock.txt, or TOCK_FILE).
+	rt, err := runtime.Load(ctx, runtime.Request{FilePath: appdir.LogPath()})
 	if err != nil {
 		return
 	}
 	a.rt = rt
+	// The project registry gives projects a first-class existence independent of
+	// the activity log (see internal/app/projects). Non-fatal on error, like the
+	// other Tokify-side state files — a failure means we can't reach ~/Library.
+	if p, perr := projectreg.DefaultPath(); perr == nil {
+		if reg, oerr := projectreg.Open(p); oerr == nil {
+			a.projects = reg
+		}
+	}
+	// Sharing team names are client-side only (the server never sees them); same
+	// non-fatal open as the project registry.
+	if p, perr := teamreg.DefaultPath(); perr == nil {
+		if reg, oerr := teamreg.Open(p); oerr == nil {
+			a.teamNames = reg
+		}
+	}
+	// The shared-activity cache paints the merged Activity view from the previous
+	// session's rows before the first network read returns. Non-fatal like the
+	// registries — a failure just means we can't reach ~/Library and cold starts
+	// stay slow.
+	if p, perr := sharedCachePath(); perr == nil {
+		a.sharedCache = openSharedCache(p)
+	}
 	// Teams integration is opt-in; we still construct the service eagerly so
 	// the settings page can render its disabled state without a round-trip
 	// failure. A construction error means we can't reach ~/Library, which
@@ -85,6 +122,9 @@ func (a *App) startup(ctx context.Context) {
 	if a.neonAuth != nil {
 		if sync, err := neonsync.NewService(rt.ActivityService, a.neonAuth); err == nil {
 			a.neonSync = sync
+			if a.neonAuth.Status().SignedIn {
+				a.forceSyncEnabled()
+			}
 			a.syncKick = make(chan struct{}, 1)
 			go a.autoSyncLoop()
 			go a.syncDebouncer()
@@ -316,6 +356,17 @@ func (a *App) ListToday() ([]models.Activity, error) {
 	return acts, nil
 }
 
+// ListPastYear returns activities that started during the last 365 local days.
+func (a *App) ListPastYear() ([]models.Activity, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	to := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
+	from := to.AddDate(0, 0, -365)
+	return a.rt.ActivityService.List(a.ctx, models.ActivityFilter{FromDate: &from, ToDate: &to})
+}
+
 // Start begins a new activity. Description is required; project is optional.
 // Starting a new one stops anything already running (tock's own behavior).
 func (a *App) Start(description, project string) (*models.Activity, error) {
@@ -528,7 +579,7 @@ func (a *App) ListRecent(limit int) ([]models.Activity, error) {
 // project filters by exact project name (empty means no project filter).
 // Reuses tock's own RenderOutput so the GUI and CLI produce byte-identical
 // exports.
-func (a *App) Export(format, fromDate, toDate, project string) (string, error) {
+func (a *App) Export(format, fromDate, toDate, project string, includeShared bool) (string, error) {
 	if err := a.requireRuntime(); err != nil {
 		return "", err
 	}
@@ -569,6 +620,17 @@ func (a *App) Export(format, fromDate, toDate, project string) (string, error) {
 	report, err := a.rt.ActivityService.GetReport(a.ctx, filter)
 	if err != nil {
 		return "", errors.Wrap(err, "generate report")
+	}
+	// Opt-in: fold read-only shared activity from other members into the export.
+	// Default (own-only) leaves the report as the local log, so a teammate's data
+	// never lands in an export unless the user asked for it.
+	if includeShared && a.sharedCache != nil {
+		cached := a.sharedCache.get()
+		shared := make([]models.Activity, 0, len(cached))
+		for _, s := range cached {
+			shared = append(shared, s.Activity)
+		}
+		foldSharedIntoReport(report, shared, filter)
 	}
 	output, err := exportapp.RenderOutput(format, report, a.rt.TimeFormatter)
 	if err != nil {
@@ -659,6 +721,49 @@ func (a *App) AuthStatus() neonauth.Status {
 		return neonauth.Status{}
 	}
 	return a.neonAuth.Status()
+}
+
+// ApplicationDataDirectory returns the profile-aware directory containing
+// Tokify's local JSON settings and cache files.
+func (a *App) ApplicationDataDirectory() (string, error) {
+	return appdir.Dir()
+}
+
+// OpenApplicationDataDirectory creates the local data directory when needed
+// and reveals it in Finder.
+func (a *App) OpenApplicationDataDirectory() error {
+	dir, err := a.ApplicationDataDirectory()
+	if err != nil {
+		return errors.Wrap(err, "get application data directory")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return errors.Wrap(err, "create application data directory")
+	}
+	if err := exec.Command("open", dir).Run(); err != nil {
+		return errors.Wrap(err, "open application data directory")
+	}
+	return nil
+}
+
+// ActivityLogPath returns the active local activity-log path. It is normally
+// ~/.tock.txt, though it can be changed through Tokify's runtime configuration.
+func (a *App) ActivityLogPath() (string, error) {
+	if a.rt == nil || strings.TrimSpace(a.rt.DataPath) == "" {
+		return "", errors.New("activity log unavailable")
+	}
+	return a.rt.DataPath, nil
+}
+
+// OpenActivityLog reveals the active activity log in Finder.
+func (a *App) OpenActivityLog() error {
+	path, err := a.ActivityLogPath()
+	if err != nil {
+		return err
+	}
+	if err := exec.Command("open", "-R", path).Run(); err != nil {
+		return errors.Wrap(err, "reveal activity log")
+	}
+	return nil
 }
 
 // AuthSignIn authenticates with email + password and persists the session in
@@ -753,6 +858,7 @@ func (a *App) unlockSync(ctx context.Context, email, password, userID string) {
 	if a.neonSync == nil {
 		return
 	}
+	a.forceSyncEnabled()
 	token, err := a.neonAuth.Token(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "neonsync: mint data-api token: %v\n", err)
@@ -760,6 +866,39 @@ func (a *App) unlockSync(ctx context.Context, email, password, userID string) {
 	}
 	if err := a.neonSync.Unlock(ctx, email, password, userID, token); err != nil {
 		fmt.Fprintf(os.Stderr, "neonsync: unlock: %v\n", err)
+		return
+	}
+	a.publishSelfName(ctx)
+}
+
+// forceSyncEnabled keeps sync on for every signed-in session. A failure to
+// persist the preference is non-fatal to sign-in; the in-memory setting is
+// still enabled and the next successful write will persist it.
+func (a *App) forceSyncEnabled() {
+	if a.neonSync == nil {
+		return
+	}
+	if err := a.neonSync.SetEnabled(true); err != nil {
+		fmt.Fprintf(os.Stderr, "neonsync: enable: %v\n", err)
+	}
+}
+
+// publishSelfName best-effort republishes the signed-in user's name (from the
+// auth profile) onto their sharing identity, so anyone who sees them resolves a
+// name rather than an id: a team roster, or — the reverse of that — an invitee
+// reading who invited them. Called on unlock and before any invite/create action
+// so the name is present the moment someone else needs it. A failure (sharing
+// locked, offline) is ignored; the next call retries.
+func (a *App) publishSelfName(ctx context.Context) {
+	if a.neonSync == nil || a.neonAuth == nil {
+		return
+	}
+	name := strings.TrimSpace(a.neonAuth.Status().Name)
+	if name == "" {
+		return
+	}
+	if err := a.neonSync.PublishDisplayName(ctx, name); err != nil {
+		fmt.Fprintf(os.Stderr, "neonsync: publish display name: %v\n", err)
 	}
 }
 
@@ -774,6 +913,11 @@ func (a *App) AuthSignOut() error {
 	if a.neonSync != nil {
 		_ = a.neonSync.Lock(ctx)
 	}
+	// Drop the on-disk shared-activity cache so another member's decrypted rows
+	// don't linger past sign-out.
+	if a.sharedCache != nil {
+		a.sharedCache.clear()
+	}
 	return a.neonAuth.SignOut(ctx)
 }
 
@@ -786,11 +930,14 @@ func (a *App) SyncStatus() neonsync.SyncStatus {
 	return a.neonSync.Status()
 }
 
-// SyncSetEnabled flips the sync master switch. Stored key and rows are left
-// intact so it can be turned back on without re-entering the password.
+// SyncSetEnabled is retained for compatibility with the desktop binding. Sync
+// cannot be disabled while a user is signed in.
 func (a *App) SyncSetEnabled(enabled bool) (neonsync.SyncStatus, error) {
 	if a.neonSync == nil {
 		return neonsync.SyncStatus{}, errors.New("sync unavailable")
+	}
+	if !enabled && a.neonAuth != nil && a.neonAuth.Status().SignedIn {
+		return a.neonSync.Status(), errors.New("sync must remain enabled while signed in")
 	}
 	if err := a.neonSync.SetEnabled(enabled); err != nil {
 		return a.neonSync.Status(), err
@@ -934,4 +1081,430 @@ func (a *App) Projects() ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// ListProjects returns the authoritative catalog of projects: the union of
+// explicitly-created projects and every project name ever seen in the activity
+// log, which are auto-registered on read so the list stays stable. Unlike
+// Projects (recent names for autocomplete), this is what the sharing and team
+// UIs build on — including projects with no time tracked against them yet.
+func (a *App) ListProjects() ([]projectreg.Project, error) {
+	if err := a.requireRuntime(); err != nil {
+		return nil, err
+	}
+	if a.projects == nil {
+		return nil, errors.New("project registry unavailable")
+	}
+	acts, err := a.rt.ActivityService.List(a.ctx, models.ActivityFilter{})
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(acts))
+	for _, act := range acts {
+		names = append(names, act.Project)
+	}
+	if eerr := a.projects.Ensure(names...); eerr != nil {
+		return nil, eerr
+	}
+	return a.projects.List(), nil
+}
+
+// CreateProject registers a project that may have no time tracked against it
+// yet, so a sharing team can be assembled before work begins. Idempotent.
+func (a *App) CreateProject(name string) (projectreg.Project, error) {
+	if a.projects == nil {
+		return projectreg.Project{}, errors.New("project registry unavailable")
+	}
+	return a.projects.Create(name)
+}
+
+// TeamView is a sharing team (an audience) joined with its client-side name.
+// The server never stores the name, so the Teams UI reads it from teamNames.
+type TeamView struct {
+	neonsync.TeamInfo
+	Name string
+}
+
+// SharingCreateTeam creates a new sharing audience and names it locally. The new
+// team is an audience of one (the caller, as admin) on epoch 1 until members are
+// invited.
+func (a *App) SharingCreateTeam(name string) (TeamView, error) {
+	if a.neonSync == nil {
+		return TeamView{}, errors.New("sharing unavailable")
+	}
+	if a.teamNames == nil {
+		return TeamView{}, errors.New("team registry unavailable")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return TeamView{}, errors.New("team name is empty")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	a.publishSelfName(ctx)
+	id, err := a.neonSync.CreateAudience(ctx)
+	if err != nil {
+		return TeamView{}, err
+	}
+	t, err := a.teamNames.SetName(id, name)
+	if err != nil {
+		return TeamView{}, err
+	}
+	// Publish the name encrypted to the audience so invitees see it (not
+	// "Untitled"). Best-effort: the local name already covers the creator, and a
+	// rename retries the publish, so a transient failure must not fail creation.
+	_ = a.neonSync.SetTeamName(ctx, id, name)
+	return TeamView{
+		TeamInfo: neonsync.TeamInfo{ID: id, Role: "admin", MemberCount: 1, CurrentEpoch: 1},
+		Name:     t.Name,
+	}, nil
+}
+
+// SharingListTeams returns the caller's sharing teams joined with their local
+// names (empty for a team this device hasn't named yet).
+func (a *App) SharingListTeams() ([]TeamView, error) {
+	if a.neonSync == nil {
+		return nil, errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	infos, err := a.neonSync.ListAudiences(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TeamView, 0, len(infos))
+	for _, info := range infos {
+		// Prefer a device-local name (a rename this device made) over the
+		// creator's encrypted shared name; fall back to the shared name so a
+		// joiner sees the real team name instead of "Untitled".
+		name := ""
+		if a.teamNames != nil {
+			name = a.teamNames.Name(info.ID)
+		}
+		if name == "" {
+			name = info.SharedName
+		}
+		out = append(out, TeamView{TeamInfo: info, Name: name})
+	}
+	return out, nil
+}
+
+// SharingTeamMembers returns one team's roster with each member's pin status.
+func (a *App) SharingTeamMembers(audienceID string) ([]neonsync.TeamMember, error) {
+	if a.neonSync == nil {
+		return nil, errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonSync.ListMembers(ctx, strings.TrimSpace(audienceID))
+}
+
+// SharingProjectShares returns, per shared project, who can see it (the teammates
+// and the teams sharing it, minus the caller), for the shared-with hover card on
+// a project badge. Sharing being unavailable is not an error here: the badge is
+// decorative, so it simply returns nothing.
+func (a *App) SharingProjectShares() ([]neonsync.ProjectShare, error) {
+	if a.neonSync == nil {
+		return []neonsync.ProjectShare{}, nil
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonSync.ProjectShares(ctx)
+}
+
+// SharingDeleteTeam deletes a team the caller created (server-side cascade) and
+// drops its local name. Only the creator can delete; a non-creator admin gets a
+// permission error from the server.
+func (a *App) SharingDeleteTeam(audienceID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	id := strings.TrimSpace(audienceID)
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	if err := a.neonSync.DeleteAudience(ctx, id); err != nil {
+		return err
+	}
+	if a.teamNames != nil {
+		_ = a.teamNames.Remove(id)
+	}
+	return nil
+}
+
+// SharingLeaveTeam removes the caller from a team they belong to but did not
+// create, and drops its local name. Unlike delete, this only touches the caller's
+// own membership; the team lives on for everyone else.
+func (a *App) SharingLeaveTeam(audienceID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	id := strings.TrimSpace(audienceID)
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	if err := a.neonSync.LeaveAudience(ctx, id); err != nil {
+		return err
+	}
+	if a.teamNames != nil {
+		_ = a.teamNames.Remove(id)
+	}
+	return nil
+}
+
+// SharingAcceptInvite accepts a pending team invitation: the caller's membership
+// flips from invited to active, and only then do the team's shared entries and
+// roster become visible to them. A sync is kicked so the newly readable slice
+// reconciles into their view.
+func (a *App) SharingAcceptInvite(audienceID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	if err := a.neonSync.AcceptInvite(ctx, strings.TrimSpace(audienceID)); err != nil {
+		return err
+	}
+	a.syncSoon()
+	return nil
+}
+
+// SharingDeclineInvite declines a pending invitation by removing the caller's own
+// (still-pending) membership row. It is the same self-delete as leaving a team,
+// framed for an invite the caller never accepted; any local name is dropped too.
+func (a *App) SharingDeclineInvite(audienceID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	id := strings.TrimSpace(audienceID)
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	if err := a.neonSync.LeaveAudience(ctx, id); err != nil {
+		return err
+	}
+	if a.teamNames != nil {
+		_ = a.teamNames.Remove(id)
+	}
+	return nil
+}
+
+// SharingRenameTeam updates the team name: the device-local name always, and —
+// when the caller is an admin — the encrypted shared name so other members see
+// the new name too. A non-admin's shared-name write is refused by RLS, which is
+// fine: their rename stays local to this device.
+func (a *App) SharingRenameTeam(audienceID, name string) error {
+	if a.teamNames == nil {
+		return errors.New("team registry unavailable")
+	}
+	if _, err := a.teamNames.SetName(audienceID, name); err != nil {
+		return err
+	}
+	if a.neonSync != nil {
+		ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+		defer cancel()
+		_ = a.neonSync.SetTeamName(ctx, strings.TrimSpace(audienceID), name)
+	}
+	return nil
+}
+
+// SharingAddMember adds a user to a team by their user id, pinning their
+// identity on first sight (TOFU). It returns the pinned fingerprint. If the
+// user's published key differs from one previously pinned, it fails with a
+// key-changed error and adds nobody. role is "member" unless "admin" is given.
+func (a *App) SharingAddMember(audienceID, userID, role string) (string, error) {
+	if a.neonSync == nil {
+		return "", errors.New("sharing unavailable")
+	}
+	role = strings.TrimSpace(role)
+	if role != "admin" {
+		role = "member"
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	a.publishSelfName(ctx)
+	fp, err := a.neonSync.AddMemberTOFU(ctx, strings.TrimSpace(audienceID), strings.TrimSpace(userID), role, true)
+	if err != nil {
+		return "", err
+	}
+	a.syncSoon()
+	return fp, nil
+}
+
+// SharingInviteByEmail adds a person to a team by email. It finds their
+// published identity by an email discovery hash (the server never stores the
+// address), TOFU-pins their key, and adds them. Returns the added user's id.
+// A "no user found" error means they aren't on Tokify — the caller can offer a
+// capability link instead; a key-changed error means their key no longer matches
+// a prior pin and nobody was added.
+func (a *App) SharingInviteByEmail(audienceID, email, role string) (string, error) {
+	if a.neonSync == nil {
+		return "", errors.New("sharing unavailable")
+	}
+	role = strings.TrimSpace(role)
+	if role != "admin" {
+		role = "member"
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	a.publishSelfName(ctx)
+	userID, err := a.neonSync.InviteByEmail(ctx, strings.TrimSpace(audienceID), strings.TrimSpace(email), role, true)
+	if err != nil {
+		return "", err
+	}
+	a.syncSoon()
+	return userID, nil
+}
+
+// SharingRemoveMember removes a user from a team. This mints a fresh epoch so
+// the removed member goes dark to future entries; a sync is kicked to reconcile
+// the crypto-plane grant cleanup.
+func (a *App) SharingRemoveMember(audienceID, userID string) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	if err := a.neonSync.RemoveMember(ctx, strings.TrimSpace(audienceID), strings.TrimSpace(userID)); err != nil {
+		return err
+	}
+	a.syncSoon()
+	return nil
+}
+
+// SharingTeamShare returns what a team currently sees: its shared projects and
+// the history window (sinceDays; 0 means all history of those projects).
+func (a *App) SharingTeamShare(audienceID string) (neonsync.ShareView, error) {
+	if a.neonSync == nil {
+		return neonsync.ShareView{}, errors.New("sharing unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return a.neonSync.TeamShare(ctx, strings.TrimSpace(audienceID))
+}
+
+// SharingSetTeamShare sets which projects a team can see and how far back
+// (sinceDays: 0 shares the full history of those projects, 7/30/... limits it to
+// a trailing window). Passing an empty project list clears what the team sees.
+// A sync is kicked afterward so the shared slice reconciles (grants are created
+// in SyncNow, not by writing the share).
+func (a *App) SharingSetTeamShare(audienceID string, projects []string, sinceDays int) error {
+	if a.neonSync == nil {
+		return errors.New("sharing unavailable")
+	}
+	if sinceDays < 0 {
+		return errors.New("since days must be non-negative")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	if err := a.neonSync.SetShareFilter(ctx, strings.TrimSpace(audienceID), projects, sinceDays); err != nil {
+		return err
+	}
+	a.syncSoon()
+	return nil
+}
+
+// SharedActivity is one read-only activity another member shared with a team the
+// caller belongs to, decrypted and author-verified by the sharing service. It is
+// display-only and never merges into the local ~/.tock.txt log. AuthorName and
+// AuthorID drive the author badge in the merged Activity view; TeamName is the
+// caller's local name for the audience the entry came through.
+//
+// Activity is a NAMED field, not embedded: models.Activity has a custom
+// MarshalJSON, and embedding it would promote that method so json.Marshal emitted
+// only the activity fields and silently dropped author_id/team_name/author_name.
+type SharedActivity struct {
+	Activity   models.Activity `json:"activity"`
+	AudienceID string          `json:"audience_id"`
+	TeamName   string          `json:"team_name"`
+	AuthorID   string          `json:"author_id"`
+	AuthorName string          `json:"author_name"`
+}
+
+// SharingSharedEntries returns every activity shared with the caller across all
+// their teams, decrypted and author-verified. The result is read-only: the UI
+// folds it into the Activity view tagged by author but must never write it to the
+// local log. An unpinned author is a hard failure surfaced here rather than shown
+// as untrusted data.
+func (a *App) SharingSharedEntries() ([]SharedActivity, error) {
+	if a.neonSync == nil {
+		return nil, errors.New("sharing unavailable")
+	}
+	// Signed out means there's nothing to show — don't serve the cached rows of a
+	// previous session, which would leak another member's data past sign-out. The
+	// check is a local session-file read, not a network call.
+	if a.neonAuth == nil || !a.neonAuth.Status().SignedIn {
+		return []SharedActivity{}, nil
+	}
+	// Serve the cache instantly and reconcile in the background: the poll returns
+	// the last-good rows without waiting on the network walk, and the refresh
+	// pushes any change via the shared:updated event. Only a truly cold cache (no
+	// prior session, no disk file) falls through to a synchronous fetch so the
+	// merged view isn't left empty on a brand-new install.
+	if a.sharedCache != nil && a.sharedCache.warm() {
+		a.refreshSharedAsync()
+		return a.sharedCache.get(), nil
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	out, err := a.fetchSharedEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if a.sharedCache != nil {
+		a.sharedCache.set(out)
+	}
+	return out, nil
+}
+
+// fetchSharedEntries runs the full shared read path: list decrypted entries,
+// resolve author display names, and tag each with the caller's local team name.
+// This is the expensive network + crypto walk that the cache exists to hide.
+func (a *App) fetchSharedEntries(ctx context.Context) ([]SharedActivity, error) {
+	entries, err := a.neonSync.ListSharedEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	authorIDs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		authorIDs = append(authorIDs, e.AuthorID)
+	}
+	names, _ := a.neonSync.ResolveDisplayNames(ctx, authorIDs)
+	out := make([]SharedActivity, 0, len(entries))
+	for _, e := range entries {
+		teamName := ""
+		if a.teamNames != nil {
+			teamName = a.teamNames.Name(e.AudienceID)
+		}
+		out = append(out, SharedActivity{
+			Activity:   e.Activity,
+			AudienceID: e.AudienceID,
+			TeamName:   teamName,
+			AuthorID:   e.AuthorID,
+			AuthorName: names[e.AuthorID],
+		})
+	}
+	return out, nil
+}
+
+// refreshSharedAsync reconciles the cache with the network in the background,
+// single-flighted so a burst of polls collapses into one walk. On a real change
+// it persists the snapshot and emits shared:updated so the UI updates without
+// waiting for its next poll; a transient failure keeps the last-good rows.
+func (a *App) refreshSharedAsync() {
+	if a.neonSync == nil || a.sharedCache == nil {
+		return
+	}
+	if !a.sharedRefreshing.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer a.sharedRefreshing.Store(false)
+		ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+		defer cancel()
+		out, err := a.fetchSharedEntries(ctx)
+		if err != nil {
+			return
+		}
+		if a.sharedCache.set(out) {
+			wailsruntime.EventsEmit(a.ctx, "shared:updated", out)
+		}
+	}()
 }

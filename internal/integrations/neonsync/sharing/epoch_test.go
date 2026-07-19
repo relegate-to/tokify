@@ -210,6 +210,22 @@ func TestEpochWrappers(t *testing.T) {
 	gotFilter, err := UnwrapFilterFromEpoch(epoch.Bytes(), wrappedFilter, fAAD)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(filter, gotFilter))
+
+	// Wrap team name to epoch, unwrap.
+	nAAD := NameAAD{AudienceID: "aud", Epoch: 2}
+	name := []byte("Acme client")
+	wrappedName, err := WrapNameToEpoch(epoch.PublicKey().Bytes(), name, nAAD)
+	require.NoError(t, err)
+	gotName, err := UnwrapNameFromEpoch(epoch.Bytes(), wrappedName, nAAD)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(name, gotName))
+
+	// Domain separation: a name ciphertext must NOT open as a filter under the
+	// same (audience, epoch), or a server could swap the two blobs.
+	_, err = UnwrapFilterFromEpoch(epoch.Bytes(), wrappedName, fAAD)
+	require.Error(t, err)
+	_, err = UnwrapNameFromEpoch(epoch.Bytes(), wrappedFilter, nAAD)
+	require.Error(t, err)
 }
 
 // TestEpochAnnouncementCanonicalStable freezes the canonical encoding shape.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft,
+    CalendarClock,
     Copy,
     Link2,
     Loader2,
@@ -86,9 +87,11 @@ async function copyText(text: string, label: string) {
 
 export function SharingView({
     projects,
+    initialProject,
     onBack,
 }: {
     projects: string[];
+    initialProject?: string;
     onBack: () => void;
 }) {
     const [links, setLinks] = useState<neonsync.LinkShareInfo[]>([]);
@@ -96,7 +99,7 @@ export function SharingView({
     const [creating, setCreating] = useState(false);
     const [revoking, setRevoking] = useState<string | null>(null);
     const [status, setStatus] = useState<neonsync.SyncStatus | null>(null);
-    const [project, setProject] = useState('');
+    const [project, setProject] = useState(initialProject ?? '');
     const [sinceDays, setSinceDays] = useState(30);
     const [validForHours, setValidForHours] = useState(24 * 7);
     const [createdURL, setCreatedURL] = useState('');
@@ -123,6 +126,10 @@ export function SharingView({
     useEffect(() => {
         loadLinks();
     }, []);
+
+    useEffect(() => {
+        setProject(initialProject ?? '');
+    }, [initialProject]);
 
     const canCreate = !!status?.configured && !!status?.unlocked;
     const filterProjects = project === '' ? [] : [project];
@@ -164,16 +171,28 @@ export function SharingView({
 
     return (
         <div className="flex flex-col gap-6 animate-in fade-in-0 slide-in-from-top-1 duration-300">
-            <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon-xs" onClick={onBack} title="Back">
-                    <ArrowLeft />
-                </Button>
-                <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Sharing
-                </h2>
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={onBack}
+                        title="Back"
+                    >
+                        <ArrowLeft />
+                    </Button>
+                    <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Sharing
+                    </h2>
+                </div>
+                {initialProject && (
+                    <Badge variant="outline" className="font-normal">
+                        From History: {initialProject}
+                    </Badge>
+                )}
             </div>
 
-            <Card>
+            <Card className="overflow-hidden">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <Link2 className="opacity-70" />
@@ -197,6 +216,24 @@ export function SharingView({
                         </Alert>
                     )}
 
+                    <div className="rounded-2xl border bg-muted/30 p-4">
+                        <div className="flex items-start gap-3">
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
+                                <ShieldCheck />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium">
+                                    End-to-end encrypted, read-only access
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    The link carries a fragment secret after the #. It is
+                                    not sent to the server, and anyone holding the full URL
+                                    can read this shared slice until it expires or is revoked.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <FieldGroup>
                         <Field>
                             <FieldLabel htmlFor="share-project">Project</FieldLabel>
@@ -215,7 +252,7 @@ export function SharingView({
                                 ))}
                             </select>
                             <FieldDescription>
-                                Pick a project or share the full filtered history.
+                                Pick a project or share the full history window.
                             </FieldDescription>
                         </Field>
 
@@ -264,10 +301,14 @@ export function SharingView({
                         </Field>
                     </FieldGroup>
 
-                    <div className="rounded-xl border bg-muted/30 p-3 text-sm">
+                    <div className="rounded-xl border bg-card p-3 text-sm shadow-xs">
                         <div className="flex items-center justify-between gap-3">
                             <span className="text-muted-foreground">Scope</span>
                             <span className="font-medium">{scopeLabel}</span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                            <span className="text-muted-foreground">History</span>
+                            <span>{sinceDays === 0 ? 'All time' : `Last ${sinceDays} days`}</span>
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-3">
                             <span className="text-muted-foreground">Access</span>
@@ -319,7 +360,10 @@ export function SharingView({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Active links</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                        <CalendarClock className="opacity-70" />
+                        Active links
+                    </CardTitle>
                     <CardDescription>
                         Revoke a link to immediately close its anonymous read path.
                     </CardDescription>

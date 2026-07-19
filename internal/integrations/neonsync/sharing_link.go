@@ -181,6 +181,19 @@ func (s *Service) provisionLinkRecipient(
 		return LinkShare{}, gerrors.Wrap(err, "seal trust bundle")
 	}
 
+	// Materialize the audience's grants now so the link is usable immediately.
+	// Entries must exist before grants (the grants FK), so push first — both
+	// steps are idempotent and safe to repeat.
+	if perr := s.pushSharedEntries(ctx, sess, localByID); perr != nil {
+		return LinkShare{}, perr
+	}
+	if rerr := s.reconcileAudience(ctx, sess, audienceID, localByID, time.Now()); rerr != nil {
+		return LinkShare{}, rerr
+	}
+
+	// Publish the capability only after its entries and grants are usable. Once
+	// this row exists the function has no further fallible work, so a successful
+	// insert cannot leave an active link whose one-time secret was never returned.
 	var validUntil *string
 	if validFor > 0 {
 		u := timeToParam(time.Now().Add(validFor))
@@ -204,16 +217,6 @@ func (s *Service) provisionLinkRecipient(
 		ValidUntil:       validUntil,
 	}); ierr != nil {
 		return LinkShare{}, gerrors.Wrap(ierr, "insert link share")
-	}
-
-	// Materialize the audience's grants now so the link is usable immediately.
-	// Entries must exist before grants (the grants FK), so push first — both
-	// steps are idempotent and safe to repeat.
-	if perr := s.pushSharedEntries(ctx, sess, localByID); perr != nil {
-		return LinkShare{}, perr
-	}
-	if rerr := s.reconcileAudience(ctx, sess, audienceID, localByID, time.Now()); rerr != nil {
-		return LinkShare{}, rerr
 	}
 
 	return LinkShare{AudienceID: audienceID, Secret: base64.RawURLEncoding.EncodeToString(secret)}, nil

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
+
+	"github.com/kriuchkov/tock/internal/appdir"
 )
 
 // keychainStore stores the opaque session token under the login keychain via
@@ -20,7 +22,7 @@ type keychainStore struct {
 }
 
 func newKeychainStore() *keychainStore {
-	return &keychainStore{service: "Tokify Neon Auth"}
+	return &keychainStore{service: appdir.KeychainService("Tokify Neon Auth")}
 }
 
 func (k *keychainStore) Save(ctx context.Context, account, secret string) error {

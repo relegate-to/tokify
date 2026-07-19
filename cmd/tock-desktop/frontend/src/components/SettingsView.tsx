@@ -1,14 +1,25 @@
-import { useMemo, useState } from 'react';
-import { ArrowLeft, Check } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+    ArrowLeft,
+    ArrowUpCircle,
+    Check,
+    CircleCheck,
+    ExternalLink,
+    MessageSquareWarning,
+    RefreshCw,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
+    AppVersion,
+    CheckForUpdate,
     TeamsConnect,
     TeamsDisconnect,
     TeamsSetEnabled,
     TeamsSetTrackedProjects,
 } from '../../wailsjs/go/main/App';
-import { teams } from '../../wailsjs/go/models';
+import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+import { main, teams } from '../../wailsjs/go/models';
 
 import type { ActivityView, Theme } from '@/types';
 import { cn } from '@/lib/utils';
@@ -19,6 +30,8 @@ export function SettingsView({
     onShowAccountChange,
     activityView,
     onActivityViewChange,
+    dailyGoal,
+    onDailyGoalChange,
     showScrollbars,
     onShowScrollbarsChange,
     theme,
@@ -32,6 +45,8 @@ export function SettingsView({
     onShowAccountChange: (v: boolean) => void;
     activityView: ActivityView;
     onActivityViewChange: (v: ActivityView) => void;
+    dailyGoal: number;
+    onDailyGoalChange: (v: number) => void;
     showScrollbars: boolean;
     onShowScrollbarsChange: (v: boolean) => void;
     theme: Theme;
@@ -94,13 +109,24 @@ export function SettingsView({
                 />
                 <SettingSegmentedRow
                     title="Show activity"
-                    description="Controls what appears under the running card on the Now page."
+                    description="What appears under the timer on the Now page: today's goal progress plus recent tasks, just today's progress, or nothing."
                     value={activityView}
                     onChange={onActivityViewChange}
                     options={[
                         { value: 'all', label: 'All' },
                         { value: 'today', label: 'Today only' },
                         { value: 'none', label: 'Hidden' },
+                    ]}
+                />
+                <SettingSegmentedRow
+                    title="Daily goal"
+                    description="Target tracked time per day, shown as progress on the Now page."
+                    value={String(dailyGoal)}
+                    onChange={(v) => onDailyGoalChange(Number(v))}
+                    options={[
+                        { value: '240', label: '4h' },
+                        { value: '360', label: '6h' },
+                        { value: '480', label: '8h' },
                     ]}
                 />
                 <SettingRow
@@ -145,6 +171,113 @@ export function SettingsView({
                     )}
                 </div>
             </div>
+
+            <div className="flex flex-col gap-3">
+                <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    About
+                </h3>
+                <div className="flex flex-col divide-y rounded-xl border bg-card shadow-sm">
+                    <UpdateRow />
+                    <ReportIssueRow />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+const ISSUES_URL = 'https://github.com/relegate-to/tokify/issues';
+
+function UpdateRow() {
+    const [current, setCurrent] = useState('');
+    const [checking, setChecking] = useState(false);
+    const [result, setResult] = useState<main.UpdateInfo | null>(null);
+
+    useEffect(() => {
+        AppVersion()
+            .then(setCurrent)
+            .catch(() => {});
+    }, []);
+
+    const check = () => {
+        setChecking(true);
+        CheckForUpdate()
+            .then((info) => {
+                setResult(info);
+                if (!info.update_available) {
+                    toast.success("You're on the latest version");
+                }
+            })
+            .catch((e) => toast.error(String(e)))
+            .finally(() => setChecking(false));
+    };
+
+    const updateAvailable = !!result?.update_available;
+    const checkedOnce = result !== null;
+
+    let status: string;
+    if (updateAvailable) {
+        status = `Version ${result?.latest_version} is available`;
+    } else if (checkedOnce) {
+        status = "You're on the latest version";
+    } else {
+        status = current ? `Tokify ${current}` : 'Tokify';
+    }
+
+    return (
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="flex min-w-0 flex-col">
+                <span className="flex items-center gap-1.5 text-sm">
+                    Updates
+                    {updateAvailable && (
+                        <ArrowUpCircle className="size-3.5 text-emerald-500" />
+                    )}
+                    {checkedOnce && !updateAvailable && (
+                        <CircleCheck className="size-3.5 text-emerald-500" />
+                    )}
+                </span>
+                <span className="truncate text-xs text-muted-foreground">
+                    {status}
+                </span>
+            </div>
+            {updateAvailable ? (
+                <Button size="sm" onClick={() => BrowserOpenURL(result!.release_url)}>
+                    Download
+                    <ExternalLink className="size-3.5" />
+                </Button>
+            ) : (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={check}
+                    disabled={checking}
+                >
+                    <RefreshCw
+                        className={cn('size-3.5', checking && 'animate-spin')}
+                    />
+                    {checking ? 'Checking…' : 'Check for updates'}
+                </Button>
+            )}
+        </div>
+    );
+}
+
+function ReportIssueRow() {
+    return (
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="flex min-w-0 flex-col">
+                <span className="text-sm">Report an issue</span>
+                <span className="text-xs text-muted-foreground">
+                    Opens the Tokify issue tracker on GitHub.
+                </span>
+            </div>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => BrowserOpenURL(ISSUES_URL)}
+            >
+                <MessageSquareWarning className="size-3.5" />
+                Report
+            </Button>
         </div>
     );
 }

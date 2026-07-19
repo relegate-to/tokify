@@ -2,16 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import type { Activity } from '@/types';
+import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
 import { buildClockISO, formatClock, formatDuration } from '@/lib/time';
+import { useNow } from '@/lib/use-now';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ProjectTag } from '@/components/ProjectTag';
+import { SharedAuthorBadge } from '@/components/SharedAuthorBadge';
 
 const ROW_HEIGHT = 'h-11';
 const ROW_GRID =
-    'grid grid-cols-[4rem_minmax(0,1fr)_5rem_auto] items-center gap-3 px-3';
+    'grid grid-cols-[68px_136px_minmax(0,1fr)_68px_52px] items-center px-3';
 
 export function ActivityRow({
     activity,
@@ -22,7 +24,7 @@ export function ActivityRow({
     onResume,
     readOnly = false,
 }: {
-    activity: Activity;
+    activity: ActivityItem;
     projects: string[];
     isRemoving?: boolean;
     onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
@@ -30,10 +32,16 @@ export function ActivityRow({
     onResume?: (orig: Activity) => void;
     readOnly?: boolean;
 }) {
+    // A shared entry belongs to another member: always read-only, never editable
+    // or removable here, and tagged with the author's avatar badge.
+    const shared = activity.shared;
+    readOnly = readOnly || !!shared;
+
     const start = new Date(activity.start_time as any);
     const end = activity.end_time ? new Date(activity.end_time as any) : null;
-    const ms = (end?.getTime() ?? Date.now()) - start.getTime();
     const isRunning = !end;
+    const now = useNow(isRunning);
+    const ms = (end?.getTime() ?? now) - start.getTime();
 
     const [editing, setEditing] = useState(false);
     const [desc, setDesc] = useState(activity.description ?? '');
@@ -115,16 +123,16 @@ export function ActivityRow({
                         if (e.key === 'Escape') cancel();
                     }}
                     placeholder="HH:MM"
-                    className="h-7 px-1.5 text-center font-mono text-xs tabular-nums"
+                    className="h-7 w-[60px] px-1.5 text-center font-mono text-sm tabular-nums"
                 />
             ) : (
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                <span className="font-mono text-sm tabular-nums text-navigation-muted-foreground">
                     {formatClock(start)}
                 </span>
             )}
 
             {editing ? (
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="min-w-0 pr-3">
                     <Input
                         value={project}
                         onChange={(e) => setProject(e.target.value)}
@@ -134,42 +142,47 @@ export function ActivityRow({
                         }}
                         placeholder="project"
                         list={`projects-${start.getTime()}`}
-                        className="h-7 w-28 shrink-0"
+                        className="h-7 w-full"
                     />
                     <datalist id={`projects-${start.getTime()}`}>
                         {projects.map((p) => (
                             <option key={p} value={p} />
                         ))}
                     </datalist>
-                    <Input
-                        ref={descRef}
-                        value={desc}
-                        onChange={(e) => setDesc(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') save();
-                            if (e.key === 'Escape') cancel();
-                        }}
-                        placeholder="Description"
-                        className="h-7 flex-1"
-                    />
                 </div>
             ) : (
-                <div className="flex min-w-0 items-center gap-2.5">
+                <div className="min-w-0 pr-3">
                     {activity.project && (
                         <ProjectTag
                             project={activity.project}
-                            className="max-w-32 shrink-0"
+                            team={shared ? true : undefined}
+                            className="w-full text-sm"
                         />
                     )}
-                    <span
-                        className={cn(
-                            'truncate text-sm',
-                            !activity.description && 'text-muted-foreground',
-                        )}
-                    >
-                        {activity.description || 'No description'}
-                    </span>
                 </div>
+            )}
+
+            {editing ? (
+                <Input
+                    ref={descRef}
+                    value={desc}
+                    onChange={(e) => setDesc(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') save();
+                        if (e.key === 'Escape') cancel();
+                    }}
+                    placeholder="Description"
+                    className="h-7 w-full"
+                />
+            ) : (
+                <span
+                    className={cn(
+                        'truncate pr-3 text-sm font-medium',
+                        !activity.description && 'text-muted-foreground',
+                    )}
+                >
+                    {activity.description || 'No description'}
+                </span>
             )}
 
             {editing && end ? (
@@ -181,12 +194,12 @@ export function ActivityRow({
                         if (e.key === 'Escape') cancel();
                     }}
                     placeholder="HH:MM"
-                    className="h-7 px-1.5 text-center font-mono text-xs tabular-nums"
+                    className="h-7 w-[60px] justify-self-end px-1.5 text-center font-mono text-sm tabular-nums"
                 />
             ) : (
                 <span
                     className={cn(
-                        'text-right font-mono text-xs tabular-nums',
+                        'pr-3.5 text-right font-mono text-sm font-medium tabular-nums',
                         isRunning ? 'text-foreground' : 'text-muted-foreground',
                     )}
                 >
@@ -194,8 +207,10 @@ export function ActivityRow({
                 </span>
             )}
 
-            <div className="flex items-center gap-1">
-                {editing ? (
+            <div className="flex items-center justify-end gap-1">
+                {shared ? (
+                    <SharedAuthorBadge shared={shared} />
+                ) : editing ? (
                     <Button
                         size="icon-xs"
                         variant="ghost"

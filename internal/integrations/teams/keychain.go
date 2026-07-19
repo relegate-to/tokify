@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
+
+	"github.com/kriuchkov/tock/internal/appdir"
 )
 
 // keychainStore stores opaque token strings under the login keychain via the
@@ -19,7 +21,7 @@ type keychainStore struct {
 }
 
 func newKeychainStore() *keychainStore {
-	return &keychainStore{service: "Tokify Teams Integration"}
+	return &keychainStore{service: appdir.KeychainService("Tokify Teams Integration")}
 }
 
 func (k *keychainStore) Save(ctx context.Context, account, secret string) error {

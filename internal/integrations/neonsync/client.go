@@ -30,6 +30,11 @@ type userKeysRow struct {
 	// account is provisioned for sharing; populated by patchIdentityColumns.
 	WrappedIdentity string `json:"wrapped_identity,omitempty"`
 	IdentityNonce   string `json:"identity_nonce,omitempty"`
+	// Cross-device pin store (fingerprint pins + epoch watermarks), sealed under
+	// the account DEK. Empty until this device pushes its pins; populated by
+	// patchPinsColumns. See PinStore.MergeRemote for the sync semantics.
+	WrappedPins string `json:"wrapped_pins,omitempty"`
+	PinsNonce   string `json:"pins_nonce,omitempty"`
 }
 
 type entryRow struct {
@@ -164,23 +169,45 @@ func doJSON(ctx context.Context, hc *http.Client, method, url, token string, bod
 	return data, nil
 }
 
+// apiStatusError carries PostgREST's structured error alongside the HTTP status
+// so callers can branch on it (e.g. a unique-violation on an idempotent insert)
+// while its Error() text stays the human-readable message for the UI.
+type apiStatusError struct {
+	status  int
+	code    string
+	message string
+	hint    string
+}
+
+func (e *apiStatusError) Error() string {
+	if e.message == "" {
+		return fmt.Sprintf("neonsync: request failed (%d)", e.status)
+	}
+	if e.hint != "" {
+		return fmt.Sprintf("%s (%s)", e.message, e.hint)
+	}
+	return e.message
+}
+
 // apiError extracts PostgREST's `{ "message", "hint", "details", "code" }` error
 // body so the UI can show the real reason rather than a bare status.
 func apiError(status int, body []byte) error {
-	var e struct {
+	e := &apiStatusError{status: status}
+	var parsed struct {
 		Message string `json:"message"`
 		Hint    string `json:"hint"`
 		Code    string `json:"code"`
 	}
-	if json.Unmarshal(body, &e) == nil && e.Message != "" {
-		if e.Hint != "" {
-			return fmt.Errorf("%s (%s)", e.Message, e.Hint)
-		}
-		return errorString(e.Message)
+	if json.Unmarshal(body, &parsed) == nil {
+		e.message, e.hint, e.code = parsed.Message, parsed.Hint, parsed.Code
 	}
-	return fmt.Errorf("neonsync: request failed (%d)", status)
+	return e
 }
 
-// errorString is a tiny helper so apiError can return a plain message without a
-// format directive misreading a `%` in the server text.
-func errorString(s string) error { return gerrors.New(s) }
+// isUniqueViolation reports whether err is a PostgREST duplicate-key error
+// (Postgres 23505, surfaced as HTTP 409) — the signal that an idempotent insert
+// hit an already-present row and can be treated as success.
+func isUniqueViolation(err error) bool {
+	var e *apiStatusError
+	return errors.As(err, &e) && (e.code == "23505" || e.status == http.StatusConflict)
+}

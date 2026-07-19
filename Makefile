@@ -43,6 +43,14 @@ NEON_AUTH_URL ?=
 NEON_DATA_URL ?=
 DESKTOP_LDFLAGS := -X github.com/kriuchkov/tock/internal/integrations/neonauth.DefaultAuthURL=$(NEON_AUTH_URL) -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultDataURL=$(NEON_DATA_URL)
 
+# App version stamped into release builds for the Settings "Check for updates"
+# panel, derived from the current git tag (e.g. v0.1.0). Overridable per-invoke.
+# Only the build targets inject it; desktop-dev leaves it at the source default.
+DESKTOP_VERSION ?= $(patsubst v%,%,$(shell git describe --tags --always --dirty 2>/dev/null))
+ifneq ($(strip $(DESKTOP_VERSION)),)
+DESKTOP_LDFLAGS += -X main.version=$(DESKTOP_VERSION)
+endif
+
 # Build the Teams sign-in helper binary. Used in dev mode (found via the
 # parent directory of the dev binary) and copied into the .app bundle on
 # release builds. Built outside the Wails pipeline so we control the cgo

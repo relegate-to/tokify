@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/go-faster/errors"
+
+	"github.com/kriuchkov/tock/internal/appdir"
 )
 
 // Settings are the user-controlled preferences for the Neon sync integration.
@@ -27,18 +29,16 @@ type Settings struct {
 }
 
 func defaultSettingsPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", errors.Wrap(err, "home dir")
-	}
-	return filepath.Join(home, "Library", "Application Support", "Tokify", "neonsync.json"), nil
+	return appdir.Path("neonsync.json")
 }
 
 func loadSettings(path string) (Settings, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Settings{}, nil
+			// A first sign-in should begin syncing without an extra opt-in step.
+			// An existing setting is reconciled to enabled once its user signs in.
+			return Settings{Enabled: true}, nil
 		}
 		return Settings{}, errors.Wrap(err, "read settings")
 	}

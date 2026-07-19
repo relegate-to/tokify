@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	gerrors "github.com/go-faster/errors"
@@ -22,7 +23,12 @@ type identityRow struct {
 	UserID    string `json:"user_id"`
 	PubEnc    string `json:"pub_enc"`
 	PubSig    string `json:"pub_sig"`
-	CreatedAt string `json:"created_at,omitempty"`
+	EmailHash string `json:"email_hash,omitempty"`
+	// DisplayName is the self-chosen human name published for the roster. omitempty
+	// so a name-less re-publish (e.g. an email_hash backfill) never clobbers a name
+	// already set — only an explicit PublishDisplayName writes it.
+	DisplayName string `json:"display_name,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
 }
 
 // audienceRow mirrors audiences. current_epoch is server-maintained (bump-pointer
@@ -47,6 +53,10 @@ type audienceMemberRow struct {
 	AudienceID string `json:"audience_id"`
 	MemberID   string `json:"member_id"`
 	Role       string `json:"role"`
+	// Status is 'invited' (admin planted the row) or 'active' (accepted). omitempty
+	// on insert so the creator's bootstrap self-admin row takes the server DEFAULT
+	// 'active'; an invite sends 'invited' explicitly.
+	Status string `json:"status,omitempty"`
 }
 
 type audienceEpochKeyRow struct {
@@ -80,6 +90,16 @@ type shareRow struct {
 	CreatedBy        string `json:"created_by"`
 }
 
+// audienceNameRow mirrors the audience_names table: one encrypted team name per
+// audience, sealed to the epoch key. audience_id is the PK so an upsert renames
+// in place.
+type audienceNameRow struct {
+	AudienceID     string `json:"audience_id"`
+	Epoch          int    `json:"epoch"`
+	NameCiphertext string `json:"name_ciphertext"`
+	CreatedBy      string `json:"created_by"`
+}
+
 // --- identities ---
 
 func getIdentity(ctx context.Context, hc *http.Client, base, token, userID string) (*identityRow, error) {
@@ -102,6 +122,55 @@ func getIdentity(ctx context.Context, hc *http.Client, base, token, userID strin
 // The read path treats it as an unpinnable identity (a hard failure to trust).
 var errIdentityNotFound = gerrors.New("neonsync: no published identity")
 
+// getIdentities fetches published identities for many users in one request,
+// keyed by user_id — the batched form of getIdentity that a roster or an author
+// list uses instead of a per-user round-trip. A user with no published identity
+// is simply absent from the map; empty in, empty out.
+func getIdentities(ctx context.Context, hc *http.Client, base, token string, userIDs []string) (map[string]identityRow, error) {
+	out := make(map[string]identityRow, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	quoted := make([]string, 0, len(userIDs))
+	seen := make(map[string]struct{}, len(userIDs))
+	for _, id := range userIDs {
+		if _, dup := seen[id]; dup || id == "" {
+			continue
+		}
+		seen[id] = struct{}{}
+		quoted = append(quoted, q(id))
+	}
+	path := "/identities?select=*&user_id=in.(" + strings.Join(quoted, ",") + ")"
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []identityRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode identities")
+	}
+	for _, r := range rows {
+		out[r.UserID] = r
+	}
+	return out, nil
+}
+
+// getIdentitiesByEmailHash finds published identities whose email_hash matches —
+// the invite discovery lookup. Returns all matches (normally zero or one); the
+// caller resolves ambiguity.
+func getIdentitiesByEmailHash(ctx context.Context, hc *http.Client, base, token, emailHash string) ([]identityRow, error) {
+	path := "/identities?select=*&email_hash=eq." + q(emailHash)
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []identityRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode identities by email")
+	}
+	return rows, nil
+}
+
 // upsertIdentity writes the caller's own public identity row (RLS: own row only).
 func upsertIdentity(ctx context.Context, hc *http.Client, base, token string, row identityRow) error {
 	body, err := json.Marshal(row)
@@ -119,6 +188,21 @@ func patchIdentityColumns(ctx context.Context, hc *http.Client, base, token, wra
 	body, err := json.Marshal(map[string]string{
 		"wrapped_identity": wrappedIdentity,
 		"identity_nonce":   identityNonce,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = doJSON(ctx, hc, http.MethodPatch, endpoint(base, "/user_keys"), token, body, "return=minimal")
+	return err
+}
+
+// patchPinsColumns writes the wrapped_pins + pins_nonce columns onto the
+// caller's user_keys row (RLS-scoped to the JWT owner), syncing the fingerprint
+// pin store across the user's own devices.
+func patchPinsColumns(ctx context.Context, hc *http.Client, base, token, wrappedPins, pinsNonce string) error {
+	body, err := json.Marshal(map[string]string{
+		"wrapped_pins": wrappedPins,
+		"pins_nonce":   pinsNonce,
 	})
 	if err != nil {
 		return err
@@ -183,7 +267,18 @@ func insertMember(ctx context.Context, hc *http.Client, base, token string, row 
 	if err != nil {
 		return err
 	}
-	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_members"), token, body, "return=minimal")
+	// Plain INSERT, and swallow a duplicate. This can't use ON CONFLICT: that would
+	// make Postgres apply the SELECT policy (sharing_is_member) as a WITH CHECK on
+	// the inserted row, which the audience creator's bootstrap self-admin insert
+	// fails (they are not a member yet — that row is what makes them one). A
+	// duplicate instead means the member is already present, so AddMember stays
+	// idempotent (retry after a partial failure, or a re-invite) with the existing
+	// role left untouched.
+	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_members"), token,
+		body, "return=minimal")
+	if isUniqueViolation(err) {
+		return nil
+	}
 	return err
 }
 
@@ -200,9 +295,49 @@ func getMembers(ctx context.Context, hc *http.Client, base, token, audienceID st
 	return rows, nil
 }
 
+// getMembersByAudiences fetches members for many audiences in one request,
+// grouped by audience_id — the batched form of getMembers so a roster over N
+// teams costs one round-trip, not N. Empty in, empty map out.
+func getMembersByAudiences(ctx context.Context, hc *http.Client, base, token string, audienceIDs []string) (map[string][]audienceMemberRow, error) {
+	out := make(map[string][]audienceMemberRow, len(audienceIDs))
+	if len(audienceIDs) == 0 {
+		return out, nil
+	}
+	quoted := make([]string, len(audienceIDs))
+	for i, id := range audienceIDs {
+		quoted[i] = q(id)
+	}
+	path := "/audience_members?select=*&audience_id=in.(" + strings.Join(quoted, ",") + ")"
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []audienceMemberRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode members")
+	}
+	for _, r := range rows {
+		out[r.AudienceID] = append(out[r.AudienceID], r)
+	}
+	return out, nil
+}
+
 func deleteMember(ctx context.Context, hc *http.Client, base, token, audienceID, memberID string) error {
 	path := "/audience_members?audience_id=eq." + q(audienceID) + "&member_id=eq." + q(memberID)
 	_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
+	return err
+}
+
+// updateMemberStatus PATCHes one member row's status — the invitee's accept
+// ('invited' -> 'active'). RLS + the column-guard trigger confine a non-admin to
+// exactly that flip on their own row.
+func updateMemberStatus(ctx context.Context, hc *http.Client, base, token, audienceID, memberID, status string) error {
+	path := "/audience_members?audience_id=eq." + q(audienceID) + "&member_id=eq." + q(memberID)
+	body, err := json.Marshal(map[string]string{"status": status})
+	if err != nil {
+		return err
+	}
+	_, err = doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
 	return err
 }
 
@@ -216,8 +351,60 @@ func insertEpochKeys(ctx context.Context, hc *http.Client, base, token string, r
 	if err != nil {
 		return err
 	}
+	// Plain INSERT, NO conflict resolution. An admin wraps epoch keys to OTHER
+	// members, whose rows the admin cannot see (SELECT policy is member_id =
+	// auth.user_id()). Postgres applies a table's SELECT policy as an extra
+	// WITH CHECK on any INSERT that carries ON CONFLICT (WCO_RLS_CONFLICT_CHECK) —
+	// so merge-/ignore-duplicates both fail here with an RLS violation the moment
+	// member_id != the caller. The caller deletes the target rows first so the
+	// batch normally lands clean.
 	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_epoch_keys"), token,
-		body, "resolution=merge-duplicates,return=minimal")
+		body, "return=minimal")
+	if !isUniqueViolation(err) {
+		return err
+	}
+	// A surviving (audience, epoch, member) row — e.g. re-inviting a member whose
+	// old-epoch keys outlived the delete-first — is not a real conflict: the epoch
+	// private key is fixed per epoch number, so any existing wrap already decrypts
+	// to the same key. Re-insert row by row and swallow the duplicates, so one
+	// stale row can't fail the whole batch (an ON-CONFLICT retry can't be used —
+	// see above).
+	return insertEpochKeysIdempotent(ctx, hc, base, token, rows)
+}
+
+// insertEpochKeysIdempotent inserts epoch-key rows one at a time, treating a
+// duplicate-PK conflict as success. Used only as the fallback when a batch
+// insert hits an already-present wrap; the happy path stays a single request.
+func insertEpochKeysIdempotent(ctx context.Context, hc *http.Client, base, token string, rows []audienceEpochKeyRow) error {
+	for i := range rows {
+		body, err := json.Marshal([]audienceEpochKeyRow{rows[i]})
+		if err != nil {
+			return err
+		}
+		_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_epoch_keys"), token,
+			body, "return=minimal")
+		if err != nil && !isUniqueViolation(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// deleteEpochKeys removes the (audience, epoch, member) wraps for the given
+// members so a subsequent insert can't collide. Admin-gated (DELETE policy is
+// sharing_is_admin); a no-op when there is nothing to delete.
+func deleteEpochKeys(ctx context.Context, hc *http.Client, base, token, audienceID string, epoch int, memberIDs []string) error {
+	if len(memberIDs) == 0 {
+		return nil
+	}
+	quoted := make([]string, len(memberIDs))
+	for i, m := range memberIDs {
+		quoted[i] = q(m)
+	}
+	path := "/audience_epoch_keys?audience_id=eq." + q(audienceID) +
+		"&epoch=eq." + strconv.Itoa(epoch) +
+		"&member_id=in.(" + strings.Join(quoted, ",") + ")"
+	_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
 	return err
 }
 
@@ -322,6 +509,40 @@ func getShares(ctx context.Context, hc *http.Client, base, token, audienceID str
 		return nil, gerrors.Wrap(uerr, "decode shares")
 	}
 	return rows, nil
+}
+
+// --- audience names ---
+
+func upsertAudienceName(ctx context.Context, hc *http.Client, base, token string, row audienceNameRow) error {
+	body, err := json.Marshal(row)
+	if err != nil {
+		return err
+	}
+	_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/audience_names"), token,
+		body, "resolution=merge-duplicates,return=minimal")
+	return err
+}
+
+// getAudienceName returns the audience's name rows (zero or one — audience_id is
+// the PK). Mirrors getShares: an empty slice means no name is published, which
+// the caller treats as "no shared name", not an error.
+func getAudienceName(ctx context.Context, hc *http.Client, base, token, audienceID string) ([]audienceNameRow, error) {
+	path := "/audience_names?select=*&audience_id=eq." + q(audienceID)
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []audienceNameRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode audience names")
+	}
+	return rows, nil
+}
+
+func deleteAudienceName(ctx context.Context, hc *http.Client, base, token, audienceID string) error {
+	path := "/audience_names?audience_id=eq." + q(audienceID)
+	_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
+	return err
 }
 
 // --- entries (shared read path) ---

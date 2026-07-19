@@ -200,3 +200,23 @@ func UnwrapFilterFromEpoch(epochPriv, wire []byte, a FilterAAD) ([]byte, error) 
 	}
 	return OpenSealed(epochPriv, wire, aad)
 }
+
+// WrapNameToEpoch seals a team name to the audience epoch public key, binding
+// (audience_id, epoch, kind=team_name). Like the share filter it is metadata the
+// server must never read, so it is sealed to the epoch key any member can unwrap.
+func WrapNameToEpoch(epochPub, name []byte, a NameAAD) ([]byte, error) {
+	aad, err := NameAADBytes(a)
+	if err != nil {
+		return nil, err
+	}
+	return SealTo(epochPub, name, aad)
+}
+
+// UnwrapNameFromEpoch reverses WrapNameToEpoch using the epoch private key.
+func UnwrapNameFromEpoch(epochPriv, wire []byte, a NameAAD) ([]byte, error) {
+	aad, err := NameAADBytes(a)
+	if err != nil {
+		return nil, err
+	}
+	return OpenSealed(epochPriv, wire, aad)
+}

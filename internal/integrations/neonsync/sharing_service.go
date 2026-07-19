@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	gerrors "github.com/go-faster/errors"
@@ -46,18 +47,98 @@ func (s *Service) Pins() *PinStore {
 	return s.pins
 }
 
+// pushPins seals the local pin store under the account DEK and writes it to the
+// caller's user_keys row so the user's other devices inherit these trust
+// decisions (fixing the "everyone unverified on a new device" problem). Called
+// after any pin mutation. Best-effort: a pin already recorded locally is the
+// source of truth for this session, and a failed push retries on the next
+// mutation or the next Unlock — so a transport error must never fail the sharing
+// operation that produced the pin.
+func (s *Service) pushPins(ctx context.Context, sess *sharingSession) {
+	blob, err := s.pins.Export()
+	if err != nil {
+		return
+	}
+	ct, nonce, err := sharing.WrapPins(blob, sess.dek, sess.userID)
+	if err != nil {
+		return
+	}
+	_ = patchPinsColumns(ctx, s.http, sess.base, sess.token, b64(ct), b64(nonce))
+}
+
+// mergePinsFromRow decrypts the wrapped pin store carried on a user_keys row and
+// folds it into the local store. A row without pins, a decode failure, or a
+// wrong-DEK unwrap are all silently skipped — the local pins remain authoritative
+// and the caller keeps working with whatever it already had.
+func (s *Service) mergePinsFromRow(row *userKeysRow, dek []byte, userID string) {
+	if row == nil || row.WrappedPins == "" || row.PinsNonce == "" {
+		return
+	}
+	ct, err := unb64(row.WrappedPins)
+	if err != nil {
+		return
+	}
+	nonce, err := unb64(row.PinsNonce)
+	if err != nil {
+		return
+	}
+	blob, err := sharing.UnwrapPins(ct, nonce, dek, userID)
+	if err != nil {
+		return
+	}
+	_ = s.pins.MergeRemote(blob)
+}
+
+// syncPins reconciles the local pin store with the copy on the server at Unlock:
+// merge the stored pins (if any) into the local store (MergeRemote never
+// overwrites a locally pinned fingerprint), then push the merged result back so
+// the server and every device converge. Runs inside Unlock where the DEK is
+// freshly available; entirely best-effort, like the identity provisioning it
+// follows — a failure just leaves pins to sync next time.
+func (s *Service) syncPins(ctx context.Context, base, token, userID string, dek []byte, row *userKeysRow) {
+	s.mergePinsFromRow(row, dek, userID)
+	blob, err := s.pins.Export()
+	if err != nil {
+		return
+	}
+	ct, nonce, err := sharing.WrapPins(blob, dek, userID)
+	if err != nil {
+		return
+	}
+	_ = patchPinsColumns(ctx, s.http, base, token, b64(ct), b64(nonce))
+}
+
+// pullPins converges the local pin store from the server using only the cached
+// DEK (no password), so a device that was provisioned in a past session — and so
+// never re-ran the Unlock-time sync — still inherits trust decisions made
+// elsewhere. Read-only: it merges but does not push (pushes ride the pin
+// mutations and Unlock). Best-effort; called on the background shared-read path.
+func (s *Service) pullPins(ctx context.Context, sess *sharingSession) {
+	row, err := getUserKeys(ctx, s.http, sess.base, sess.token)
+	if err != nil {
+		return
+	}
+	s.mergePinsFromRow(row, sess.dek, sess.userID)
+}
+
 // provisionIdentity is the identity-provisioning step folded into Unlock — the
 // only place the KEK exists. If the user_keys row has no wrapped_identity yet it
 // mints a fresh identity, wraps it under the KEK, PATCHes user_keys, upserts the
 // public halves into identities, and caches the unwrapped identity in Keychain.
 // Otherwise it unwraps the existing identity with the KEK and caches it. Called
 // from Unlock with the KEK and the already-fetched (or freshly provisioned) row.
-func (s *Service) provisionIdentity(ctx context.Context, base, token, userID string, kek []byte, row *userKeysRow) error {
+func (s *Service) provisionIdentity(ctx context.Context, base, token, userID, email string, kek []byte, row *userKeysRow) error {
 	if row != nil && row.WrappedIdentity != "" && row.IdentityNonce != "" {
 		id, err := unwrapIdentityFromRow(kek, userID, row)
 		if err != nil {
 			return err
 		}
+		// Best-effort email_hash backfill: re-publish so an already-provisioned
+		// identity becomes discoverable by email without re-provisioning. A
+		// failure here (the column not yet migrated, a transient write) must
+		// NEVER block caching an otherwise-valid identity — that would break
+		// sharing for existing users. Ignore it; the next unlock retries.
+		_ = s.publishIdentity(ctx, base, token, userID, email, id.Public())
 		return s.saveIdentity(ctx, id)
 	}
 
@@ -72,15 +153,49 @@ func (s *Service) provisionIdentity(ctx context.Context, base, token, userID str
 	if perr := patchIdentityColumns(ctx, s.http, base, token, b64(ct), b64(nonce)); perr != nil {
 		return gerrors.Wrap(perr, "store wrapped identity")
 	}
-	pub := id.Public()
-	if uerr := upsertIdentity(ctx, s.http, base, token, identityRow{
-		UserID: userID,
-		PubEnc: b64(pub.EncPub),
-		PubSig: b64(pub.SigPub),
-	}); uerr != nil {
-		return gerrors.Wrap(uerr, "publish identity")
+	if perr := s.publishIdentity(ctx, base, token, userID, email, id.Public()); perr != nil {
+		return perr
 	}
 	return s.saveIdentity(ctx, id)
+}
+
+// publishIdentity upserts the caller's public identity row, including the email
+// discovery hash when an email is known. omitempty on email_hash means a blank
+// email never clobbers a previously published hash.
+func (s *Service) publishIdentity(ctx context.Context, base, token, userID, email string, pub sharing.PublicIdentity) error {
+	row := identityRow{
+		UserID:    userID,
+		PubEnc:    b64(pub.EncPub),
+		PubSig:    b64(pub.SigPub),
+		EmailHash: emailHash(email),
+	}
+	if err := upsertIdentity(ctx, s.http, base, token, row); err != nil {
+		return gerrors.Wrap(err, "publish identity")
+	}
+	return nil
+}
+
+// PublishDisplayName writes the caller's self-chosen name onto their public
+// identity row so team rosters can read it (the "everyone publishes their own
+// name" model). It re-upserts the identity with the same public keys and the
+// name set; email_hash is omitted (omitempty), so this never disturbs a
+// previously published discovery hash. Requires an unlocked sharing identity.
+func (s *Service) PublishDisplayName(ctx context.Context, name string) error {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return err
+	}
+	pub := sess.id.Public()
+	row := identityRow{
+		UserID:      sess.userID,
+		PubEnc:      b64(pub.EncPub),
+		PubSig:      b64(pub.SigPub),
+		DisplayName: strings.TrimSpace(name),
+	}
+	if uerr := upsertIdentity(ctx, s.http, sess.base, sess.token, row); uerr != nil {
+		return gerrors.Wrap(uerr, "publish display name")
+	}
+	return nil
 }
 
 func unwrapIdentityFromRow(kek []byte, userID string, row *userKeysRow) (*sharing.Identity, error) {
@@ -245,10 +360,14 @@ func (s *Service) CreateAudience(ctx context.Context) (string, error) {
 		[]memberKey{{id: sess.userID, encPub: sess.id.Public().EncPub}}); err != nil {
 		return "", err
 	}
-	// Self-pin so later verification of our own admin signatures succeeds.
-	if perr := s.pins.Pin(sess.userID, sharing.Fingerprint(sess.id.Public())); perr != nil {
+	// Self-pin so later verification of our own admin signatures succeeds. Use
+	// Repin, not Pin: a conflict against our OWN prior fingerprint is legitimate
+	// identity rotation / re-provisioning (§9), not a key-swap, and hard-failing
+	// here would wedge us out of creating audiences after any such change.
+	if perr := s.pins.Repin(sess.userID, sharing.Fingerprint(sess.id.Public())); perr != nil {
 		return "", perr
 	}
+	s.pushPins(ctx, sess)
 	return audienceID, nil
 }
 
@@ -298,6 +417,7 @@ func (s *Service) wrapEpochToMembers(
 	members []memberKey,
 ) error {
 	rows := make([]audienceEpochKeyRow, 0, len(members))
+	ids := make([]string, 0, len(members))
 	for _, m := range members {
 		wrapped, err := sharing.WrapEpochKeyToMember(m.encPub, epochPriv, sharing.EpochKeyAAD{
 			AudienceID: audienceID, Epoch: epoch, MemberID: m.id,
@@ -309,6 +429,14 @@ func (s *Service) wrapEpochToMembers(
 			AudienceID: audienceID, Epoch: epoch, MemberID: m.id,
 			WrappedEpochPrivkey: b64(wrapped),
 		})
+		ids = append(ids, m.id)
+	}
+	// Clear any prior wrap for these (audience, epoch, member) first so the insert
+	// is a plain INSERT with no ON CONFLICT (which would drag in the SELECT policy
+	// as a WITH CHECK and reject wraps to other members — see insertEpochKeys). A
+	// re-wrap is equivalent, so replacing the row is safe.
+	if err := deleteEpochKeys(ctx, s.http, sess.base, sess.token, audienceID, epoch, ids); err != nil {
+		return gerrors.Wrap(err, "clear stale epoch wraps")
 	}
 	if err := insertEpochKeys(ctx, s.http, sess.base, sess.token, rows); err != nil {
 		return gerrors.Wrap(err, "wrap epoch to members")
@@ -427,8 +555,12 @@ func (s *Service) AddMember(ctx context.Context, audienceID, userID, role string
 	if len(verified) == 0 {
 		return errors.New("audience has no epochs")
 	}
+	// Plant the row as 'invited': the invitee is not yet a member for any read
+	// predicate (RLS requires status='active'). They accept via AcceptInvite, which
+	// flips their own row to 'active'. Epoch keys are still wrapped below so an
+	// accept needs no admin round-trip — but they are dark until the flip.
 	if merr := insertMember(ctx, s.http, sess.base, sess.token, audienceMemberRow{
-		AudienceID: audienceID, MemberID: userID, Role: role,
+		AudienceID: audienceID, MemberID: userID, Role: role, Status: "invited",
 	}); merr != nil {
 		return gerrors.Wrap(merr, "add member")
 	}
@@ -606,6 +738,71 @@ func (s *Service) currentFilter(ctx context.Context, sess *sharingSession, audie
 		return shareFilter{}, "", false, err
 	}
 	return filter, sh.ID, true, nil
+}
+
+// SetTeamName seals the audience's human name to its current epoch key and
+// upserts the audience_names row (admin-only, RLS-enforced). The server stores
+// only ciphertext; members decrypt it with the epoch key they already hold. A
+// blank name deletes the row so the team falls back to the local/inviter label.
+func (s *Service) SetTeamName(ctx context.Context, audienceID, name string) error {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return deleteAudienceName(ctx, s.http, sess.base, sess.token, audienceID)
+	}
+	verified, err := s.verifiedEpochs(ctx, sess, audienceID)
+	if err != nil {
+		return err
+	}
+	if len(verified) == 0 {
+		return errors.New("audience has no epochs")
+	}
+	current := verified[len(verified)-1]
+	ct, err := sharing.WrapNameToEpoch(current.EpochPub, []byte(name),
+		sharing.NameAAD{AudienceID: audienceID, Epoch: current.Epoch})
+	if err != nil {
+		return err
+	}
+	return upsertAudienceName(ctx, s.http, sess.base, sess.token, audienceNameRow{
+		AudienceID: audienceID, Epoch: current.Epoch,
+		NameCiphertext: b64(ct), CreatedBy: sess.userID,
+	})
+}
+
+// TeamName fetches and decrypts the audience's shared name, or "" when none is
+// published (or it cannot be decrypted). Best-effort by design: a missing name
+// is normal, not an error, so callers fall back to a local name.
+func (s *Service) TeamName(ctx context.Context, audienceID string) (string, error) {
+	sess, err := s.session(ctx)
+	if err != nil {
+		return "", err
+	}
+	return s.teamName(ctx, sess, audienceID)
+}
+
+func (s *Service) teamName(ctx context.Context, sess *sharingSession, audienceID string) (string, error) {
+	rows, err := getAudienceName(ctx, s.http, sess.base, sess.token, audienceID)
+	if err != nil || len(rows) == 0 {
+		return "", err
+	}
+	row := rows[0]
+	epochPriv, err := s.unwrapEpochKey(ctx, sess, audienceID, row.Epoch)
+	if err != nil {
+		return "", err
+	}
+	ct, err := unb64(row.NameCiphertext)
+	if err != nil {
+		return "", err
+	}
+	plain, err := sharing.UnwrapNameFromEpoch(epochPriv, ct,
+		sharing.NameAAD{AudienceID: audienceID, Epoch: row.Epoch})
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
 }
 
 // RevokeGrant is the admin §4a fast path: a visibility-plane soft-revoke that

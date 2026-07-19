@@ -232,6 +232,10 @@ func (s *Service) ListSharedEntries(ctx context.Context) ([]SharedEntry, error) 
 	if err != nil {
 		return nil, err
 	}
+	// Converge trust decisions from the account's other devices before reading:
+	// without this a device provisioned in a past session would render teammates
+	// as unverified and hard-fail on ErrNotPinned for their shared entries.
+	s.pullPins(ctx, sess)
 	audiences, err := getAudiences(ctx, s.http, sess.base, sess.token)
 	if err != nil {
 		return nil, err

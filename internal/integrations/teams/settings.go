@@ -7,6 +7,8 @@ import (
 	"sort"
 
 	"github.com/go-faster/errors"
+
+	"github.com/kriuchkov/tock/internal/appdir"
 )
 
 // Settings are the user-controlled preferences for the Teams integration.
@@ -18,11 +20,7 @@ type Settings struct {
 }
 
 func defaultSettingsPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", errors.Wrap(err, "home dir")
-	}
-	return filepath.Join(home, "Library", "Application Support", "Tokify", "teams.json"), nil
+	return appdir.Path("teams.json")
 }
 
 func loadSettings(path string) (Settings, error) {

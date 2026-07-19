@@ -2,6 +2,7 @@ import type { Activity } from '@/types';
 import { cn } from '@/lib/utils';
 import { projectColor } from '@/lib/colors';
 import { startOfDay } from '@/lib/time';
+import { useNow } from '@/lib/use-now';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -23,12 +24,13 @@ export function DayTimeline({
 }) {
     const dayStart = startOfDay(day).getTime();
     const dayEnd = dayStart + DAY_MS;
+    const now = useNow(activities.some((activity) => !activity.end_time));
 
     const spans = activities.map((a) => {
         const start = new Date(a.start_time as any).getTime();
         const end = a.end_time
             ? new Date(a.end_time as any).getTime()
-            : Date.now();
+            : now;
         return {
             start: Math.min(Math.max(start, dayStart), dayEnd),
             end: Math.min(Math.max(end, start), dayEnd),

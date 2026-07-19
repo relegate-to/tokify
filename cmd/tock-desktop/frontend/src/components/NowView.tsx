@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 
 import type { Activity, ActivityView } from '@/types';
-import { cn } from '@/lib/utils';
-import { groupByLocalDate, startOfDay, totalDuration } from '@/lib/time';
+import { dayLabel, startOfDay } from '@/lib/time';
 import {
     Empty,
     EmptyDescription,
@@ -12,11 +11,17 @@ import {
 } from '@/components/ui/empty';
 import { NowRunning } from '@/components/NowRunning';
 import { Starter } from '@/components/Starter';
-import { ActivityRow } from '@/components/ActivityRow';
-import { DayGroup, DayHeader } from '@/components/DayGroup';
-import { AddPastButton } from '@/components/AddPastDialog';
+import { TodayGoal } from '@/components/TodayGoal';
+import { JumpBackIn } from '@/components/JumpBackIn';
 
-const EARLIER_DAYS = 7;
+const QUICK_START_COUNT = 4;
+
+function quickStartKey(activity: Activity) {
+    return JSON.stringify([
+        activity.description ?? '',
+        activity.project ?? '',
+    ]);
+}
 
 export function NowView({
     running,
@@ -25,13 +30,12 @@ export function NowView({
     projects,
     removingKeys,
     activityView,
+    dailyGoal,
     onStart,
     onStartAt,
     onStop,
-    onUpdate,
-    onRemove,
+    onShare,
     onResume,
-    onAddPast,
 }: {
     running: Activity | null;
     today: Activity[];
@@ -39,148 +43,117 @@ export function NowView({
     projects: string[];
     removingKeys: Set<string>;
     activityView: ActivityView;
+    dailyGoal: number;
     onStart: (description: string, project: string) => void;
     onStartAt: (description: string, project: string, startISO: string) => void;
     onStop: () => void;
-    onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
-    onRemove: (orig: Activity) => void;
+    onShare: (project?: string) => void;
     onResume: (orig: Activity) => void;
-    onAddPast: (description: string, project: string, startISO: string, endISO: string) => void;
 }) {
     const visibleToday = useMemo(
         () => today.filter((a) => !removingKeys.has(String(a.start_time))),
         [today, removingKeys],
     );
-    const todayTotal = useMemo(
-        () => totalDuration(visibleToday),
-        [visibleToday, running],
-    );
 
-    const earlier = useMemo(() => {
-        const cutoff =
-            startOfDay(new Date()).getTime() - EARLIER_DAYS * 24 * 60 * 60 * 1000;
-        const todayStart = startOfDay(new Date()).getTime();
-        return recent.filter((a) => {
-            const t = new Date(a.start_time as any).getTime();
-            return t < todayStart && t >= cutoff;
-        });
-    }, [recent]);
+    const quickStarts = useMemo(() => {
+        const runningKey = running ? quickStartKey(running) : null;
+        const seen = new Set<string>();
+        const out: Activity[] = [];
 
-    const earlierGroups = useMemo(
-        () => groupByLocalDate(earlier, false),
-        [earlier],
-    );
+        for (const activity of recent) {
+            if (removingKeys.has(String(activity.start_time))) continue;
+            if (!activity.description || !activity.end_time) continue;
 
-    const lastProject = useMemo(
-        () => recent.find((a) => a.project)?.project ?? '',
-        [recent],
-    );
+            const key = quickStartKey(activity);
+            if (key === runningKey || seen.has(key)) continue;
 
-    const hasContentBelow =
-        activityView !== 'none' &&
-        (visibleToday.length > 0 ||
-            (activityView === 'all' && earlierGroups.length > 0));
-    const prominent = !hasContentBelow;
-    // Only show the "nothing tracked yet" illustration when the user is seeing
-    // the full activity view and has genuinely never recorded anything — not
-    // when they've explicitly hidden earlier days via the 'today' setting.
-    const isFullyEmpty =
-        !running &&
-        activityView === 'all' &&
-        visibleToday.length === 0 &&
-        earlierGroups.length === 0 &&
-        recent.length === 0;
+            seen.add(key);
+            out.push(activity);
+            if (out.length >= QUICK_START_COUNT) break;
+        }
+
+        return out;
+    }, [recent, removingKeys, running]);
+
+    const contextLabel = useMemo(() => {
+        if (quickStarts.length === 0) return '';
+
+        const labels = new Set(
+            quickStarts.map((activity) =>
+                dayLabel(startOfDay(new Date(activity.start_time as any))),
+            ),
+        );
+        return labels.size === 1 ? [...labels][0] : 'Recent';
+    }, [quickStarts]);
+
+    const hasHistory = recent.length > 0;
+    const isColdStart = !running && visibleToday.length === 0 && !hasHistory;
+    const showSummary = activityView !== 'none' && !isColdStart;
+    const showJumpBack = activityView === 'all' && quickStarts.length > 0;
 
     return (
-        <div className="flex flex-1 flex-col gap-8">
-            {running ? (
-                <NowRunning
-                    activity={running}
-                    onStop={onStop}
-                    prominent={prominent}
+        <div className="relative flex min-h-full flex-1 flex-col gap-8">
+            <div>
+                <SectionHeading
+                    title={running ? 'Currently tracking' : 'Start tracking'}
                 />
-            ) : (
-                <Starter
-                    projects={projects}
-                    lastProject={lastProject}
-                    onStart={onStart}
-                    onStartAt={onStartAt}
-                />
-            )}
+                {running ? (
+                    <NowRunning
+                        activity={running}
+                        onStop={onStop}
+                        onShare={() => onShare(running.project || undefined)}
+                    />
+                ) : (
+                    <Starter
+                        projects={projects}
+                        onStart={onStart}
+                        onStartAt={onStartAt}
+                    />
+                )}
+            </div>
 
-            {activityView !== 'none' && !isFullyEmpty && (
-            <section aria-label="Today">
-                <DayHeader
-                    label="Today"
-                    day={new Date()}
+            {showSummary && (
+                <TodayGoal
                     activities={visibleToday}
-                    totalMs={todayTotal}
+                    running={running}
+                    goalMinutes={dailyGoal}
                 />
-                <div className="relative min-h-11">
-                    {today.length > 0 && (
-                        <ul className="flex flex-col">
-                            {today.map((a) => (
-                                <ActivityRow
-                                    key={String(a.start_time)}
-                                    activity={a}
-                                    projects={projects}
-                                    isRemoving={removingKeys.has(String(a.start_time))}
-                                    onUpdate={onUpdate}
-                                    onRemove={onRemove}
-                                    onResume={onResume}
-                                    readOnly={!a.end_time}
-                                />
-                            ))}
-                        </ul>
-                    )}
-                    <p
-                        className={cn(
-                            'pointer-events-none absolute inset-x-0 top-0 flex h-11 items-center px-3 text-sm text-muted-foreground transition-opacity duration-300 ease-out',
-                            visibleToday.length === 0
-                                ? 'opacity-100'
-                                : 'opacity-0',
-                        )}
-                        aria-hidden={visibleToday.length !== 0}
-                    >
-                        Nothing tracked today.
-                    </p>
-                </div>
-            </section>
             )}
 
-            {isFullyEmpty && <EmptyDay />}
-
-            {activityView === 'all' && earlierGroups.length > 0 && (
-                <section aria-label="Earlier" className="flex flex-col gap-6">
-                    {earlierGroups.map((g) => (
-                        <DayGroup
-                            key={g.dateKey}
-                            day={g.date}
-                            activities={g.items}
-                            projects={projects}
-                            removingKeys={removingKeys}
-                            onUpdate={onUpdate}
-                            onRemove={onRemove}
-                            onResume={onResume}
-                        />
-                    ))}
-                </section>
+            {showJumpBack && (
+                <JumpBackIn
+                    items={quickStarts}
+                    contextLabel={contextLabel}
+                    onResume={onResume}
+                />
             )}
 
-            {activityView !== 'none' && (
-                <AddPastButton projects={projects} onAddPast={onAddPast} />
+            {isColdStart && <EmptyDay />}
+        </div>
+    );
+}
+
+// Section heading matching JumpBackIn, so the activity page reads as a set of
+// titled sections rather than a loose stack of cards.
+function SectionHeading({ title, context }: { title: string; context?: string }) {
+    return (
+        <div className="mb-3.5 flex items-center justify-between">
+            <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
+            {context && (
+                <span className="text-xs text-navigation-muted-foreground">
+                    {context}
+                </span>
             )}
         </div>
     );
 }
 
-// An empty day track with a marker at the current time — the same motif as
-// the day map, inviting the user to put something on it.
 function EmptyDay() {
     const nowPct =
         ((Date.now() - startOfDay(new Date()).getTime()) /
             (24 * 60 * 60 * 1000)) *
         100;
+
     return (
         <Empty className="flex-none border-none p-0 animate-in fade-in-0 duration-500">
             <EmptyHeader>

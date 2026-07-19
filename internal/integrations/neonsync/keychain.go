@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
+
+	"github.com/kriuchkov/tock/internal/appdir"
 )
 
 // keychainStore caches the unwrapped DEK under the login keychain via the
@@ -21,7 +23,7 @@ type keychainStore struct {
 }
 
 func newKeychainStore() *keychainStore {
-	return &keychainStore{service: "Tokify Neon Sync"}
+	return &keychainStore{service: appdir.KeychainService("Tokify Neon Sync")}
 }
 
 func (k *keychainStore) Save(ctx context.Context, account, secret string) error {

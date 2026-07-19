@@ -1,4 +1,4 @@
-import type { Activity } from '@/types';
+import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
 import { REMOVE_ANIM_MS } from '@/lib/motion';
 import { dayLabel, formatTotal } from '@/lib/time';
@@ -12,44 +12,74 @@ export function DayHeader({
     day,
     activities,
     totalMs,
+    variant = 'now',
 }: {
     label: string;
     day: Date;
     activities: Activity[];
     totalMs: number;
+    variant?: 'now' | 'history';
 }) {
+    const isHistory = variant === 'history';
     return (
-        <div className="mb-1.5 flex items-center gap-3 px-3">
-            <h3 className="shrink-0 text-xs font-medium text-muted-foreground">
+        <div
+            className={cn(
+                'flex items-center gap-3.5 px-3',
+                isHistory ? 'mb-3' : 'mb-2.5',
+            )}
+        >
+            <h3
+                className={cn(
+                    'w-[76px] shrink-0',
+                    isHistory
+                        ? 'text-sm font-semibold text-foreground'
+                        : 'text-[11.5px] font-bold uppercase tracking-[0.04em] text-navigation-muted-foreground',
+                )}
+            >
                 {label}
             </h3>
             <DayTimeline day={day} activities={activities} className="flex-1" />
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            <span
+                className={cn(
+                    'w-14 shrink-0 text-right font-mono tabular-nums',
+                    isHistory
+                        ? 'text-[13px] text-muted-foreground'
+                        : 'text-[12.5px] font-semibold text-day-total-foreground',
+                )}
+            >
                 {formatTotal(totalMs)}
             </span>
         </div>
     );
 }
 
+// A stable per-row key: a local row is unique by start time, but a shared row can
+// collide with a local one (or another author's) on start time, so fold the
+// author in for shared rows.
+const rowKey = (a: ActivityItem) =>
+    a.shared ? `s:${a.shared.authorId}:${String(a.start_time)}` : String(a.start_time);
+
 export function DayGroup({
     day,
     activities,
     projects,
     removingKeys,
+    variant = 'now',
     onUpdate,
     onRemove,
     onResume,
 }: {
     day: Date;
-    activities: Activity[];
+    activities: ActivityItem[];
     projects: string[];
     removingKeys: Set<string>;
+    variant?: 'now' | 'history';
     onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
     onResume?: (orig: Activity) => void;
 }) {
     const visible = activities.filter(
-        (a) => !removingKeys.has(String(a.start_time)),
+        (a) => a.shared || !removingKeys.has(String(a.start_time)),
     );
     const totalMs = visible.reduce((sum, a) => {
         const startMs = new Date(a.start_time as any).getTime();
@@ -80,14 +110,18 @@ export function DayGroup({
                     day={day}
                     activities={visible}
                     totalMs={totalMs}
+                    variant={variant}
                 />
                 <ul className="flex flex-col">
                     {activities.map((a) => (
                         <ActivityRow
-                            key={String(a.start_time)}
+                            key={rowKey(a)}
                             activity={a}
                             projects={projects}
-                            isRemoving={removingKeys.has(String(a.start_time))}
+                            isRemoving={
+                                !a.shared &&
+                                removingKeys.has(String(a.start_time))
+                            }
                             onUpdate={onUpdate}
                             onRemove={onRemove}
                             onResume={onResume}
