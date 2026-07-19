@@ -87,14 +87,8 @@ jobs:
           mkdir -p "$RES"
           cp LICENSE "$RES/LICENSE"
           cp THIRD_PARTY_NOTICES.txt "$RES/THIRD_PARTY_NOTICES.txt"
-          # Geist is the only bundled font; ship its OFL alongside.
-          GEIST_LICENSE="cmd/tock-desktop/frontend/node_modules/@fontsource-variable/geist/LICENSE"
-          if [ -f "$GEIST_LICENSE" ]; then
-            cp "$GEIST_LICENSE" "$RES/Geist-OFL.txt"
-          else
-            echo "Geist license not found at $GEIST_LICENSE" >&2
-            exit 1
-          fi
+          # Nunito is bundled with the frontend; ship its OFL alongside.
+          cp cmd/tock-desktop/frontend/src/assets/fonts/OFL.txt "$RES/Nunito-OFL.txt"
 
       - name: Zip Tokify.app
         run: |
