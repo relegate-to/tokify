@@ -35,8 +35,8 @@ var DefaultAuthURL string
 // from any goroutine.
 //
 // The session is loaded from Keychain on each call rather than cached in
-// memory, matching the Teams integration: Keychain access is fast and avoids
-// invalidating a cache on SignIn / SignOut.
+// memory. Keychain access is fast and avoids invalidating a cache on sign-in or
+// sign-out.
 type Service struct {
 	store *keychainStore
 	http  *http.Client

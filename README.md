@@ -78,32 +78,6 @@ The menu bar shows `● 0:42` while tracking and `○` when idle. Open the deskt
 app to start an activity, review your timeline, explore reports, manage
 projects, and configure encrypted team sharing and account settings.
 
-## Microsoft Teams status (optional)
-
-Tokify can keep your Microsoft Teams **status message** in sync with whatever
-you're currently tracking — turn it on in Settings → Integrations.
-
-How it works:
-
-- You sign in once with the same Microsoft account you use for Teams. A
-  real Microsoft sign-in window opens (not a web view inside Tokify) and the
-  access token is written to your macOS **Keychain**, never to a file.
-- You pick which projects the integration applies to. Activities under other
-  projects are left private — your Teams status doesn't change.
-- When you start an activity under a tracked project, its description
-  becomes your Teams status message. When you stop, the message is cleared.
-
-A few things to know:
-
-- The integration uses the standard Microsoft sign-in flow that the Teams
-  web client itself uses — no admin approval, no Azure AD app registration
-  required. Tenants with strict Conditional Access policies may still
-  block it.
-- On the sign-in prompt, you **must** choose **Yes** for "Stay signed in?"
-  — sign-in won't complete otherwise.
-- Tokify only ever writes your status message. It does not read your Teams
-  messages, send messages, or access any other Teams data.
-
 ## Export
 
 From the menu in the top-right of the window, you can export your activity log

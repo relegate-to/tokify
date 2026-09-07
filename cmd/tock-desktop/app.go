@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	stderrors "errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,7 +26,6 @@ import (
 	"github.com/kriuchkov/tock/internal/core/models"
 	"github.com/kriuchkov/tock/internal/integrations/neonauth"
 	"github.com/kriuchkov/tock/internal/integrations/neonsync"
-	"github.com/kriuchkov/tock/internal/integrations/teams"
 	"github.com/kriuchkov/tock/internal/timeutil"
 )
 
@@ -36,12 +34,11 @@ import (
 type App struct {
 	ctx      context.Context
 	rt       *runtime.Runtime
-	teams    *teams.Service
 	neonAuth *neonauth.Service
 	neonSync *neonsync.Service
 	projects *projectreg.Registry
 	// teamNames is the client-side audience-id -> local name map for sharing
-	// teams (distinct from the Microsoft Teams integration in `teams` above).
+	// teams.
 	teamNames *teamreg.Registry
 	// sharedCache serves the last-good decrypted shared activity instantly while a
 	// refresh runs in the background — see sharedCache and refreshSharedAsync.
@@ -51,9 +48,8 @@ type App struct {
 	trayStop chan struct{}
 	syncKick chan struct{}
 
-	teamsReconnecting atomic.Bool
-	syncing           atomic.Bool
-	sharedRefreshing  atomic.Bool
+	syncing          atomic.Bool
+	sharedRefreshing atomic.Bool
 }
 
 // Encrypted sync runs on its own without the user clicking "Sync now": once
@@ -108,13 +104,6 @@ func (a *App) startup(ctx context.Context) {
 	// stay slow.
 	if p, perr := sharedCachePath(); perr == nil {
 		a.sharedCache = openSharedCache(p)
-	}
-	// Teams integration is opt-in; we still construct the service eagerly so
-	// the settings page can render its disabled state without a round-trip
-	// failure. A construction error means we can't reach ~/Library, which
-	// would block far more than Teams — log and continue.
-	if t, err := teams.NewService(); err == nil {
-		a.teams = t
 	}
 	// Neon Auth is optional and never gates core tracking; construct it eagerly
 	// so the Account view can render its signed-out / unconfigured state without
@@ -389,7 +378,6 @@ func (a *App) Start(description, project string) (*models.Activity, error) {
 	})
 	if err == nil {
 		a.refreshTrayTitle()
-		a.pushTeamsStatus(description, strings.TrimSpace(project))
 		a.syncSoon()
 	}
 	return act, err
@@ -419,7 +407,6 @@ func (a *App) StartAt(description, project, startISO string) (*models.Activity, 
 	})
 	if err == nil {
 		a.refreshTrayTitle()
-		a.pushTeamsStatus(description, strings.TrimSpace(project))
 		a.syncSoon()
 	}
 	return act, err
@@ -466,14 +453,6 @@ func (a *App) Stop() (*models.Activity, error) {
 	act, err := a.rt.ActivityService.Stop(a.ctx, models.StopActivityRequest{})
 	if err == nil {
 		a.refreshTrayTitle()
-		// Empty description signals "clear my Teams status" — but we still
-		// need the just-stopped activity's project so the integration's
-		// allowlist check matches.
-		project := ""
-		if act != nil {
-			project = act.Project
-		}
-		a.pushTeamsStatus("", project)
 		a.syncSoon()
 	}
 	return act, err
@@ -663,59 +642,6 @@ func (a *App) Export(format, fromDate, toDate, project string, includeShared boo
 		return "", errors.Wrap(err, "write file")
 	}
 	return path, nil
-}
-
-// TeamsGetStatus returns connection + preference state for the settings UI.
-// Always returns a Status; absence is reported via Connected=false, never as
-// an error.
-func (a *App) TeamsGetStatus() teams.Status {
-	if a.teams == nil {
-		return teams.Status{}
-	}
-	return a.teams.Status()
-}
-
-// TeamsSetEnabled flips the master switch. Doesn't touch stored tokens — the
-// user can disable temporarily without re-doing the OAuth dance.
-func (a *App) TeamsSetEnabled(enabled bool) error {
-	if a.teams == nil {
-		return errors.New("teams integration unavailable")
-	}
-	return a.teams.SetEnabled(enabled)
-}
-
-// TeamsSetTrackedProjects replaces the project allowlist. Activities under
-// projects not in this list are never reflected in Teams status.
-func (a *App) TeamsSetTrackedProjects(projects []string) error {
-	if a.teams == nil {
-		return errors.New("teams integration unavailable")
-	}
-	return a.teams.SetTrackedProjects(projects)
-}
-
-// TeamsConnect runs the full sign-in flow by spawning the tock-teams-auth
-// helper subprocess for each audience. The helper opens a real WKWebView
-// window for the user and silently captures the redirect; this binding
-// resolves once all three tokens are in Keychain (or rejects on cancel /
-// failure). Blocks the calling goroutine for the duration; the frontend
-// should show a busy state while it runs.
-func (a *App) TeamsConnect() error {
-	if a.teams == nil {
-		return errors.New("teams integration unavailable")
-	}
-	// Bound the whole dance so a stuck sign-in can't pin a goroutine forever.
-	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
-	defer cancel()
-	return a.teams.Connect(ctx)
-}
-
-// TeamsDisconnect deletes all stored tokens. Preferences survive so the next
-// connect doesn't lose the project allowlist.
-func (a *App) TeamsDisconnect() error {
-	if a.teams == nil {
-		return errors.New("teams integration unavailable")
-	}
-	return a.teams.Disconnect(a.ctx)
 }
 
 // AuthStatus returns the Neon Auth configuration + sign-in snapshot for the
@@ -1005,58 +931,6 @@ func (a *App) SharingRevokeLink(audienceID string) error {
 	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
 	defer cancel()
 	return a.neonSync.RevokeLinkShare(ctx, strings.TrimSpace(audienceID))
-}
-
-// pushTeamsStatus fires the Teams status update off the activity-write path.
-// We never block the user's Start/Stop on a network call, and we never
-// surface a Teams failure as a Start/Stop failure — the time log is the
-// source of truth, the integration is decoration.
-//
-// If silent re-auth has failed (refresh + prompt=none both dead), we pop the
-// real sign-in window automatically rather than asking the user to navigate
-// to Settings → Teams → Connect. Guarded against duplicate windows when
-// pushes overlap.
-func (a *App) pushTeamsStatus(description, project string) {
-	if a.teams == nil {
-		return
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		err := a.teams.PushActivityStatus(ctx, description, project)
-		if err == nil {
-			return
-		}
-		if stderrors.Is(err, teams.ErrInteractionRequired) {
-			go a.reconnectAndRetry(description, project)
-			return
-		}
-		// Toast on the main window so the user sees Teams problems but
-		// doesn't conflate them with tracking problems.
-		wailsruntime.EventsEmit(a.ctx, "teams:error", err.Error())
-	}()
-}
-
-// reconnectAndRetry pops the interactive sign-in window and, on success,
-// retries the status push that triggered it. The atomic guard prevents
-// stacked Start/Stop events from spawning multiple WKWebView windows.
-func (a *App) reconnectAndRetry(description, project string) {
-	if !a.teamsReconnecting.CompareAndSwap(false, true) {
-		return
-	}
-	defer a.teamsReconnecting.Store(false)
-
-	connectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	if err := a.teams.Connect(connectCtx); err != nil {
-		wailsruntime.EventsEmit(a.ctx, "teams:error", err.Error())
-		return
-	}
-	pushCtx, pushCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer pushCancel()
-	if err := a.teams.PushActivityStatus(pushCtx, description, project); err != nil {
-		wailsruntime.EventsEmit(a.ctx, "teams:error", err.Error())
-	}
 }
 
 // Projects returns distinct project names seen recently — feeds the small-caps

@@ -11,9 +11,8 @@ import (
 )
 
 // keychainStore stores the opaque session token under the login keychain via
-// the `security` CLI. Shelling out keeps us free of cgo and third-party deps;
-// the CLI is part of every macOS install. Mirrors the Teams integration's
-// store so both integrations behave identically around Keychain locking.
+// macOS's `security` executable. Shelling out keeps us free of cgo and
+// third-party dependencies.
 //
 // The service name is fixed; the account name is a single fixed slot since we
 // only ever hold one session at a time.

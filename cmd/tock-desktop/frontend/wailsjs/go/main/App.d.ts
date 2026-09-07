@@ -5,7 +5,6 @@ import {neonauth} from '../models';
 import {main} from '../models';
 import {projects} from '../models';
 import {neonsync} from '../models';
-import {teams} from '../models';
 
 export function ActivityLogPath():Promise<string>;
 
@@ -104,15 +103,5 @@ export function SyncNow():Promise<neonsync.SyncStatus>;
 export function SyncSetEnabled(arg1:boolean):Promise<neonsync.SyncStatus>;
 
 export function SyncStatus():Promise<neonsync.SyncStatus>;
-
-export function TeamsConnect():Promise<void>;
-
-export function TeamsDisconnect():Promise<void>;
-
-export function TeamsGetStatus():Promise<teams.Status>;
-
-export function TeamsSetEnabled(arg1:boolean):Promise<void>;
-
-export function TeamsSetTrackedProjects(arg1:Array<string>):Promise<void>;
 
 export function UpdateActivity(arg1:models.Activity,arg2:string,arg3:string,arg4:string,arg5:string):Promise<models.Activity>;

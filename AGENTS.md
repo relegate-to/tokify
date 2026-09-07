@@ -29,15 +29,10 @@ cmd/tock-desktop      Wails desktop app (Tokify additions live here)
   main.go             wails.Run + systray wiring (darwin-only build tag)
   frontend/           React + TypeScript + Vite + Tailwind v4 + shadcn/ui
   build/              Wails output (.app) and platform assets
-cmd/tock-teams-auth   short-lived WKWebView subprocess for the Teams sign-in
-                      flow (cgo, darwin-only); built by `make teams-auth-build`
-                      and copied into Tokify.app/Contents/MacOS/ at release time
 internal/             Tokify domain and application code
   app/                application services (runtime, export, storage, …)
   adapters/           SQLite plus the legacy text-log migration reader
   core/               models, ports, errors — the domain
-  integrations/teams  Teams status integration (Keychain-backed tokens,
-                      presence API client, opt-in project allowlist)
   services/activity   activity service
 scripts/              build and integration helper scripts
 TOKIFY.md             source attribution + license posture
@@ -48,15 +43,11 @@ TOKIFY.md             source attribution + license posture
 All from the repo root via Makefile targets:
 
 ```sh
-make desktop-dev               # Wails dev server, Vite hot reload (also
-                               # rebuilds tock-teams-auth)
-make desktop-build             # host-arch .app (fast incremental); bundles
-                               # tock-teams-auth into Contents/MacOS/
+make desktop-dev               # Wails dev server, Vite hot reload
+make desktop-build             # host-arch .app (fast incremental)
 make desktop-build-universal   # arm64 + amd64 fat binary for release
 make desktop-run               # build, then `open Tokify.app`
 make desktop-doctor            # verify Wails toolchain
-make teams-auth-build          # build cmd/tock-teams-auth to ./bin/ (cgo)
-make teams-auth-build-universal# universal cgo build via clang -arch + lipo
 
 make test                      # Go tests inside Docker (golang:1.26.3)
 make linter                    # golangci-lint inside Docker

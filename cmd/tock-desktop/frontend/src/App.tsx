@@ -21,11 +21,10 @@ import {
     Start,
     StartAt,
     Stop,
-    TeamsGetStatus,
     UpdateActivity,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { main, neonauth, teams } from '../wailsjs/go/models';
+import { main, neonauth } from '../wailsjs/go/models';
 
 import type { Activity, ActivityItem, ActivityView, Theme, View } from '@/types';
 import { REMOVE_ANIM_MS } from '@/lib/motion';
@@ -169,7 +168,6 @@ function App() {
     );
     const [dailyGoal, setDailyGoal] = useState<number>(() => readDailyGoal());
     const [theme, setTheme] = useState<Theme>(() => readTheme());
-    const [teamsStatus, setTeamsStatus] = useState<teams.Status | null>(null);
     const [authStatus, setAuthStatus] = useState<neonauth.Status | null>(null);
     const viewRef = useRef<View>(view);
     const logSwiperRef = useRef<SwiperInstance | null>(null);
@@ -177,12 +175,6 @@ function App() {
     const programmaticTimer = useRef<number | null>(null);
 
     viewRef.current = view;
-
-    const refreshTeams = () => {
-        TeamsGetStatus()
-            .then((s) => setTeamsStatus(s as teams.Status))
-            .catch(() => setTeamsStatus(null));
-    };
 
     useEffect(() => {
         try {
@@ -224,20 +216,6 @@ function App() {
         AuthStatus()
             .then((s) => setAuthStatus(s))
             .catch(() => setAuthStatus(null));
-    }, []);
-
-    useEffect(() => {
-        refreshTeams();
-        const off = EventsOn('teams:error', (msg: string) => {
-            toast.error(`Teams: ${msg}`);
-        });
-        return () => {
-            try {
-                off();
-            } catch {
-                // ignore
-            }
-        };
     }, []);
 
     useEffect(() => {
@@ -682,9 +660,6 @@ function App() {
                                 onShowScrollbarsChange={setShowScrollbars}
                                 theme={theme}
                                 onThemeChange={setTheme}
-                                projects={projects}
-                                teamsStatus={teamsStatus}
-                                onTeamsRefresh={refreshTeams}
                                 onBack={() => setView('now')}
                             />
                         </div>

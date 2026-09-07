@@ -1,9 +1,7 @@
-// Package netcheck provides a lightweight connectivity probe so the Teams and
-// Neon Auth integrations can avoid firing network requests — or spawning the
-// interactive sign-in helper — while the device is offline. Both integrations
-// are optional decoration on top of local time tracking, so silently doing
-// nothing offline is preferable to surfacing dial errors or popping sign-in
-// windows the user can't complete.
+// Package netcheck provides a lightweight connectivity probe so Neon Auth can
+// avoid firing network requests while the device is offline. Cloud features are
+// optional on top of local time tracking, so failing fast is preferable to
+// waiting for network timeouts.
 package netcheck
 
 import (
@@ -22,8 +20,8 @@ import (
 var ErrOffline = errors.New("You appear to be offline. Check your connection and try again.")
 
 // probeTimeout bounds the reachability check. Short enough not to add
-// noticeable latency to a Start/Stop, long enough to tolerate a slow DNS
-// resolver on a real connection.
+// noticeable latency, long enough to tolerate a slow DNS resolver on a real
+// connection.
 const probeTimeout = 3 * time.Second
 
 // Online reports whether host is reachable on the HTTPS port within a short

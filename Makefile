@@ -19,8 +19,6 @@ test:
 
 WAILS ?= wails
 DESKTOP_DIR := cmd/tock-desktop
-TEAMS_AUTH_DIR := cmd/tock-teams-auth
-BIN_DIR := bin
 
 # Neon endpoints baked into distributable .app builds via -ldflags. They live in
 # a gitignored .env (copy .env.example) so the project URLs stay out of the repo;
@@ -40,42 +38,18 @@ ifneq ($(strip $(DESKTOP_VERSION)),)
 DESKTOP_LDFLAGS += -X main.version=$(DESKTOP_VERSION)
 endif
 
-# Build the Teams sign-in helper binary. Used in dev mode (found via the
-# parent directory of the dev binary) and copied into the .app bundle on
-# release builds. Built outside the Wails pipeline so we control the cgo
-# flags and architecture explicitly.
-teams-auth-build:
-	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/tock-teams-auth ./$(TEAMS_AUTH_DIR)
-	@echo "Built $(BIN_DIR)/tock-teams-auth"
-
-teams-auth-build-universal:
-	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
-		CC="clang -arch arm64" CXX="clang++ -arch arm64" \
-		go build -o $(BIN_DIR)/tock-teams-auth-arm64 ./$(TEAMS_AUTH_DIR)
-	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
-		CC="clang -arch x86_64" CXX="clang++ -arch x86_64" \
-		go build -o $(BIN_DIR)/tock-teams-auth-amd64 ./$(TEAMS_AUTH_DIR)
-	lipo -create -output $(BIN_DIR)/tock-teams-auth \
-		$(BIN_DIR)/tock-teams-auth-arm64 $(BIN_DIR)/tock-teams-auth-amd64
-	@rm $(BIN_DIR)/tock-teams-auth-arm64 $(BIN_DIR)/tock-teams-auth-amd64
-	@echo "Built universal $(BIN_DIR)/tock-teams-auth"
-
 # Build a .app for the host architecture (fastest).
-desktop-build: teams-auth-build
+desktop-build:
 	cd $(DESKTOP_DIR) && $(WAILS) build -clean -ldflags "$(DESKTOP_LDFLAGS)"
 	@rm -rf $(DESKTOP_DIR)/build/bin/Tokify.app
 	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Tokify.app
-	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Tokify.app/Contents/MacOS/tock-teams-auth
 	@echo "Built $(DESKTOP_DIR)/build/bin/Tokify.app"
 
 # Build a universal (arm64 + amd64) .app suitable for distribution.
-desktop-build-universal: teams-auth-build-universal
+desktop-build-universal:
 	cd $(DESKTOP_DIR) && $(WAILS) build -clean -platform darwin/universal -ldflags "$(DESKTOP_LDFLAGS)"
 	@rm -rf $(DESKTOP_DIR)/build/bin/Tokify.app
 	@mv $(DESKTOP_DIR)/build/bin/tock-desktop.app $(DESKTOP_DIR)/build/bin/Tokify.app
-	@cp $(BIN_DIR)/tock-teams-auth $(DESKTOP_DIR)/build/bin/Tokify.app/Contents/MacOS/tock-teams-auth
 	@echo "Built $(DESKTOP_DIR)/build/bin/Tokify.app"
 
 # Build and open the resulting .app.
@@ -83,9 +57,8 @@ desktop-run: desktop-build
 	open $(DESKTOP_DIR)/build/bin/Tokify.app
 
 # Live-reload dev server with Go bindings exposed at http://localhost:34115.
-# Builds the auth helper first so Connect works in dev. The desktop binary's
-# helper-lookup walks up to repo root and finds it under ./bin/.
-desktop-dev: teams-auth-build
+# Start the app with frontend hot reload.
+desktop-dev:
 	cd $(DESKTOP_DIR) && \
 		TOKIFY_NEON_AUTH_URL="$(NEON_AUTH_URL)" TOKIFY_NEON_DATA_URL="$(NEON_DATA_URL)" \
 		$(WAILS) dev
@@ -99,4 +72,4 @@ desktop-doctor:
 notices:
 	./scripts/gen-notices.sh
 
-.PHONY: desktop-build desktop-build-universal desktop-run desktop-dev desktop-doctor notices teams-auth-build teams-auth-build-universal
+.PHONY: desktop-build desktop-build-universal desktop-run desktop-dev desktop-doctor notices
