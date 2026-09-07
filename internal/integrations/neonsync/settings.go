@@ -12,7 +12,7 @@ import (
 
 // Settings are the user-controlled preferences for the Neon sync integration.
 // Stored as JSON at ~/Library/Application Support/Tokify/neonsync.json, alongside
-// the neonauth settings, so they don't pollute the upstream tock data file.
+// the neonauth settings.
 //
 // DataURL is the Neon Data API (PostgREST) base URL; find it in the Neon
 // Console under the Data API section. Enabled is the master switch the Account

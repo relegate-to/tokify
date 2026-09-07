@@ -11,10 +11,9 @@ import (
 )
 
 // Settings are the user-controlled preferences for the Neon Auth integration.
-// Stored as JSON at ~/Library/Application Support/Tokify/neonauth.json so they
-// don't pollute the upstream tock data file. The Auth URL is the single value
-// Neon Auth (Better Auth) needs; find it in the Neon Console under
-// Auth -> Configuration.
+// Stored as JSON at ~/Library/Application Support/Tokify/neonauth.json. The Auth
+// URL is the single value Neon Auth (Better Auth) needs; find it in the Neon
+// Console under Auth -> Configuration.
 type Settings struct {
 	AuthURL string `json:"auth_url"`
 }

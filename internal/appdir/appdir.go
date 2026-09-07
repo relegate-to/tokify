@@ -66,32 +66,29 @@ func KeychainService(base string) string {
 	return base
 }
 
-// LogPath is the profile-namespaced activity log (~/.tock-<name>.txt), or ""
-// when no profile is set so the caller falls back to the upstream default
-// (~/.tock.txt, or whatever TOCK_FILE / config specifies).
+// LogPath is the legacy text activity log used only for the one-time SQLite
+// migration. Profiles use ~/.tock-<name>.txt; the default uses ~/.tock.txt.
 func LogPath() string {
 	p := Profile()
-	if p == "" {
-		return ""
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
+	}
+	if p == "" {
+		return filepath.Join(home, ".tock.txt")
 	}
 	return filepath.Join(home, ".tock-"+p+".txt")
 }
 
-// DatabasePath is the profile-namespaced SQLite activity store. It returns an
-// empty string for the normal profile so the configured sqlite.path (whose
-// default is ~/.tock.db) remains available to the desktop runtime.
+// DatabasePath is the profile-namespaced SQLite activity store.
 func DatabasePath() string {
 	p := Profile()
-	if p == "" {
-		return ""
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
+	}
+	if p == "" {
+		return filepath.Join(home, ".tock.db")
 	}
 	return filepath.Join(home, ".tock-"+p+".db")
 }

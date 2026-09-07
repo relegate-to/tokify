@@ -31,9 +31,8 @@ import (
 	"github.com/kriuchkov/tock/internal/timeutil"
 )
 
-// App is the Wails-bound surface for the Tokify desktop window. It owns a tock
-// Runtime so the GUI and `tock` CLI still share the same domain behavior — there
-// is no parallel implementation of any business rule.
+// App is the Wails-bound surface for the Tokify desktop window. It owns the
+// application runtime and delegates business rules to the domain services.
 type App struct {
 	ctx      context.Context
 	rt       *runtime.Runtime
@@ -74,20 +73,12 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// The desktop owns a SQLite store. The upstream CLI remains independently
-	// configurable; TOKIFY_PROFILE only gives local sharing-test users separate
-	// databases.
-	rt, err := runtime.Load(ctx, runtime.Request{
-		Backend:  "sqlite",
-		FilePath: appdir.DatabasePath(),
-	})
+	// TOKIFY_PROFILE gives local sharing-test users separate databases.
+	rt, err := runtime.Load(ctx, appdir.DatabasePath())
 	if err != nil {
 		return
 	}
 	legacyPath := appdir.LogPath()
-	if legacyPath == "" {
-		legacyPath = rt.Config.File.Path
-	}
 	if importer, ok := rt.ActivityRepo.(interface {
 		ImportOnce(context.Context, string, []models.Activity) (int, error)
 	}); ok {
@@ -131,7 +122,7 @@ func (a *App) startup(ctx context.Context) {
 	if n, err := neonauth.NewService(); err == nil {
 		a.neonAuth = n
 	}
-	// Encrypted sync builds on Neon Auth (bearer token) and the tock runtime
+	// Encrypted sync builds on Neon Auth (bearer token) and the app runtime
 	// (the local activity store it mirrors). Optional, so a construction error is
 	// non-fatal — the Account panel renders its unconfigured state.
 	if a.neonAuth != nil {
@@ -383,7 +374,7 @@ func (a *App) ListPastYear() ([]models.Activity, error) {
 }
 
 // Start begins a new activity. Description is required; project is optional.
-// Starting a new one stops anything already running (tock's own behavior).
+// Starting a new one stops anything already running.
 func (a *App) Start(description, project string) (*models.Activity, error) {
 	if err := a.requireRuntime(); err != nil {
 		return nil, err
@@ -592,8 +583,7 @@ func (a *App) ListRecent(limit int) ([]models.Activity, error) {
 // the saved path, or an empty string if the user cancelled. fromDate and
 // toDate are YYYY-MM-DD strings (either may be empty for an open-ended range);
 // project filters by exact project name (empty means no project filter).
-// Reuses tock's own RenderOutput so the GUI and CLI produce byte-identical
-// exports.
+// Uses the shared export renderer so every desktop export follows one format.
 func (a *App) Export(format, fromDate, toDate, project string, includeShared bool) (string, error) {
 	if err := a.requireRuntime(); err != nil {
 		return "", err

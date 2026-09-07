@@ -13,17 +13,6 @@ test:
 	-v $$(go env GOMODCACHE):/.cache/mod -e GOMODCACHE=/.cache/mod \
 	--entrypoint "" golang:1.26.3 sh -c "go test -v -count=1 -p 4 -coverprofile=coverage.out ./... && go tool cover -func=coverage.out && go tool cover -html=coverage.out -o coverage.html"
 
-build:
-	docker run -t --rm -v $$(pwd):/app -w /app \
-	-v $$(go env GOCACHE):/.cache/go-build -e GOCACHE=/.cache/go-build \
-	-v $$(go env GOMODCACHE):/.cache/mod -e GOMODCACHE=/.cache/mod \
-	--entrypoint "" golang:1.26.3 sh -c "go build -o tock ./cmd/tock"
-
-# Refresh test data by running the script that generates it.
-# By default, it refreshes data for the last 1 day,
-refresh-test-data:
-	python3 scripts/refresh_test_data.py --days $(or $(DAYS),1)
-
 # ── Desktop app (Wails) ──────────────────────────────────────────────────
 # These targets run on the host (Wails can't cross-compile macOS in Docker).
 # Install the CLI first:  go install github.com/wailsapp/wails/v2/cmd/wails@latest

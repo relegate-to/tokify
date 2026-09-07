@@ -111,32 +111,21 @@ as **CSV**, **JSON**, or plain **TXT**. You can scope the export to a date
 range and an optional project. The resulting file is saved wherever you like —
 handy for invoicing, reporting, or piping into a spreadsheet.
 
-## Data and configuration
+## Data
 
 - Desktop activity database: `~/.tock.db` (SQLite)
 - Legacy import source: `~/.tock.txt` (read once when the database is empty and
   then retained as a backup)
-- CLI configuration: `~/.config/tock/tock.yaml`
-
-The bundled [tock CLI][tock] remains independently configurable. Set its backend
-to `sqlite` if you want it to work from the desktop app's database; its other
-backends remain available. See [`tock.yaml.example`](tock.yaml.example) for the
-full list of options.
 
 When encrypted sync is enabled, shared activity data is kept up to date for your
 team without making that activity history readable to the sync service.
 
 ## Relationship to tock
 
-Tokify is a desktop frontend built as a respectful fork of
+Tokify began as a desktop fork of
 [**tock**][tock] by [Vladimir Kriuchkov][kriuchkov].
-The fork adds `cmd/tock-desktop/` (a Wails app) and reuses tock's domain
-services so the CLI and GUI stay behaviorally identical. The Go module path is
-kept as `github.com/kriuchkov/tock` so upstream merges apply cleanly.
-
-The upstream tock README is preserved verbatim at
-[`docs/tock.md`](docs/tock.md). See [`TOKIFY.md`](TOKIFY.md) for how the fork
-relates to upstream.
+It retains the original domain model and GPL-3.0-or-later license, but now ships
+only the Tokify macOS app. See [`TOKIFY.md`](TOKIFY.md) for attribution details.
 
 ## Development
 

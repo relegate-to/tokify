@@ -26,11 +26,11 @@ func TestProfileNamespacing(t *testing.T) {
 		if got := KeychainService("Tokify Neon Sync"); got != "Tokify Neon Sync" {
 			t.Errorf("service = %q, want unchanged", got)
 		}
-		if got := LogPath(); got != "" {
-			t.Errorf("log = %q, want empty", got)
+		if got, wantLog := LogPath(), filepath.Join(home, ".tock.txt"); got != wantLog {
+			t.Errorf("log = %q, want %q", got, wantLog)
 		}
-		if got := DatabasePath(); got != "" {
-			t.Errorf("database = %q, want empty", got)
+		if got, wantDatabase := DatabasePath(), filepath.Join(home, ".tock.db"); got != wantDatabase {
+			t.Errorf("database = %q, want %q", got, wantDatabase)
 		}
 	})
 

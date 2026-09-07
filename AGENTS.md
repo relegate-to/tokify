@@ -4,53 +4,43 @@ Orientation file for future Codex sessions in this repo. Read this first.
 
 ## What this project is
 
-Tokify is a macOS menu-bar time tracker. It is a **respectful fork** of
-[tock](https://github.com/kriuchkov/tock) by Vladimir Kriuchkov: the original
-`tock` CLI is preserved and kept in sync with upstream, and a new
-`cmd/tock-desktop/` Wails app reuses tock's domain services so the CLI and GUI
-stay behaviorally identical.
+Tokify is a macOS menu-bar time tracker built with Wails. It began as a fork of
+[tock](https://github.com/kriuchkov/tock) by Vladimir Kriuchkov and retains its
+domain model, but the product is now desktop-only and does not ship a CLI.
 
 The desktop stores activities in SQLite (`~/.tock.db`) and imports a legacy
-`~/.tock.txt` once when the database is empty. The upstream CLI remains
-independently configurable. See [`TOKIFY.md`](TOKIFY.md) for the fork's
-relationship to upstream and [`docs/tock.md`](docs/tock.md) for the upstream
-README preserved verbatim.
+`~/.tock.txt` once when the database is empty. See [`TOKIFY.md`](TOKIFY.md) for
+attribution and license details.
 
 License: **GPL-3.0-or-later**, inherited from tock.
 
-## Important fork constraints
+## Important source-history constraint
 
 - The Go module path is **`github.com/kriuchkov/tock`** — do not rename it.
-  It's kept that way so upstream merges apply cleanly.
-- Tokify additions live in **new packages** and **new `cmd/` entries**
-  (`cmd/tock-desktop`). Avoid editing upstream files unless the change is
-  intended to flow back upstream as a PR — bug fixes and non-desktop
-  improvements should be upstreamable.
+  It preserves source history and attribution; it is not evidence that a
+  separate `tock` product is still shipped.
 - Upstream copyright notices are preserved unchanged.
 
 ## Layout
 
 ```
-cmd/tock              upstream CLI entrypoint (don't add desktop concerns)
 cmd/tock-desktop      Wails desktop app (Tokify additions live here)
-  app.go              Wails-bound App struct; owns tock Runtime; tray code
+  app.go              Wails-bound App struct; owns app Runtime; tray code
   main.go             wails.Run + systray wiring (darwin-only build tag)
   frontend/           React + TypeScript + Vite + Tailwind v4 + shadcn/ui
   build/              Wails output (.app) and platform assets
 cmd/tock-teams-auth   short-lived WKWebView subprocess for the Teams sign-in
                       flow (cgo, darwin-only); built by `make teams-auth-build`
                       and copied into Tokify.app/Contents/MacOS/ at release time
-internal/             shared domain — used by both CLI and desktop
-  app/                application services (runtime, export, watching, …)
-  adapters/           repository implementations (sqlite, text log)
+internal/             Tokify domain and application code
+  app/                application services (runtime, export, storage, …)
+  adapters/           SQLite plus the legacy text-log migration reader
   core/               models, ports, errors — the domain
   integrations/teams  Teams status integration (Keychain-backed tokens,
                       presence API client, opt-in project allowlist)
   services/activity   activity service
-docs/tock.md          upstream README (preserve verbatim)
-skills/tock/          tock CLI skill manifest (for OpenClaw)
-scripts/              helper scripts (gen-notices, test data refresh)
-TOKIFY.md             fork relationship + license posture
+scripts/              build and integration helper scripts
+TOKIFY.md             source attribution + license posture
 ```
 
 ## Build, test, lint
@@ -70,7 +60,6 @@ make teams-auth-build-universal# universal cgo build via clang -arch + lipo
 
 make test                      # Go tests inside Docker (golang:1.26.3)
 make linter                    # golangci-lint inside Docker
-make build                     # build the upstream `tock` CLI in Docker
 make notices                   # regenerate THIRD_PARTY_NOTICES.txt
 ```
 
@@ -153,15 +142,14 @@ These are registered in this environment and worth reaching for when they fit:
 
 ## Backend (Go) notes
 
-- Domain logic must stay in `internal/`. `cmd/tock-desktop/app.go` is just a
-  thin Wails-bound surface that owns a `runtime.Runtime` and forwards calls
-  to upstream services. Resist the urge to embed business rules in `app.go`.
+- Domain logic must stay in `internal/`. `cmd/tock-desktop/app.go` is a thin
+  Wails-bound surface that owns a `runtime.Runtime` and forwards calls to domain
+  services. Resist the urge to embed business rules in `app.go`.
 - The desktop entrypoint has `//go:build darwin` build tags. Anything new
   in `cmd/tock-desktop/` should respect that — the package will not
   compile on Linux/Windows.
-- The desktop always requests the SQLite backend (`mattn/go-sqlite3` +
-  `doug-martin/goqu`) while the CLI keeps upstream's configurable backend
-  behavior. The first desktop launch imports the legacy text log transactionally
+- SQLite (`mattn/go-sqlite3` + `doug-martin/goqu`) is the only live storage
+  backend. The first desktop launch imports the legacy text log transactionally
   through `internal/app/storage` and leaves the source file untouched.
 - `make linter` uses `golangci-lint` v2 with `.golangci.yaml`. Run it
   before declaring a Go change done.
@@ -178,9 +166,6 @@ These are registered in this environment and worth reaching for when they fit:
 - For UI changes: actually run the app (`make desktop-dev` or
   `make desktop-run`) and exercise the change before reporting done.
   Type-checks alone do not verify UI behavior.
-- For changes that could flow back upstream (anything outside
-  `cmd/tock-desktop/`), keep them minimal and self-contained so they're
-  easy to extract as an upstream PR.
 - Don't commit unless the user asks. When you do, follow the existing
   commit-message style (`git log` — short imperative subject, no
   conventional-commit prefix).
@@ -188,9 +173,8 @@ These are registered in this environment and worth reaching for when they fit:
 ## Quick references
 
 - Main branch: `main`. PRs target `main`.
-- Upstream remote: `https://github.com/kriuchkov/tock.git` (branch `master`).
-- Releases via `.goreleaser.yaml`; install one-liner in `install.sh`.
-- Configuration example: `tock.yaml.example`.
+- App releases are built by `.github/workflows/release.yml`; the install
+  one-liner lives in `install.sh`.
 - Third-party notices: `cmd/tock-desktop/build/darwin/Resources/THIRD_PARTY_NOTICES.txt`
   regenerated by `make notices` (requires `go-licenses`,
   `license-checker-rseidelsohn`, and `jq` on PATH).

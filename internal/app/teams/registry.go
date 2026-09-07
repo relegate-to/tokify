@@ -4,8 +4,7 @@
 // identifies it only by an opaque id and is deliberately blind to any human
 // name. A team name is therefore client-side metadata, persisted here as JSON
 // under ~/Library/Application Support/Tokify alongside projects.json and
-// neonsync.json, for the same reason: to keep Tokify state out of the upstream
-// tock data file and off the zero-knowledge server.
+// neonsync.json so it stays off the zero-knowledge server.
 package teams
 
 import (

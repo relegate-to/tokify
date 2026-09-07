@@ -41,7 +41,7 @@ var DefaultDataURL string
 // clients must keep using it to retain stable content ids across upgrades.
 const syncTimeLayout = "2006-01-02 15:04"
 
-// ActivityStore is the slice of the tock activity service neonsync needs: read
+// ActivityStore is the slice of the activity service neonsync needs: read
 // every entry, add a pulled one back, and remove one the cloud has tombstoned.
 // Satisfied by ports.ActivityResolver, so the desktop app passes its runtime's
 // service straight through.

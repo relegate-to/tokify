@@ -1,9 +1,5 @@
-testfile.bartib
 coverage.out
 coverage.html
-demo_activities.txt
-demo/demo.cast
-demo/demo_data.txt
 
 .idea/
 .vscode/
@@ -17,7 +13,6 @@ bin/
 .env
 
 # Desktop app build artifacts
-/tock
 /tock-desktop
 cmd/tock-desktop/tock-desktop
 cmd/tock-desktop/build/bin/
