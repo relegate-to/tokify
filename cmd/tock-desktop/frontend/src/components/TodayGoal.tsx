@@ -1,21 +1,11 @@
 import { useMemo } from 'react';
 
 import type { Activity } from '@/types';
-import { projectColor } from '@/lib/colors';
 import { formatTotal } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
 
-type Segment = {
-    key: string;
-    label: string;
-    color: string;
-    ms: number;
-    widthPct: number;
-};
-
-// Today's tracked time against a daily goal — a lightweight pacing signal the
-// Log tab can't give you. The bar is segmented by project; segments live-grow
-// while an activity is running.
+// Today's tracked time against a daily goal. This strip is the only place goal
+// progress appears — the hero and the ledger deliberately stay out of it.
 export function TodayGoal({
     activities,
     running,
@@ -28,7 +18,7 @@ export function TodayGoal({
     const now = useNow(!!running);
     const goalMs = goalMinutes * 60_000;
 
-    const { totalMs, segments } = useMemo(() => {
+    const totalMs = useMemo(() => {
         // The running activity started today, so it's usually already in
         // `activities`; fold it in only when it isn't, and never twice.
         const items = [...activities];
@@ -36,99 +26,65 @@ export function TodayGoal({
             items.push(running);
         }
 
-        const order: string[] = [];
-        const byProject = new Map<string, number>();
-        for (const a of items) {
+        return items.reduce((sum, a) => {
             const startMs = new Date(a.start_time as any).getTime();
             const endMs = a.end_time
                 ? new Date(a.end_time as any).getTime()
                 : now;
-            const dur = Math.max(0, endMs - startMs);
-            const key = a.project || '';
-            if (!byProject.has(key)) order.push(key);
-            byProject.set(key, (byProject.get(key) ?? 0) + dur);
-        }
-
-        const segs: Segment[] = order.map((key) => {
-            const ms = byProject.get(key) ?? 0;
-            return {
-                key,
-                label: key || 'No project',
-                color: projectColor(key),
-                ms,
-                widthPct: goalMs > 0 ? (ms / goalMs) * 100 : 0,
-            };
-        });
-        const total = segs.reduce((sum, s) => sum + s.ms, 0);
-        return { totalMs: total, segments: segs };
-    }, [activities, running, now, goalMs]);
+            return sum + Math.max(0, endMs - startMs);
+        }, 0);
+    }, [activities, running, now]);
 
     const pct = goalMs > 0 ? Math.round((totalMs / goalMs) * 100) : 0;
     const remainingMs = Math.max(0, goalMs - totalMs);
+    const met = remainingMs === 0;
 
     return (
         <section
             aria-label="Today's progress"
-            className="rounded-2xl border border-subtle-surface-border bg-subtle-surface px-6 py-5"
+            className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-3"
         >
-            <div className="mb-[18px] flex items-end justify-between gap-4">
-                <div>
-                    <div className="mb-2 text-[11.5px] font-bold uppercase tracking-[0.05em] text-navigation-muted-foreground">
-                        Today
-                    </div>
-                    <div className="flex items-baseline gap-2.5">
-                        <span className="font-mono text-[19px] font-semibold leading-none tracking-[-0.01em] tabular-nums text-foreground">
-                            {formatTotal(totalMs)}
-                        </span>
-                        <span className="text-[13px] text-muted-foreground">
-                            of {formatTotal(goalMs)} goal
-                        </span>
-                    </div>
-                </div>
-                <div className="text-right">
-                    <div className="font-mono text-[15px] font-semibold leading-none tabular-nums text-muted-foreground">
-                        {pct}%
-                    </div>
-                    <div className="mt-1.5 text-xs text-navigation-muted-foreground">
-                        {remainingMs > 0
-                            ? `${formatTotal(remainingMs)} to goal`
-                            : 'Goal reached'}
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex h-2 overflow-hidden rounded-full bg-border">
-                {segments.map((seg) => (
+            <Cell label="Today" value={formatTotal(totalMs)} />
+            <Cell
+                label={`Of ${formatTotal(goalMs)} goal`}
+                value={`${pct}%`}
+                gap="gap-2.5"
+            >
+                <div className="h-[3px] overflow-hidden rounded-[2px] bg-navigation">
                     <div
-                        key={seg.key}
-                        style={{
-                            width: `${seg.widthPct}%`,
-                            backgroundColor: seg.color,
-                        }}
-                        className="h-full transition-[width] duration-500 ease-out"
+                        className="h-full bg-goal-accent transition-[width] duration-500 ease-out"
+                        style={{ width: `${Math.min(100, pct)}%` }}
                     />
-                ))}
-            </div>
-
-            {segments.length > 0 && (
-                <div className="mt-3.5 flex flex-wrap items-center gap-x-5 gap-y-2">
-                    {segments.map((seg) => (
-                        <div key={seg.key} className="flex items-center gap-2">
-                            <span
-                                aria-hidden
-                                className="size-2 shrink-0 rounded-full"
-                                style={{ backgroundColor: seg.color }}
-                            />
-                            <span className="text-xs text-day-total-foreground">
-                                {seg.label}
-                            </span>
-                            <span className="font-mono text-[13px] tabular-nums text-muted-foreground">
-                                {formatTotal(seg.ms)}
-                            </span>
-                        </div>
-                    ))}
                 </div>
-            )}
+            </Cell>
+            <Cell
+                label="Remaining"
+                value={met ? 'Goal met' : formatTotal(remainingMs)}
+            />
         </section>
+    );
+}
+
+function Cell({
+    label,
+    value,
+    gap = 'gap-[5px]',
+    children,
+}: {
+    label: string;
+    value: string;
+    gap?: string;
+    children?: React.ReactNode;
+}) {
+    return (
+        <div className={`flex flex-col bg-card px-[22px] py-5 ${gap}`}>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-navigation-muted-foreground">
+                {label}
+            </span>
+            <span className="text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">
+                {value}
+            </span>
+            {children}
+        </div>
     );
 }

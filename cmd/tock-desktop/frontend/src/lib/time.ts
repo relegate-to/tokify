@@ -97,6 +97,16 @@ export function formatDuration(ms: number) {
     const m = total % 60;
     return `${pad(h)}:${pad(m)}`;
 }
+// Stopwatch face for the running hero: MM:SS, widening to HH:MM:SS past the
+// hour. Distinct from formatDuration, which is the masthead's HH:MM readout.
+export function formatStopwatch(ms: number) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    return `${pad(m)}:${pad(s)}`;
+}
 export function formatTotal(ms: number) {
     const total = Math.max(0, Math.floor(ms / 60000));
     const h = Math.floor(total / 60);

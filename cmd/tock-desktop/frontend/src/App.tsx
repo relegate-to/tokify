@@ -607,6 +607,8 @@ function App() {
                                                 setView('sharing');
                                             }}
                                             onResume={handleResume}
+                                            onUpdate={handleUpdate}
+                                            onRemove={handleRemove}
                                         />
                                     </div>
                             </SwiperSlide>

@@ -38,7 +38,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour:  &options.RGBA{R: 229, G: 232, B: 226, A: 1}, // matches --paper
+		BackgroundColour:  &options.RGBA{R: 247, G: 247, B: 247, A: 1}, // matches --background
 		OnStartup:         app.startup,
 		HideWindowOnClose: true, // red traffic light hides; tray's Quit / Cmd+Q actually quit.
 		Mac: &mac.Options{

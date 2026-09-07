@@ -36,6 +36,8 @@ export function NowView({
     onStop,
     onShare,
     onResume,
+    onUpdate,
+    onRemove,
 }: {
     running: Activity | null;
     today: Activity[];
@@ -49,6 +51,14 @@ export function NowView({
     onStop: () => void;
     onShare: (project?: string) => void;
     onResume: (orig: Activity) => void;
+    onUpdate: (
+        orig: Activity,
+        description: string,
+        project: string,
+        startISO: string,
+        endISO: string,
+    ) => void;
+    onRemove: (orig: Activity) => void;
 }) {
     const visibleToday = useMemo(
         () => today.filter((a) => !removingKeys.has(String(a.start_time))),
@@ -61,7 +71,6 @@ export function NowView({
         const out: Activity[] = [];
 
         for (const activity of recent) {
-            if (removingKeys.has(String(activity.start_time))) continue;
             if (!activity.description || !activity.end_time) continue;
 
             const key = quickStartKey(activity);
@@ -86,31 +95,53 @@ export function NowView({
         return labels.size === 1 ? [...labels][0] : 'Recent';
     }, [quickStarts]);
 
+    // Idle status line: when the last session ended, across today and the wider
+    // recent window (a fresh morning has no rows in `today` yet).
+    const lastStop = useMemo(() => {
+        let latest = 0;
+        for (const a of [...today, ...recent]) {
+            if (!a.end_time) continue;
+            if (removingKeys.has(String(a.start_time))) continue;
+            const end = new Date(a.end_time as any).getTime();
+            if (end > latest) latest = end;
+        }
+        return latest > 0 ? new Date(latest) : null;
+    }, [today, recent, removingKeys]);
+
+    // The idle hero opens on the project you last tracked against, so starting
+    // another entry in the same project takes one keystroke.
+    const defaultProject = useMemo(() => {
+        let latest = 0;
+        let project = '';
+        for (const a of [...today, ...recent]) {
+            if (!a.project) continue;
+            const start = new Date(a.start_time as any).getTime();
+            if (start > latest) {
+                latest = start;
+                project = a.project;
+            }
+        }
+        return project;
+    }, [today, recent]);
+
     const hasHistory = recent.length > 0;
     const isColdStart = !running && visibleToday.length === 0 && !hasHistory;
     const showSummary = activityView !== 'none' && !isColdStart;
     const showJumpBack = activityView === 'all' && quickStarts.length > 0;
 
     return (
-        <div className="relative flex min-h-full flex-1 flex-col gap-8">
-            <div>
-                <SectionHeading
-                    title={running ? 'Currently tracking' : 'Start tracking'}
+        <div className="relative mx-auto flex min-h-full w-full max-w-[1020px] flex-1 flex-col gap-[34px]">
+            {running ? (
+                <NowRunning activity={running} onStop={onStop} />
+            ) : (
+                <Starter
+                    projects={projects}
+                    lastStop={lastStop}
+                    defaultProject={defaultProject}
+                    onStart={onStart}
+                    onStartAt={onStartAt}
                 />
-                {running ? (
-                    <NowRunning
-                        activity={running}
-                        onStop={onStop}
-                        onShare={() => onShare(running.project || undefined)}
-                    />
-                ) : (
-                    <Starter
-                        projects={projects}
-                        onStart={onStart}
-                        onStartAt={onStartAt}
-                    />
-                )}
-            </div>
+            )}
 
             {showSummary && (
                 <TodayGoal
@@ -124,26 +155,15 @@ export function NowView({
                 <JumpBackIn
                     items={quickStarts}
                     contextLabel={contextLabel}
+                    projects={projects}
+                    removingKeys={removingKeys}
                     onResume={onResume}
+                    onUpdate={onUpdate}
+                    onRemove={onRemove}
                 />
             )}
 
             {isColdStart && <EmptyDay />}
-        </div>
-    );
-}
-
-// Section heading matching JumpBackIn, so the activity page reads as a set of
-// titled sections rather than a loose stack of cards.
-function SectionHeading({ title, context }: { title: string; context?: string }) {
-    return (
-        <div className="mb-3.5 flex items-center justify-between">
-            <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
-            {context && (
-                <span className="text-xs text-navigation-muted-foreground">
-                    {context}
-                </span>
-            )}
         </div>
     );
 }

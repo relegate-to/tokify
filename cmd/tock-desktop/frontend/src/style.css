@@ -6,8 +6,8 @@
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
-    --font-mono: 'SF Mono', Menlo, Consolas, monospace;
+    --font-sans: 'Instrument Sans Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -31,6 +31,7 @@
     --color-muted: var(--muted);
     --color-secondary-foreground: var(--secondary-foreground);
     --color-secondary: var(--secondary);
+    --color-primary-hover: var(--primary-hover);
     --color-primary-foreground: var(--primary-foreground);
     --color-primary: var(--primary);
     --color-popover-foreground: var(--popover-foreground);
@@ -44,6 +45,14 @@
     --color-navigation-muted-foreground: var(--navigation-muted-foreground);
     --color-navigation: var(--navigation);
     --color-day-total-foreground: var(--day-total-foreground);
+    --color-ink-faint: var(--ink-faint);
+    --color-row-hover: var(--row-hover);
+    --color-live-dot: var(--live-dot);
+    --color-live-dot-hero: var(--live-dot-hero);
+    --color-idle-dot: var(--idle-dot);
+    --color-goal-accent: var(--goal-accent);
+    --color-running-card-faint: var(--running-card-faint);
+    --color-running-stop-glyph: var(--running-stop-glyph);
     --color-running-card-border: var(--running-card-border);
     --color-running-card-control-hover: var(--running-card-control-hover);
     --color-running-card-foreground: var(--running-card-foreground);
@@ -55,6 +64,7 @@
     --color-running-stop: var(--running-stop);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    --animate-live-pulse: live-pulse 1.8s ease-in-out infinite;
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -65,56 +75,65 @@
 }
 
 :root {
-    --background: #fafbfc;
-    --foreground: #1b1d22;
+    --background: #f7f7f7;
+    --foreground: #171717;
     --card: #ffffff;
-    --card-foreground: #1b1d22;
+    --card-foreground: #171717;
     --popover: #ffffff;
-    --popover-foreground: #1b1d22;
-    --primary: #1b1d22;
-    --primary-foreground: #ffffff;
-    --secondary: #edeff2;
-    --secondary-foreground: #33363d;
-    --muted: #edeff2;
-    --muted-foreground: #7a7f8a;
-    --accent: #edeff2;
-    --accent-foreground: #1b1d22;
-    --destructive: #e74c3c;
-    --border: #e7e9ec;
-    --input: #e2e4e8;
-    --ring: #9aa0aa;
+    --popover-foreground: #171717;
+    --primary: #171717;
+    --primary-hover: #2c2c2c;
+    --primary-foreground: #fafafa;
+    --secondary: #ececec;
+    --secondary-foreground: #3d3d3d;
+    --muted: #ececec;
+    --muted-foreground: #6e6e6e;
+    --accent: #f1f1f1;
+    --accent-foreground: #171717;
+    --destructive: oklch(0.58 0.2 25);
+    --border: #e4e4e4;
+    --input: #e4e4e4;
+    --ring: #b4b4b4;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    --sidebar: #f1f3f6;
-    --sidebar-foreground: #1b1d22;
-    --sidebar-primary: #1b1d22;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #edeff2;
-    --sidebar-accent-foreground: #1b1d22;
-    --sidebar-border: #e7e9ec;
-    --sidebar-ring: #9aa0aa;
-    --navigation: #edeff2;
+    --sidebar: #f1f1f1;
+    --sidebar-foreground: #171717;
+    --sidebar-primary: #171717;
+    --sidebar-primary-foreground: #fafafa;
+    --sidebar-accent: #ececec;
+    --sidebar-accent-foreground: #171717;
+    --sidebar-border: #e4e4e4;
+    --sidebar-ring: #b4b4b4;
+    --navigation: #ececec;
     --navigation-active: #ffffff;
-    --navigation-active-foreground: #1b1d22;
-    --navigation-muted-foreground: #9aa0aa;
-    --day-total-foreground: #5c616b;
-    --navigation-shadow: 0 1px 3px rgb(17 19 24 / 12%);
-    --running-card: #1b1d22;
-    --running-card-border: #1b1d22;
-    --running-card-control-hover: rgb(255 255 255 / 6%);
-    --running-card-foreground: #ffffff;
-    --running-card-muted: #b8b8bd;
-    --running-card-track: rgb(255 255 255 / 10%);
-    --running-stop: #e74c3c;
-    --running-stop-hover: #d43f2e;
-    --running-stop-foreground: #ffffff;
-    --subtle-surface: #f1f3f6;
-    --subtle-surface-border: #e8ebef;
-    --contribution-0: #e7e9ec;
+    --navigation-active-foreground: #171717;
+    --navigation-muted-foreground: #9a9a9a;
+    --ink-faint: #8a8a8a;
+    --row-hover: #f1f1f1;
+    --day-total-foreground: #3d3d3d;
+    --navigation-shadow: 0 1px 2px rgb(18 18 18 / 8%);
+    --running-card: #171717;
+    --running-card-border: #171717;
+    --running-card-control-hover: rgb(250 250 250 / 8%);
+    --running-card-foreground: #fafafa;
+    --running-card-muted: #b4b4b4;
+    --running-card-faint: #9a9a9a;
+    --running-card-track: rgb(250 250 250 / 12%);
+    --running-stop: #fafafa;
+    --running-stop-hover: #ffffff;
+    --running-stop-foreground: #171717;
+    --running-stop-glyph: oklch(0.58 0.2 25);
+    --live-dot: oklch(0.62 0.16 145);
+    --live-dot-hero: oklch(0.72 0.18 145);
+    --idle-dot: #cfcfcf;
+    --goal-accent: oklch(0.62 0.19 285);
+    --subtle-surface: #f1f1f1;
+    --subtle-surface-border: #e4e4e4;
+    --contribution-0: #e4e4e4;
     --contribution-1: #f0e6cf;
     --contribution-2: #e3cd97;
     --contribution-3: #cbab5f;
@@ -132,56 +151,68 @@
     --mascot-badge-opacity: 0.3;
 }
 
+/* The handoff specifies light only. Dark keeps the same neutrals inverted,
+   and flips the hero pair: the running card stays the surface that contrasts
+   with the page, so it reads as the same object in either theme. */
 .dark {
-    --background: #0a0a0a;
+    --background: #121212;
     --foreground: #fafafa;
-    --card: #171717;
+    --card: #1a1a1a;
     --card-foreground: #fafafa;
-    --popover: #171717;
+    --popover: #1a1a1a;
     --popover-foreground: #fafafa;
     --primary: #fafafa;
+    --primary-hover: #ffffff;
     --primary-foreground: #171717;
     --secondary: #262626;
-    --secondary-foreground: #fafafa;
+    --secondary-foreground: #dcdcdc;
     --muted: #262626;
     --muted-foreground: #a1a1a1;
     --accent: #262626;
     --accent-foreground: #fafafa;
-    --destructive: #ee6e6c;
-    --border: #2e2e2e;
-    --input: #2e2e2e;
-    --ring: #737373;
+    --destructive: oklch(0.66 0.18 25);
+    --border: #303030;
+    --input: #303030;
+    --ring: #6e6e6e;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: #171717;
+    --sidebar: #1a1a1a;
     --sidebar-foreground: #fafafa;
     --sidebar-primary: #fafafa;
     --sidebar-primary-foreground: #171717;
     --sidebar-accent: #262626;
     --sidebar-accent-foreground: #fafafa;
-    --sidebar-border: #2e2e2e;
-    --sidebar-ring: #737373;
+    --sidebar-border: #303030;
+    --sidebar-ring: #6e6e6e;
     --navigation: #262626;
-    --navigation-active: #3d3d3d;
+    --navigation-active: #3b3b3b;
     --navigation-active-foreground: #fafafa;
-    --navigation-muted-foreground: #a1a1a1;
+    --navigation-muted-foreground: #8a8a8a;
+    --ink-faint: #8a8a8a;
+    --row-hover: #262626;
     --day-total-foreground: #d4d4d4;
     --navigation-shadow: 0 1px 3px rgb(0 0 0 / 40%);
-    --running-card: #e8e8e8;
-    --running-card-border: #e8e8e8;
-    --running-card-control-hover: rgb(17 19 24 / 6%);
-    --running-card-foreground: #1b1d22;
-    --running-card-muted: #7a7f8a;
-    --running-card-track: rgb(17 19 24 / 10%);
-    --running-stop: #d43f2e;
-    --running-stop-hover: #c0392b;
-    --running-stop-foreground: #ffffff;
-    --subtle-surface: #171717;
-    --subtle-surface-border: #2e2e2e;
-    --contribution-0: #181818;
+    --running-card: #f0f0f0;
+    --running-card-border: #f0f0f0;
+    --running-card-control-hover: rgb(23 23 23 / 6%);
+    --running-card-foreground: #171717;
+    --running-card-muted: #6e6e6e;
+    --running-card-faint: #8a8a8a;
+    --running-card-track: rgb(23 23 23 / 12%);
+    --running-stop: #171717;
+    --running-stop-hover: #2c2c2c;
+    --running-stop-foreground: #fafafa;
+    --running-stop-glyph: oklch(0.66 0.19 25);
+    --live-dot: oklch(0.72 0.18 145);
+    --live-dot-hero: oklch(0.58 0.16 145);
+    --idle-dot: #4a4a4a;
+    --goal-accent: oklch(0.7 0.17 285);
+    --subtle-surface: #1a1a1a;
+    --subtle-surface-border: #303030;
+    --contribution-0: #1f1f1f;
     --contribution-1: #302d1d;
     --contribution-2: #554b22;
     --contribution-3: #78652e;
@@ -197,6 +228,18 @@
     --mascot-badge-filter: grayscale(1) invert(0);
     --mascot-badge-blend-mode: normal;
     --mascot-badge-opacity: 0.9;
+}
+
+@keyframes live-pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.35;
+        transform: scale(0.82);
+    }
 }
 
 @layer base {

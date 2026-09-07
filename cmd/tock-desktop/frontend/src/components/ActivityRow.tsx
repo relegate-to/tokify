@@ -3,7 +3,8 @@ import { Pencil, RotateCcw, Trash2 } from 'lucide-react';
 
 import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
-import { formatClock, formatDuration } from '@/lib/time';
+import { projectColor } from '@/lib/colors';
+import { formatClock, formatDuration, formatTotal } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +22,11 @@ const ROW_HEIGHT = 'h-11';
 const ROW_GRID =
     'grid grid-cols-[68px_136px_minmax(0,1fr)_68px_52px] items-center px-3';
 
+// The Log lists a day in columns you scan top-down; the tracker's recents ledger
+// is a denser hairline-ruled list whose whole row starts the task again. Same
+// row component either way, so editing, deleting, and resuming behave alike.
+const LEDGER_ROW_HEIGHT = 'h-[50px]';
+
 export function ActivityRow({
     activity,
     projects,
@@ -29,6 +35,7 @@ export function ActivityRow({
     onRemove,
     onResume,
     readOnly = false,
+    variant = 'log',
 }: {
     activity: ActivityItem;
     projects: string[];
@@ -37,6 +44,7 @@ export function ActivityRow({
     onRemove: (orig: Activity) => void;
     onResume?: (orig: Activity) => void;
     readOnly?: boolean;
+    variant?: 'log' | 'ledger';
 }) {
     // A shared entry belongs to another member: always read-only, never editable
     // or removable here, and tagged with the author's avatar badge.
@@ -55,11 +63,79 @@ export function ActivityRow({
         if (!readOnly) setEditOpen(true);
     };
 
-    const row = (
+    const isLedger = variant === 'ledger';
+    const project = activity.project || '';
+    const resumeLabel = activity.description
+        ? `Resume ${activity.description}`
+        : 'Resume activity';
+    const startResume = () => {
+        if (!readOnly) onResume?.(activity);
+    };
+
+    const ledgerRow = (
+        <li
+            role={onResume && !readOnly ? 'button' : undefined}
+            tabIndex={onResume && !readOnly ? 0 : undefined}
+            aria-label={onResume && !readOnly ? resumeLabel : undefined}
+            onClick={startResume}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    startResume();
+                }
+            }}
+            className={cn(
+                'group/row flex min-h-0 items-center gap-4 overflow-hidden border-t border-border px-1 text-left last:border-b',
+                'transition-[height,opacity,background-color] duration-200 ease-out',
+                isRemoving
+                    ? 'h-0 border-transparent opacity-0'
+                    : LEDGER_ROW_HEIGHT,
+                !readOnly &&
+                    'cursor-pointer hover:bg-row-hover focus-visible:bg-row-hover focus-visible:outline-none',
+            )}
+        >
+            <span
+                aria-hidden
+                className="size-[7px] shrink-0 rounded-[2px]"
+                style={{ backgroundColor: projectColor(project) }}
+            />
+            <span className="min-w-0 flex-1 truncate text-[15px] font-medium">
+                {activity.description || 'No description'}
+            </span>
+            <span className="hidden max-w-[40%] shrink-0 truncate text-[13px] text-ink-faint sm:block">
+                {project || 'No project'}
+            </span>
+            <span className="w-[72px] shrink-0 text-right font-mono text-[13px] tabular-nums text-secondary-foreground">
+                {formatTotal(ms)}
+            </span>
+            <span className="flex w-6 shrink-0 items-center justify-end">
+                {shared ? (
+                    <SharedAuthorBadge shared={shared} />
+                ) : (
+                    !readOnly && (
+                        <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onRemove(activity);
+                            }}
+                            className="text-destructive opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+                            title="Delete"
+                        >
+                            <Trash2 />
+                        </Button>
+                    )
+                )}
+            </span>
+        </li>
+    );
+
+    const logRow = (
         <li
             onDoubleClick={enterEdit}
             className={cn(
-                'group/row relative overflow-hidden rounded-md border border-transparent',
+                'group/row relative min-h-0 overflow-hidden rounded-md border border-transparent',
                 'transition-[height,opacity,transform,background-color,border-color] duration-200 ease-out',
                 isRemoving ? 'h-0 -translate-x-2 opacity-0' : ROW_HEIGHT,
                 ROW_GRID,
@@ -132,6 +208,8 @@ export function ActivityRow({
             </div>
         </li>
     );
+
+    const row = isLedger ? ledgerRow : logRow;
 
     // Shared rows are display-only: no context menu, no edit surface.
     if (readOnly) return row;
