@@ -12,7 +12,7 @@
 //   - Keychain services gain a " (<name>)" suffix, so DEK/identity slots don't
 //     collide (the macOS login keychain is shared across $HOME, so path
 //     isolation alone is not enough — the service name must differ too)
-//   - the activity log defaults to ~/.tock-<name>.txt
+//   - the legacy activity log and SQLite database gain the profile suffix
 //
 // An empty/unset profile yields the historical paths and service names verbatim,
 // so existing installs are untouched. This is a dev affordance, not a
@@ -79,4 +79,19 @@ func LogPath() string {
 		return ""
 	}
 	return filepath.Join(home, ".tock-"+p+".txt")
+}
+
+// DatabasePath is the profile-namespaced SQLite activity store. It returns an
+// empty string for the normal profile so the configured sqlite.path (whose
+// default is ~/.tock.db) remains available to the desktop runtime.
+func DatabasePath() string {
+	p := Profile()
+	if p == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".tock-"+p+".db")
 }

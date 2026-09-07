@@ -103,6 +103,7 @@ export function Masthead({
     ? runningShorthand || runningTitle
     : runningTitle;
   const logSelected = LOG_VIEWS.includes(view);
+  const nowSelected = view === "now" || view === "sketchpad";
   const showLogIcons = logSelected || logHover;
   const activityLabelWidth = hasRunning
     ? labelWidth(
@@ -121,7 +122,7 @@ export function Masthead({
     tabGroupWidth + (showLogIcons ? LOG_ICON_PANEL_WIDTH : 0);
 
   const tabStyle = (name: "now" | "history"): CSSProperties => {
-    const active = name === "history" ? logSelected : view === name;
+    const active = name === "history" ? logSelected : nowSelected;
     const runningInactive = name === "now" && hasRunning && !active;
     if (runningInactive) {
       return {
@@ -245,12 +246,12 @@ export function Masthead({
               className={cn(
                 "tt-tab-btn shrink-0 hover:text-navigation-active-foreground [&_svg]:size-[13px]",
                 running &&
-                  view !== "now" &&
+                  !nowSelected &&
                   "tt-tab-btn-running hover:bg-navigation hover:text-running-card-foreground",
               )}
               style={tabStyle("now")}
               onClick={() => onView("now")}
-              aria-pressed={view === "now"}
+              aria-pressed={nowSelected}
             >
               <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
                 <ActivityIcon />

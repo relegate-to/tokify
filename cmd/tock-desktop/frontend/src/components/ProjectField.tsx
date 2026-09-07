@@ -20,7 +20,7 @@ export function ProjectField({
     const inputRef = useRef<HTMLInputElement>(null);
 
     // Keep the current value visible as a chip even before it lands in the
-    // activity log (a freshly created project isn't in `suggestions` yet).
+    // activity store (a freshly created project isn't in `suggestions` yet).
     const chips =
         value && !suggestions.includes(value)
             ? [value, ...suggestions]

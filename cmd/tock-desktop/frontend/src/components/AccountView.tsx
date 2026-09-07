@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft,
     Clock,
-    FileText,
+    Database,
     FolderKanban,
     FolderOpen,
     ListChecks,
@@ -234,7 +234,7 @@ export function AccountView({
         setOpeningActivityLog(true);
         OpenActivityLog()
             .catch((err) =>
-                toast.error('Unable to open activity log', {
+                toast.error('Unable to open activity database', {
                     description: authErrorText(err),
                 }),
             )
@@ -574,7 +574,7 @@ export function AccountView({
                         Local files
                     </CardTitle>
                     <CardDescription>
-                        Your JSON settings and activity log are stored locally
+                        Your settings and activity database are stored locally
                         on this Mac.
                     </CardDescription>
                 </CardHeader>
@@ -605,7 +605,7 @@ export function AccountView({
                     </div>
                     <Separator />
                     <div className="flex w-full flex-col items-start gap-2">
-                        <span className="text-sm">Activity log</span>
+                        <span className="text-sm">Activity database</span>
                         {activityLogPath && (
                             <code className="max-w-full break-all rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
                                 {activityLogPath}
@@ -623,9 +623,9 @@ export function AccountView({
                                     className="animate-spin"
                                 />
                             ) : (
-                                <FileText data-icon="inline-start" />
+                                <Database data-icon="inline-start" />
                             )}
-                            Show activity log
+                            Show activity database
                         </Button>
                     </div>
                 </CardContent>

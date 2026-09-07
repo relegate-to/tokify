@@ -17,6 +17,7 @@ export type ActivityItem = Activity & { shared?: SharedMeta };
 
 export type View =
     | 'now'
+    | 'sketchpad'
     | 'history'
     | 'reports'
     | 'charts'

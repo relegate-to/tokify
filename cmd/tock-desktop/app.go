@@ -21,6 +21,7 @@ import (
 	exportapp "github.com/kriuchkov/tock/internal/app/export"
 	projectreg "github.com/kriuchkov/tock/internal/app/projects"
 	"github.com/kriuchkov/tock/internal/app/runtime"
+	appstorage "github.com/kriuchkov/tock/internal/app/storage"
 	teamreg "github.com/kriuchkov/tock/internal/app/teams"
 	"github.com/kriuchkov/tock/internal/appdir"
 	"github.com/kriuchkov/tock/internal/core/models"
@@ -31,8 +32,8 @@ import (
 )
 
 // App is the Wails-bound surface for the Tokify desktop window. It owns a tock
-// Runtime so the GUI talks to the same services and the same data file the
-// `tock` CLI does — there is no parallel implementation of any business rule.
+// Runtime so the GUI and `tock` CLI still share the same domain behavior — there
+// is no parallel implementation of any business rule.
 type App struct {
 	ctx      context.Context
 	rt       *runtime.Runtime
@@ -73,16 +74,30 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// A TOKIFY_PROFILE-namespaced log (see internal/appdir) lets two signed-in
-	// users run side by side for local sharing tests; empty means the upstream
-	// default (~/.tock.txt, or TOCK_FILE).
-	rt, err := runtime.Load(ctx, runtime.Request{FilePath: appdir.LogPath()})
+	// The desktop owns a SQLite store. The upstream CLI remains independently
+	// configurable; TOKIFY_PROFILE only gives local sharing-test users separate
+	// databases.
+	rt, err := runtime.Load(ctx, runtime.Request{
+		Backend:  "sqlite",
+		FilePath: appdir.DatabasePath(),
+	})
 	if err != nil {
 		return
 	}
+	legacyPath := appdir.LogPath()
+	if legacyPath == "" {
+		legacyPath = rt.Config.File.Path
+	}
+	if importer, ok := rt.ActivityRepo.(interface {
+		ImportOnce(context.Context, string, []models.Activity) (int, error)
+	}); ok {
+		if _, migrationErr := appstorage.MigrateLegacyTextLog(ctx, legacyPath, importer); migrationErr != nil {
+			fmt.Fprintf(os.Stderr, "Tokify: migrate legacy activity log: %v\n", migrationErr)
+		}
+	}
 	a.rt = rt
 	// The project registry gives projects a first-class existence independent of
-	// the activity log (see internal/app/projects). Non-fatal on error, like the
+	// the activity store (see internal/app/projects). Non-fatal on error, like the
 	// other Tokify-side state files — a failure means we can't reach ~/Library.
 	if p, perr := projectreg.DefaultPath(); perr == nil {
 		if reg, oerr := projectreg.Open(p); oerr == nil {
@@ -117,7 +132,7 @@ func (a *App) startup(ctx context.Context) {
 		a.neonAuth = n
 	}
 	// Encrypted sync builds on Neon Auth (bearer token) and the tock runtime
-	// (the activity log it mirrors). Optional, so a construction error is
+	// (the local activity store it mirrors). Optional, so a construction error is
 	// non-fatal — the Account panel renders its unconfigured state.
 	if a.neonAuth != nil {
 		if sync, err := neonsync.NewService(rt.ActivityService, a.neonAuth); err == nil {
@@ -311,7 +326,7 @@ func formatElapsed(d time.Duration) string {
 
 func (a *App) requireRuntime() error {
 	if a.rt == nil {
-		return errors.New("tokify couldn't reach the tock data file")
+		return errors.New("tokify couldn't reach its local activity database")
 	}
 	return nil
 }
@@ -745,23 +760,23 @@ func (a *App) OpenApplicationDataDirectory() error {
 	return nil
 }
 
-// ActivityLogPath returns the active local activity-log path. It is normally
-// ~/.tock.txt, though it can be changed through Tokify's runtime configuration.
+// ActivityLogPath returns the active local activity database path. The method
+// keeps its historical name so existing frontend bindings remain compatible.
 func (a *App) ActivityLogPath() (string, error) {
 	if a.rt == nil || strings.TrimSpace(a.rt.DataPath) == "" {
-		return "", errors.New("activity log unavailable")
+		return "", errors.New("activity database unavailable")
 	}
 	return a.rt.DataPath, nil
 }
 
-// OpenActivityLog reveals the active activity log in Finder.
+// OpenActivityLog reveals the active activity database in Finder.
 func (a *App) OpenActivityLog() error {
 	path, err := a.ActivityLogPath()
 	if err != nil {
 		return err
 	}
 	if err := exec.Command("open", "-R", path).Run(); err != nil {
-		return errors.Wrap(err, "reveal activity log")
+		return errors.Wrap(err, "reveal activity database")
 	}
 	return nil
 }
@@ -1135,7 +1150,7 @@ func (a *App) CreateProject(name string) (projectreg.Project, error) {
 }
 
 // RenameProject renames one of the caller's own projects everywhere it lives: the
-// activity log, the project registry, and the share filters of any team the
+// activity store, the project registry, and the share filters of any team the
 // caller shares it with — so teammates keep seeing it under the new name. Only
 // projects in the local log are the caller's; shared entries from other people
 // are never in this catalog, so there is nothing here to rename that isn't yours.
@@ -1313,7 +1328,7 @@ func (a *App) DeleteProject(name string) error {
 
 // SetProjectColor pins a project's display color, or clears it back to the
 // name-derived default when color is empty. Color is presentation-only: it lives
-// in the local registry, never in the activity log or a share, so there is no
+// in the local registry, never in the activity store or a share, so there is no
 // rewrite or sync to do. The project is registered if it was only implicit in the
 // log so a color can be chosen before any time is tracked.
 func (a *App) SetProjectColor(name, color string) (projectreg.Project, error) {
@@ -1638,7 +1653,7 @@ func (a *App) SharingSetTeamShare(audienceID string, projects []string, sinceDay
 
 // SharedActivity is one read-only activity another member shared with a team the
 // caller belongs to, decrypted and author-verified by the sharing service. It is
-// display-only and never merges into the local ~/.tock.txt log. AuthorName and
+// display-only and never merges into the local activity database. AuthorName and
 // AuthorID drive the author badge in the merged Activity view; TeamName is the
 // caller's local name for the audience the entry came through.
 //

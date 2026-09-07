@@ -19,7 +19,7 @@ import (
 // been pulled yet, and the pull step resurrects it.
 //
 // Stored as plaintext alongside neonsync.json; it exposes nothing that the
-// ~/.tock.txt log does not already hold in the clear.
+// local activity store does not already hold in the clear.
 type tombstoneStore struct {
 	path string
 	mu   sync.Mutex

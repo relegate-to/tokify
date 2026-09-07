@@ -29,6 +29,9 @@ func TestProfileNamespacing(t *testing.T) {
 		if got := LogPath(); got != "" {
 			t.Errorf("log = %q, want empty", got)
 		}
+		if got := DatabasePath(); got != "" {
+			t.Errorf("database = %q, want empty", got)
+		}
 	})
 
 	t.Run("set namespaces dir, service, and log", func(t *testing.T) {
@@ -52,6 +55,9 @@ func TestProfileNamespacing(t *testing.T) {
 		}
 		if got, want := LogPath(), filepath.Join(home, ".tock-alice.txt"); got != want {
 			t.Errorf("log = %q, want %q", got, want)
+		}
+		if got, want := DatabasePath(), filepath.Join(home, ".tock-alice.db"); got != want {
+			t.Errorf("database = %q, want %q", got, want)
 		}
 	})
 

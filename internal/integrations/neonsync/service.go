@@ -36,11 +36,9 @@ const dekAccount = "dek"
 //nolint:gochecknoglobals // ldflags injection target; must be a package var.
 var DefaultDataURL string
 
-// syncTimeLayout matches the text log's minute-precision, local-time format
-// (internal/adapters/repositories/file). Canonicalizing entry times to exactly
-// what the log preserves is what keeps content-hash ids stable across a
-// push -> pull -> re-read round-trip; anything finer would make the same entry
-// hash differently after it passes through ~/.tock.txt.
+// syncTimeLayout preserves the legacy text log's minute-precision wire format.
+// Existing encrypted rows were keyed from this representation, so SQLite-backed
+// clients must keep using it to retain stable content ids across upgrades.
 const syncTimeLayout = "2006-01-02 15:04"
 
 // ActivityStore is the slice of the tock activity service neonsync needs: read
@@ -59,7 +57,7 @@ type TokenProvider interface {
 	Token(ctx context.Context) (string, error)
 }
 
-// Service owns encrypted sync of the activity log. Like the neonauth service it
+// Service owns encrypted sync of the local activity store. Like neonauth it
 // loads its secret (the DEK) from Keychain per call rather than caching it in
 // memory, so sign-out clears it with no in-memory invalidation.
 type Service struct {
@@ -267,7 +265,7 @@ func (s *Service) Lock(ctx context.Context) error {
 
 // SyncNow pushes every completed local activity as an encrypted row, then pulls
 // the cloud set and merges any entries this device is missing back into the
-// local log. Local ~/.tock.txt stays the source of truth; the cloud is a mirror.
+// local store. The local database stays the source of truth; the cloud is a mirror.
 func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 	if !s.Status().Enabled {
 		return s.Status(), errors.New("sync is turned off")
@@ -556,8 +554,8 @@ func ownerFromKeys(ctx context.Context, hc *http.Client, base, token string) (st
 
 // canonicalEntry is the stable, log-faithful serialization that is both the
 // encryption plaintext and the content-hash preimage. It carries only what the
-// text log round-trips (time at minute precision, project, description); notes
-// and tags live in a separate store and are deferred to a follow-up.
+// historical sync format round-trips (time at minute precision, project,
+// description); notes and tags remain deferred to a follow-up.
 type canonicalEntry struct {
 	Description string `json:"d"`
 	Project     string `json:"p"`

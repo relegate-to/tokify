@@ -24,9 +24,9 @@ The desktop app is where you start and stop activities, browse your history,
 and understand time by project. The menu bar is a compact timer and status view
 that stays visible while you work.
 
-Activities are stored as a plain-text log in your home directory — the same
-human-readable file format used by the [tock][tock] command-line tool, so you
-can read, grep, edit, or back up your data with anything that handles text.
+The desktop app stores activities locally in SQLite. Existing `~/.tock.txt`
+history is imported automatically the first time Tokify opens an empty database;
+the original file is left untouched as a backup.
 
 ## Encrypted sync and teams
 
@@ -113,15 +113,15 @@ handy for invoicing, reporting, or piping into a spreadsheet.
 
 ## Data and configuration
 
-Tokify reads and writes the same files as the [tock CLI][tock]:
+- Desktop activity database: `~/.tock.db` (SQLite)
+- Legacy import source: `~/.tock.txt` (read once when the database is empty and
+  then retained as a backup)
+- CLI configuration: `~/.config/tock/tock.yaml`
 
-- Activity log: `~/.tock.txt` (plain-text, one entry per line)
-- Configuration: `~/.config/tock/tock.yaml` (optional — defaults are fine)
-
-This means you can use Tokify and `tock` side by side, sync the log file with any
-tool that handles text, or move to a different backend (TimeWarrior, TodoTXT,
-SQLite) by editing the config. See [`tock.yaml.example`](tock.yaml.example) for
-the full list of options.
+The bundled [tock CLI][tock] remains independently configurable. Set its backend
+to `sqlite` if you want it to work from the desktop app's database; its other
+backends remain available. See [`tock.yaml.example`](tock.yaml.example) for the
+full list of options.
 
 When encrypted sync is enabled, shared activity data is kept up to date for your
 team without making that activity history readable to the sync service.

@@ -1,7 +1,7 @@
 // Package projects maintains Tokify's client-side project registry.
 //
 // tock models a project only implicitly, as the Project string on activity
-// rows in ~/.tock.txt, so a project cannot exist until time is tracked against
+// rows in the activity store, so a project cannot exist until time is tracked against
 // it. Tokify needs projects to be first-class — you create one, assemble its
 // sharing team, then start tracking — so this registry persists known projects
 // as JSON under ~/Library/Application Support/Tokify, alongside neonsync.json

@@ -25,7 +25,7 @@ import (
 //
 // Persisting to the profile dir means a cold start paints immediately from the
 // previous session's rows. The file holds other members' decrypted plaintext,
-// which is consistent with tock's model: the local activity log (~/.tock.txt) is
+// which is consistent with Tokify's model: the local activity database is
 // already plaintext on disk, and the profile dir is the same trust boundary.
 type sharedCache struct {
 	path string

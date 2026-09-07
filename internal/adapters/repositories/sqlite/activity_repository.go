@@ -16,6 +16,17 @@ type ActivityRepository struct {
 	DB *sql.DB
 }
 
+const saveActivitySQL = `
+	INSERT INTO activities (description, project, start_time, end_time, notes, tags)
+	VALUES (?, ?, ?, ?, ?, ?)
+	ON CONFLICT(start_time) DO UPDATE SET
+		description=excluded.description,
+		project=excluded.project,
+		end_time=excluded.end_time,
+		notes=excluded.notes,
+		tags=excluded.tags;
+`
+
 func NewSQLiteActivityRepository(ctx context.Context, dataSourceName string) (*ActivityRepository, error) {
 	db, err := sql.Open("sqlite3", dataSourceName)
 	if err != nil {
@@ -44,34 +55,40 @@ func (r *ActivityRepository) initSchema(ctx context.Context) error {
 		end_time DATETIME,
 		notes TEXT,
 		tags TEXT
-	);
-	CREATE INDEX IF NOT EXISTS idx_start_time ON activities(start_time);
-	`
+		);
+		CREATE INDEX IF NOT EXISTS idx_start_time ON activities(start_time);
+		CREATE TABLE IF NOT EXISTS app_metadata (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
+		`
 	_, err := r.DB.ExecContext(ctx, query)
 	return err
 }
 
 func (r *ActivityRepository) Save(ctx context.Context, activity models.Activity) error {
+	return saveActivity(ctx, r.DB, activity)
+}
+
+type sqlExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func saveActivity(ctx context.Context, execer sqlExecer, activity models.Activity) error {
 	tagsJSON, err := json.Marshal(activity.Tags)
 	if err != nil {
 		return errors.Wrap(err, "serialize tags")
 	}
 
-	query := `
-	INSERT INTO activities (description, project, start_time, end_time, notes, tags)
-	VALUES (?, ?, ?, ?, ?, ?)
-	ON CONFLICT(start_time) DO UPDATE SET
-		description=excluded.description,
-		project=excluded.project,
-		end_time=excluded.end_time,
-		notes=excluded.notes,
-		tags=excluded.tags;
-	`
-	_, err = r.DB.ExecContext(ctx, query,
+	var endTime any
+	if activity.EndTime != nil {
+		endTime = activity.EndTime.UTC()
+	}
+	_, err = execer.ExecContext(ctx, saveActivitySQL,
 		activity.Description,
 		activity.Project,
 		activity.StartTime.UTC(),
-		activity.EndTime,
+		endTime,
 		activity.Notes,
 		string(tagsJSON),
 	)
@@ -79,6 +96,49 @@ func (r *ActivityRepository) Save(ctx context.Context, activity models.Activity)
 		return errors.Wrap(err, "save activity")
 	}
 	return nil
+}
+
+// ImportOnce initializes an empty database from a set of activities and records
+// the migration key in the same transaction. A database that already contains
+// activity is treated as authoritative and only gets the marker.
+func (r *ActivityRepository) ImportOnce(ctx context.Context, key string, activities []models.Activity) (int, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, errors.Wrap(err, "begin import")
+	}
+	defer tx.Rollback() //nolint:errcheck // commit is the success path
+
+	var marker string
+	err = tx.QueryRowContext(ctx, `SELECT value FROM app_metadata WHERE key = ?`, key).Scan(&marker)
+	if err == nil {
+		return 0, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, errors.Wrap(err, "read import marker")
+	}
+
+	var existing int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM activities`).Scan(&existing); err != nil {
+		return 0, errors.Wrap(err, "count activities")
+	}
+
+	imported := 0
+	if existing == 0 {
+		for _, activity := range activities {
+			if err = saveActivity(ctx, tx, activity); err != nil {
+				return 0, errors.Wrap(err, "import activity")
+			}
+			imported++
+		}
+	}
+
+	if _, err = tx.ExecContext(ctx, `INSERT INTO app_metadata (key, value) VALUES (?, 'complete')`, key); err != nil {
+		return 0, errors.Wrap(err, "write import marker")
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, errors.Wrap(err, "commit import")
+	}
+	return imported, nil
 }
 
 func (r *ActivityRepository) FindLast(ctx context.Context) (*models.Activity, error) {
@@ -99,10 +159,13 @@ func (r *ActivityRepository) Find(ctx context.Context, filter models.ActivityFil
 		Order(goqu.I("start_time").Asc())
 
 	if filter.FromDate != nil {
-		dataset = dataset.Where(goqu.I("start_time").Gte(filter.FromDate.UTC()))
+		dataset = dataset.Where(goqu.Or(
+			goqu.I("end_time").IsNull(),
+			goqu.I("end_time").Gt(filter.FromDate.UTC()),
+		))
 	}
 	if filter.ToDate != nil {
-		dataset = dataset.Where(goqu.I("start_time").Lte(filter.ToDate.UTC()))
+		dataset = dataset.Where(goqu.I("start_time").Lt(filter.ToDate.UTC()))
 	}
 	if filter.Project != nil && *filter.Project != "" {
 		dataset = dataset.Where(goqu.Ex{"project": *filter.Project})
@@ -154,6 +217,30 @@ func (r *ActivityRepository) Remove(ctx context.Context, activity models.Activit
 		return errors.Wrap(err, "remove activity")
 	}
 	return nil
+}
+
+func (r *ActivityRepository) RenameProject(ctx context.Context, oldName, newName string) (int, error) {
+	result, err := r.DB.ExecContext(ctx, `UPDATE activities SET project = ? WHERE project = ?`, newName, oldName)
+	if err != nil {
+		return 0, errors.Wrap(err, "rename project")
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return 0, errors.Wrap(err, "count renamed activities")
+	}
+	return int(changed), nil
+}
+
+func (r *ActivityRepository) DeleteProject(ctx context.Context, name string) (int, error) {
+	result, err := r.DB.ExecContext(ctx, `DELETE FROM activities WHERE project = ?`, name)
+	if err != nil {
+		return 0, errors.Wrap(err, "delete project")
+	}
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return 0, errors.Wrap(err, "count deleted activities")
+	}
+	return int(removed), nil
 }
 
 type scanner interface {

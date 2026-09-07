@@ -244,6 +244,17 @@
   height: 100%;
 }
 
+.tokify-sketchpad-paper {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    color-mix(in srgb, var(--border) 62%, transparent) 27px,
+    color-mix(in srgb, var(--border) 62%, transparent) 28px
+  );
+  background-position-y: 21px;
+}
+
 .react-activity-calendar__tooltip {
   width: max-content;
   max-width: calc(100vw - 20px);

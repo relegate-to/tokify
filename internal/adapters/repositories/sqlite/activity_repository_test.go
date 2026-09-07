@@ -329,3 +329,49 @@ func TestSQLiteRepository_Remove(t *testing.T) {
 		})
 	}
 }
+
+func TestSQLiteRepository_FindIncludesActivityOverlappingRange(t *testing.T) {
+	ctx := context.Background()
+	repo := setupTestDB(t)
+	start := time.Date(2026, 9, 6, 23, 30, 0, 0, time.Local)
+	end := time.Date(2026, 9, 7, 0, 30, 0, 0, time.Local)
+	require.NoError(t, repo.Save(ctx, models.Activity{
+		Description: "Across midnight",
+		Project:     "Night shift",
+		StartTime:   start,
+		EndTime:     &end,
+	}))
+
+	from := time.Date(2026, 9, 7, 0, 0, 0, 0, time.Local)
+	to := from.AddDate(0, 0, 1)
+	got, err := repo.Find(ctx, models.ActivityFilter{FromDate: &from, ToDate: &to})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "Across midnight", got[0].Description)
+}
+
+func TestSQLiteRepository_ProjectMutations(t *testing.T) {
+	ctx := context.Background()
+	repo := setupTestDB(t)
+	now := time.Now().Truncate(time.Second)
+	for i, project := range []string{"Old", "Keep", "Old"} {
+		require.NoError(t, repo.Save(ctx, models.Activity{
+			Description: "Activity",
+			Project:     project,
+			StartTime:   now.Add(time.Duration(i) * time.Minute),
+		}))
+	}
+
+	renamed, err := repo.RenameProject(ctx, "Old", "New")
+	require.NoError(t, err)
+	assert.Equal(t, 2, renamed)
+
+	removed, err := repo.DeleteProject(ctx, "New")
+	require.NoError(t, err)
+	assert.Equal(t, 2, removed)
+
+	got, err := repo.Find(ctx, models.ActivityFilter{})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "Keep", got[0].Project)
+}
