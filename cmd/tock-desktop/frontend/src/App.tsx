@@ -57,7 +57,7 @@ const DEFAULT_DAILY_GOAL = 360;
 const DAILY_GOAL_VALUES = [240, 360, 480];
 const ACTIVITY_VIEW_VALUES: ActivityView[] = ['all', 'today', 'none'];
 const LOG_VIEWS: View[] = ['history', 'reports', 'charts', 'stats'];
-const SWIPE_VIEWS: View[] = ['now', 'sketchpad', ...LOG_VIEWS];
+const SWIPE_VIEWS: View[] = ['sketchpad', 'now', ...LOG_VIEWS];
 
 const THEME_VALUES: Theme[] = ['auto', 'light', 'dark'];
 
@@ -586,6 +586,11 @@ function App() {
                         >
                             <SwiperSlide>
                                 <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
+                                    <SketchpadView />
+                                </div>
+                            </SwiperSlide>
+                            <SwiperSlide>
+                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
                                     <NowView
                                             running={running}
                                             today={today}
@@ -604,11 +609,6 @@ function App() {
                                             onResume={handleResume}
                                         />
                                     </div>
-                            </SwiperSlide>
-                            <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
-                                    <SketchpadView />
-                                </div>
                             </SwiperSlide>
                             <SwiperSlide>
                                 <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">

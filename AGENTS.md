@@ -113,7 +113,7 @@ Stack:
   `tokify.showAccount`, `tokify.displayName`, `tokify.email`,
   `tokify.sketchpad`). Use the same prefix and `try { … } catch {}` pattern for
   any new key. The sketchpad is the unlabelled swipe screen immediately to the
-  right of Now; keep it out of the masthead navigation.
+  left of Now; keep it out of the masthead navigation.
 - Closing the window leaves the app in the menu bar
   (`HideWindowOnClose: true`). The tray code lives in `cmd/tock-desktop/app.go`
   — re-render its title via `refreshTrayTitle` after any mutation that
