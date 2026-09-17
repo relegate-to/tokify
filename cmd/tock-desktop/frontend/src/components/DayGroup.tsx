@@ -1,6 +1,6 @@
 import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
-import { REMOVE_ANIM_MS } from '@/lib/motion';
+import { REMOVE_ANIM_MS, EASE_OUT } from '@/lib/motion';
 import { dayLabel, formatTotal } from '@/lib/time';
 import { ActivityRow } from '@/components/ActivityRow';
 import { DayTimeline } from '@/components/DayTimeline';
@@ -11,12 +11,14 @@ export function DayHeader({
     label,
     day,
     activities,
+    removingKeys,
     totalMs,
     variant = 'now',
 }: {
     label: string;
     day: Date;
     activities: Activity[];
+    removingKeys?: Set<string>;
     totalMs: number;
     variant?: 'now' | 'history';
 }) {
@@ -38,7 +40,12 @@ export function DayHeader({
             >
                 {label}
             </h3>
-            <DayTimeline day={day} activities={activities} className="flex-1" />
+            <DayTimeline
+                day={day}
+                activities={activities}
+                removingKeys={removingKeys}
+                className="flex-1"
+            />
             <span
                 className={cn(
                     'w-14 shrink-0 text-right font-mono tabular-nums',
@@ -90,17 +97,18 @@ export function DayGroup({
     }, 0);
     const allRemoving = activities.length > 0 && visible.length === 0;
     return (
+        // A day losing its last row fades out where it stands, keeping its
+        // height; the space it held is closed afterwards by the FLIP pass, not
+        // by animating this box shorter.
         <div
-            className="grid transition-[grid-template-rows,opacity] ease-out"
+            data-flip-group={String(day.getTime())}
             style={{
-                gridTemplateRows: allRemoving ? '0fr' : '1fr',
                 opacity: allRemoving ? 0 : 1,
-                transitionDuration: `${REMOVE_ANIM_MS}ms`,
+                transition: `opacity ${REMOVE_ANIM_MS}ms ${EASE_OUT}`,
             }}
         >
             <div
                 className={cn(
-                    'min-h-0 overflow-hidden',
                     !allRemoving &&
                         'animate-in fade-in-0 slide-in-from-top-1 duration-300',
                 )}
@@ -108,7 +116,8 @@ export function DayGroup({
                 <DayHeader
                     label={dayLabel(day)}
                     day={day}
-                    activities={visible}
+                    activities={activities}
+                    removingKeys={removingKeys}
                     totalMs={totalMs}
                     variant={variant}
                 />

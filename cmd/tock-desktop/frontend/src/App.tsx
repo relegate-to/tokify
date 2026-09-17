@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import { toast } from 'sonner';
 import type { Swiper as SwiperInstance } from 'swiper';
 import { Mousewheel } from 'swiper/modules';
@@ -27,7 +34,8 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 import { main, neonauth } from '../wailsjs/go/models';
 
 import type { Activity, ActivityItem, ActivityView, Theme, View } from '@/types';
-import { REMOVE_ANIM_MS } from '@/lib/motion';
+import { EASE_FLIP, REMOVE_ANIM_MS, REMOVE_FLIP_MS } from '@/lib/motion';
+import { captureFlip, playFlip, type FlipSnapshot } from '@/lib/flip';
 import { setProjectColorOverrides } from '@/lib/colors';
 import {
     ProjectSharesContext,
@@ -137,6 +145,26 @@ function mapShared(entries: main.SharedActivity[]): ActivityItem[] {
     );
 }
 
+// Shared rows are rebuilt from scratch on every poll, so the array is a new
+// identity even when the answer is identical. Feeding that straight into state
+// re-ran the whole Log view — regrouping, the project filters and a full
+// 365-cell contribution graph — every ten seconds, which lands as a stutter if
+// it coincides with a row animating out. Only adopt rows that actually differ.
+function sameShared(a: ActivityItem[], b: ActivityItem[]): boolean {
+    if (a.length !== b.length) return false;
+    return a.every((x, i) => {
+        const y = b[i];
+        return (
+            x.start_time === y.start_time &&
+            x.end_time === y.end_time &&
+            x.description === y.description &&
+            x.project === y.project &&
+            x.shared?.authorId === y.shared?.authorId &&
+            x.shared?.teamName === y.shared?.teamName
+        );
+    });
+}
+
 function App() {
     const [view, setView] = useState<View>('now');
     const [sharingProject, setSharingProject] = useState<string | undefined>();
@@ -170,6 +198,31 @@ function App() {
     const [dailyGoal, setDailyGoal] = useState<number>(() => readDailyGoal());
     const [theme, setTheme] = useState<Theme>(() => readTheme());
     const [authStatus, setAuthStatus] = useState<neonauth.Status | null>(null);
+    // Activities deleted locally that a refresh already in flight may still be
+    // carrying an answer for. Filtering them out of every refresh until the
+    // delete has committed is what stops a removed row flickering back.
+    const suppressedKeys = useRef<Set<string>>(new Set());
+    const isSuppressed = (a: Activity | null) =>
+        !!a && suppressedKeys.current.has(String(a.start_time));
+    const withoutSuppressed = (list: Activity[]) =>
+        suppressedKeys.current.size === 0
+            ? list
+            : list.filter((a) => !isSuppressed(a));
+
+    // FLIP bookkeeping for removal: positions are captured just before the row
+    // leaves the lists, and replayed in the layout phase of the commit that
+    // drops it, before the browser has painted the new positions.
+    const flipRoot = useRef<HTMLElement | null>(null);
+    const flipFirst = useRef<FlipSnapshot | null>(null);
+    const [flipToken, setFlipToken] = useState(0);
+
+    useLayoutEffect(() => {
+        const first = flipFirst.current;
+        if (!first) return;
+        flipFirst.current = null;
+        playFlip(flipRoot.current, first, REMOVE_FLIP_MS, EASE_FLIP);
+    }, [flipToken]);
+
     const viewRef = useRef<View>(view);
     const logSwiperRef = useRef<SwiperInstance | null>(null);
     const programmaticSlide = useRef(false);
@@ -236,8 +289,12 @@ function App() {
         return () => mql.removeEventListener('change', apply);
     }, [theme]);
 
-    const refresh = () => {
-        Promise.all([
+    // Stable identity: the row handlers close over it, and they in turn are what
+    // let the memoised ActivityRow skip re-rendering the whole log.
+    // isSuppressed/withoutSuppressed only read a ref, so they need no deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const refresh = useCallback(() => {
+        return Promise.all([
             GetRunning(),
             ListToday(),
             ListPastYear(),
@@ -245,14 +302,15 @@ function App() {
             Projects(),
         ])
             .then(([r, t, year, all, p]) => {
-                setRunning((r as Activity) ?? null);
-                setToday((t as Activity[]) ?? []);
-                setPastYear((year as Activity[]) ?? []);
-                setRecent((all as Activity[]) ?? []);
+                const run = (r as Activity) ?? null;
+                setRunning(isSuppressed(run) ? null : run);
+                setToday(withoutSuppressed((t as Activity[]) ?? []));
+                setPastYear(withoutSuppressed((year as Activity[]) ?? []));
+                setRecent(withoutSuppressed((all as Activity[]) ?? []));
                 setProjects(p ?? []);
             })
             .catch((e) => toast.error(String(e)));
-    };
+    }, []);
 
     useEffect(() => {
         refresh();
@@ -296,7 +354,9 @@ function App() {
         const pull = () => {
             SharingSharedEntries()
                 .then((entries) => {
-                    if (!cancelled) setShared(mapShared(entries ?? []));
+                    if (cancelled) return;
+                    const next = mapShared(entries ?? []);
+                    setShared((cur) => (sameShared(cur, next) ? cur : next));
                 })
                 .catch(() => {
                     // keep last-good shared rows
@@ -327,7 +387,9 @@ function App() {
         // when that refresh finds a change it pushes the fresh rows here, so the UI
         // updates without waiting for the next poll tick.
         const offUpdated = EventsOn('shared:updated', (entries: main.SharedActivity[]) => {
-            if (!cancelled) setShared(mapShared(entries ?? []));
+            if (cancelled) return;
+            const next = mapShared(entries ?? []);
+            setShared((cur) => (sameShared(cur, next) ? cur : next));
         });
 
         pull();
@@ -422,19 +484,22 @@ function App() {
     }, [authStatus?.signed_in]);
 
     const handleStart = (description: string, project: string) =>
-        Start(description, project).then(refresh).catch((e) => toast.error(String(e)));
+        Start(description, project).then(() => refresh()).catch((e) => toast.error(String(e)));
     const handleStartAt = (description: string, project: string, startISO: string) =>
         StartAt(description, project, startISO)
-            .then(refresh)
+            .then(() => refresh())
             .catch((e) => toast.error(String(e)));
     const handleStop = () =>
-        Stop().then(refresh).catch((e) => toast.error(String(e)));
-    const handleResume = (orig: Activity) => {
-        setView('now');
-        Start(orig.description ?? '', orig.project ?? '')
-            .then(refresh)
-            .catch((e) => toast.error(String(e)));
-    };
+        Stop().then(() => refresh()).catch((e) => toast.error(String(e)));
+    const handleResume = useCallback(
+        (orig: Activity) => {
+            setView('now');
+            Start(orig.description ?? '', orig.project ?? '')
+                .then(() => refresh())
+                .catch((e) => toast.error(String(e)));
+        },
+        [refresh],
+    );
     const handleAddPast = (
         description: string,
         project: string,
@@ -442,40 +507,78 @@ function App() {
         endISO: string,
     ) =>
         AddActivity(description, project, startISO, endISO)
-            .then(refresh)
+            .then(() => refresh())
             .catch((e) => toast.error(String(e)));
-    const handleUpdate = (
-        orig: Activity,
-        description: string,
-        project: string,
-        startISO: string,
-        endISO: string,
-    ) =>
-        UpdateActivity(orig, description, project, startISO, endISO)
-            .then(refresh)
-            .catch((e) => toast.error(String(e)));
-    const handleRemove = (orig: Activity) => {
-        const key = String(orig.start_time);
-        setRemovingKeys((s) => {
-            if (s.has(key)) return s;
-            const n = new Set(s);
-            n.add(key);
-            return n;
-        });
-        window.setTimeout(() => {
-            RemoveActivity(orig)
-                .then(refresh)
-                .catch((e) => toast.error(String(e)))
-                .finally(() => {
-                    setRemovingKeys((s) => {
-                        if (!s.has(key)) return s;
-                        const n = new Set(s);
-                        n.delete(key);
-                        return n;
-                    });
+    const handleUpdate = useCallback(
+        (
+            orig: Activity,
+            description: string,
+            project: string,
+            startISO: string,
+            endISO: string,
+        ) =>
+            UpdateActivity(orig, description, project, startISO, endISO)
+                .then(() => refresh())
+                .catch((e) => toast.error(String(e))),
+        [refresh],
+    );
+    const handleRemove = useCallback(
+        (orig: Activity) => {
+            const key = String(orig.start_time);
+            if (suppressedKeys.current.has(key)) return;
+
+            const forget = () =>
+                setRemovingKeys((s) => {
+                    if (!s.has(key)) return s;
+                    const n = new Set(s);
+                    n.delete(key);
+                    return n;
                 });
-        }, REMOVE_ANIM_MS);
-    };
+
+            // Delete and animate at once. Waiting for the round trip before
+            // starting the collapse is what made a delete lag before anything
+            // moved, and clearing the row's state before the data caught up is
+            // what then sprang it back to full height.
+            suppressedKeys.current.add(key);
+            setRemovingKeys((s) => new Set(s).add(key));
+
+            const collapsed = new Promise<void>((resolve) =>
+                window.setTimeout(resolve, REMOVE_ANIM_MS),
+            );
+
+            // A delete is a mutation whose shape we already know, so the new
+            // state is the old lists minus one row — no refetch. Re-reading the
+            // whole log to learn that meant waiting on five IPC calls and then
+            // handing every view brand-new arrays, which recomputed the day
+            // groups, the project filters and a 365-cell contribution graph a
+            // beat after the row had already gone. The periodic refresh
+            // reconciles anything else.
+            Promise.all([RemoveActivity(orig), collapsed])
+                .then(() => {
+                    flipFirst.current = captureFlip(flipRoot.current);
+                    const drop = (list: Activity[]) =>
+                        list.filter((a) => String(a.start_time) !== key);
+                    setToday(drop);
+                    setRecent(drop);
+                    setPastYear(drop);
+                    setRunning((r) =>
+                        r && String(r.start_time) === key ? null : r,
+                    );
+                    suppressedKeys.current.delete(key);
+                    forget();
+                    setFlipToken((t) => t + 1);
+                })
+                .catch((e) => {
+                    // The entry still exists, so lifting the suppression and
+                    // refreshing puts the row back where it was.
+                    suppressedKeys.current.delete(key);
+                    forget();
+                    toast.error(String(e));
+                    refresh();
+                });
+        },
+        [refresh],
+    );
 
     const handleView = (next: View) => {
         if (next === 'sharing') setSharingProject(undefined);
@@ -557,7 +660,10 @@ function App() {
                 invites={pendingInvites}
                 hasShared={shared.length > 0}
             />
-            <main className={`flex-1 overflow-x-visible overscroll-none ${isSwipeView ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+            <main
+                ref={flipRoot}
+                className={`flex-1 overflow-x-visible overscroll-none ${isSwipeView ? 'overflow-hidden' : 'overflow-y-auto'}`}
+            >
                 <div className="flex h-full w-full flex-col">
                     {isSwipeView && (
                         <div className="h-full overflow-visible">

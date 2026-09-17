@@ -4,6 +4,16 @@ export function startOfDay(d: Date) {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+// `yyyy-MM-dd` for a local date. Hand-rolled rather than date-fns `format`,
+// which parses its pattern and walks the locale on every call: this runs once
+// per activity plus once per day of the year on the year-long views, where that
+// cost is enough to stutter an animation running at the same time.
+export function localDayKey(d: Date): string {
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    return `${d.getFullYear()}-${month < 10 ? '0' : ''}${month}-${day < 10 ? '0' : ''}${day}`;
+}
+
 export function groupByLocalDate<T extends Activity>(
     activities: T[],
     includeToday: boolean,

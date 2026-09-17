@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Pencil, RotateCcw, Trash2 } from 'lucide-react';
 
 import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
 import { projectColor } from '@/lib/colors';
+import { REMOVE_ROW_TRANSITION } from '@/lib/motion';
 import { formatClock, formatDuration, formatTotal } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
 import { Button } from '@/components/ui/button';
@@ -27,7 +28,11 @@ const ROW_GRID =
 // row component either way, so editing, deleting, and resuming behave alike.
 const LEDGER_ROW_HEIGHT = 'h-[50px]';
 
-export function ActivityRow({
+// Memoised: a delete flips `isRemoving` on one row, but without this every row
+// in the log re-renders on that state change — each one rebuilding a Radix
+// context menu — in the same frame the collapse starts, which is what made the
+// list stutter as it closed the gap. Relies on its handler props being stable.
+export const ActivityRow = memo(function ActivityRow({
     activity,
     projects,
     isRemoving = false,
@@ -63,6 +68,10 @@ export function ActivityRow({
         if (!readOnly) setEditOpen(true);
     };
 
+    const flipId = shared
+        ? `s:${shared.authorId}:${String(activity.start_time)}`
+        : String(activity.start_time);
+
     const isLedger = variant === 'ledger';
     const project = activity.project || '';
     const resumeLabel = activity.description
@@ -84,12 +93,17 @@ export function ActivityRow({
                     startResume();
                 }
             }}
+            data-flip-row={flipId}
+            style={isRemoving ? { transition: REMOVE_ROW_TRANSITION } : undefined}
             className={cn(
-                'group/row flex min-h-0 items-center gap-4 overflow-hidden border-t border-border px-1 text-left last:border-b',
-                'transition-[height,opacity,background-color] duration-200 ease-out',
+                'group/row flex items-center gap-4 overflow-hidden border-t border-border px-1 text-left last:border-b',
+                LEDGER_ROW_HEIGHT,
+                'transition-[background-color] duration-200 ease-out',
                 isRemoving
-                    ? 'h-0 border-transparent opacity-0'
-                    : LEDGER_ROW_HEIGHT,
+                    ? '-translate-x-2 opacity-0'
+                    : // Duration scoped to the keyframes: the bare `duration-*`
+                      // utility would also retime the hover transition above.
+                      'animate-in fade-in-0 [animation-duration:300ms]',
                 !readOnly &&
                     'cursor-pointer hover:bg-row-hover focus-visible:bg-row-hover focus-visible:outline-none',
             )}
@@ -134,10 +148,13 @@ export function ActivityRow({
     const logRow = (
         <li
             onDoubleClick={enterEdit}
+            data-flip-row={flipId}
+            style={isRemoving ? { transition: REMOVE_ROW_TRANSITION } : undefined}
             className={cn(
-                'group/row relative min-h-0 overflow-hidden rounded-md border border-transparent',
-                'transition-[height,opacity,transform,background-color,border-color] duration-200 ease-out',
-                isRemoving ? 'h-0 -translate-x-2 opacity-0' : ROW_HEIGHT,
+                'group/row relative overflow-hidden rounded-md border border-transparent',
+                'transition-[background-color,border-color] duration-200 ease-out',
+                ROW_HEIGHT,
+                isRemoving && '-translate-x-2 opacity-0',
                 ROW_GRID,
                 editOpen ? 'border-border bg-muted/40' : 'hover:bg-muted/40',
                 !isRemoving &&
@@ -248,4 +265,4 @@ export function ActivityRow({
             />
         </>
     );
-}
+});

@@ -13,7 +13,7 @@ import {
 
 import type { Activity } from '@/types';
 import { projectColor } from '@/lib/colors';
-import { formatTotal } from '@/lib/time';
+import { formatTotal, localDayKey } from '@/lib/time';
 import {
     Card,
     CardAction,
@@ -43,11 +43,11 @@ function contributionLevel(ms: number) {
 }
 
 export function ContributionGraph({ activities }: { activities: Activity[] }) {
-    const todayKey = format(new Date(), 'yyyy-MM-dd');
+    const todayKey = localDayKey(new Date());
     const { data, dominantProjects, totalMs, activityCount } = useMemo(() => {
         const end = startOfDay(new Date());
         const start = subDays(end, GRAPH_DAYS - 1);
-        const startKey = format(start, 'yyyy-MM-dd');
+        const startKey = localDayKey(start);
         const durations = new Map<string, number>();
         const projectDurations = new Map<string, Map<string, number>>();
         let count = 0;
@@ -62,7 +62,7 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
             );
             if (!Number.isFinite(duration)) continue;
 
-            const key = format(activityStart, 'yyyy-MM-dd');
+            const key = localDayKey(activityStart);
             if (key < startKey || key > todayKey) continue;
             count += 1;
             durations.set(key, (durations.get(key) ?? 0) + duration);
@@ -80,7 +80,7 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
         const dominantByDate = new Map<string, string>();
         const calendarData: CalendarActivity[] = eachDayOfInterval({ start, end }).map(
             (day) => {
-                const date = format(day, 'yyyy-MM-dd');
+                const date = localDayKey(day);
                 const count = durations.get(date) ?? 0;
                 const dailyProjects = projectDurations.get(date);
                 if (dailyProjects) {

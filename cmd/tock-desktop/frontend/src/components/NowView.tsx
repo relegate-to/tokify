@@ -82,7 +82,7 @@ export function NowView({
         }
 
         return out;
-    }, [recent, removingKeys, running]);
+    }, [recent, running]);
 
     const contextLabel = useMemo(() => {
         if (quickStarts.length === 0) return '';

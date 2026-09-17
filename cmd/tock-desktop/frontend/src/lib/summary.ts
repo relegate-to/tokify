@@ -17,6 +17,7 @@ import {
 import type { Activity } from '@/types';
 import { projectColor } from '@/lib/colors';
 import { activityTitle } from '@/lib/activity-label';
+import { localDayKey } from '@/lib/time';
 
 // Monday-anchored weeks throughout, matching how most people read a work week.
 const WEEK_OPTS = { weekStartsOn: 1 as const };
@@ -32,7 +33,7 @@ export function durationMs(a: Activity): number {
 }
 
 function dayKey(d: Date | string): string {
-    return format(new Date(d as any), 'yyyy-MM-dd');
+    return localDayKey(new Date(d as any));
 }
 
 function parseDayKey(k: string): Date {
