@@ -47,6 +47,7 @@ export function SharedAuthorBadge({ shared }: { shared: SharedMeta }) {
                 <MemberAvatar
                     seed={shared.authorId}
                     label={name}
+                    image={shared.authorImage}
                     titled={false}
                     className="cursor-default"
                 />
@@ -56,6 +57,7 @@ export function SharedAuthorBadge({ shared }: { shared: SharedMeta }) {
                     <MemberAvatar
                         seed={shared.authorId}
                         label={name}
+                        image={shared.authorImage}
                         titled={false}
                         className="size-10 text-sm"
                     />

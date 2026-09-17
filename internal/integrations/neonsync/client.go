@@ -211,3 +211,13 @@ func isUniqueViolation(err error) bool {
 	var e *apiStatusError
 	return errors.As(err, &e) && (e.code == "23505" || e.status == http.StatusConflict)
 }
+
+// isUnknownColumn reports whether err is PostgREST refusing a write because a
+// column in the payload is not in the table (Postgres 42703, or PGRST204 when
+// PostgREST catches it against its own schema cache first) — how a deployment
+// that has not applied the latest schema migration answers a payload written
+// against a newer one.
+func isUnknownColumn(err error) bool {
+	var e *apiStatusError
+	return errors.As(err, &e) && (e.code == "PGRST204" || e.code == "42703")
+}

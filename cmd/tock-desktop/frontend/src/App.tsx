@@ -130,6 +130,7 @@ function mapShared(entries: main.SharedActivity[]): ActivityItem[] {
                 shared: {
                     authorId: e.author_id,
                     authorName: e.author_name,
+                    authorImage: e.author_image,
                     teamName: e.team_name,
                 },
             }) as ActivityItem,

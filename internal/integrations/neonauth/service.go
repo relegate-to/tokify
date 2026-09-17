@@ -22,6 +22,21 @@ var ErrNotConfigured = errors.New("neonauth: no Auth URL configured")
 // account can be signed in at a time.
 const keychainAccount = "session"
 
+// How early a cached JWT is treated as spent, and the lifetime assumed for one
+// whose `exp` claim can't be read. The margin covers clock skew plus the
+// round-trip of whatever request the token is about to authenticate.
+const (
+	tokenRefreshMargin = 60 * time.Second
+	tokenFallbackTTL   = 5 * time.Minute
+)
+
+// maxAvatarBytes caps the profile picture UpdateAvatar will send. An avatar is
+// stored inline as a data: URI on the account record and republished onto the
+// public sharing identity, so an oversized one is paid for again on every
+// roster read. The frontend downscales to a small square far below this; the
+// cap is the backstop against a caller that doesn't.
+const maxAvatarBytes = 256 << 10
+
 // DefaultAuthURL is the Neon Auth endpoint baked into release builds via
 // -ldflags (see the desktop-build Makefile targets). It's empty in source so
 // the package stays deployment-agnostic; local dev leaves it unset and relies
@@ -44,6 +59,14 @@ type Service struct {
 	mu       sync.RWMutex
 	settings Settings
 	path     string
+
+	// The minted Data API JWT, shared by every caller until it nears expiry.
+	// Keyed by the session cookie it was minted from, so a sign-out/sign-in
+	// cycle can never hand back the previous account's token.
+	tokenMu     sync.Mutex
+	token       string
+	tokenCookie string
+	tokenExp    time.Time
 }
 
 // Status is the snapshot the frontend renders. Absence of a session is
@@ -54,9 +77,12 @@ type Status struct {
 	UserID     string `json:"user_id,omitempty"`
 	Email      string `json:"email,omitempty"`
 	Name       string `json:"name,omitempty"`
-	// PendingVerification is set when sign-up succeeded but the project requires
-	// email verification: the account exists and a code was emailed, but no
-	// session is issued until VerifyEmail confirms it.
+	// Image is the account's profile picture: a data: URI (what UpdateAvatar
+	// writes) or an https URL, empty when none has been set.
+	Image string `json:"image,omitempty"`
+	// PendingVerification is set when the account exists and a code was emailed
+	// but no session is issued until VerifyEmail confirms it — either sign-up
+	// just created it, or sign-in found it still unverified from an earlier one.
 	PendingVerification bool `json:"pending_verification,omitempty"`
 }
 
@@ -112,10 +138,49 @@ func (s *Service) Status() Status {
 	out.UserID = sess.User.ID
 	out.Email = sess.User.Email
 	out.Name = sess.User.Name
+	out.Image = sess.User.Image
 	return out
 }
 
-// SignIn authenticates with email + password and persists the session.
+// UpdateAvatar sets the signed-in account's profile picture and mirrors it onto
+// the stored session, so the next Status renders it without a refetch. The image
+// is a self-contained data: URI (or an https URL); an empty string clears the
+// avatar and falls the UI back to initials.
+func (s *Service) UpdateAvatar(ctx context.Context, image string) (Status, error) {
+	base := s.authURL()
+	if base == "" {
+		return Status{}, ErrNotConfigured
+	}
+	image = strings.TrimSpace(image)
+	if len(image) > maxAvatarBytes {
+		return Status{}, gerrors.New("that picture is too large; try a smaller one")
+	}
+	sess, err := s.loadSession(ctx)
+	if err != nil {
+		return Status{}, err
+	}
+	// The cookie, not the bearer token, is what /update-user accepts. A session
+	// stored without one can't write the profile at all, so say so plainly rather
+	// than letting the server answer with a bare 401.
+	if strings.TrimSpace(sess.Cookie) == "" {
+		return Status{}, gerrors.New("sign in again to change your picture")
+	}
+	if !netcheck.Online(ctx, hostOf(base)) {
+		return Status{}, netcheck.ErrOffline
+	}
+	if uerr := updateImage(ctx, s.http, base, sess.Cookie, image); uerr != nil {
+		return Status{}, uerr
+	}
+	sess.User.Image = image
+	if serr := s.saveSession(ctx, sess); serr != nil {
+		return Status{}, gerrors.Wrap(serr, "persist session")
+	}
+	return s.Status(), nil
+}
+
+// SignIn authenticates with email + password and persists the session. An
+// account whose email was never verified is not an error: it returns a
+// PendingVerification status so the caller can finish the interrupted sign-up.
 func (s *Service) SignIn(ctx context.Context, email, password string) (Status, error) {
 	base := s.authURL()
 	if base == "" {
@@ -126,7 +191,17 @@ func (s *Service) SignIn(ctx context.Context, email, password string) (Status, e
 	}
 	sess, err := signInEmail(ctx, s.http, base, email, password)
 	if err != nil {
-		return Status{}, err
+		if !isEmailNotVerified(err) {
+			return Status{}, err
+		}
+		// The account exists but its email was never confirmed: sign-up's code
+		// was abandoned, lost, or expired. Reporting the refusal verbatim leaves
+		// the user with no way forward, so mail a fresh code and route the UI to
+		// the same verification step sign-up uses. The resend is best-effort —
+		// if it fails (rate limits, most likely) the earlier code may still be
+		// valid, and the verification step offers a resend of its own.
+		_ = sendVerificationOTP(ctx, s.http, base, email)
+		return Status{Configured: true, PendingVerification: true, Email: email}, nil
 	}
 	if serr := s.saveSession(ctx, sess); serr != nil {
 		return Status{}, gerrors.Wrap(serr, "persist session")
@@ -206,15 +281,21 @@ func (s *Service) SignOut(ctx context.Context) error {
 			_ = signOut(ctx, s.http, base, sess.Token)
 		}
 	}
+	s.forgetToken()
 	return s.store.Delete(ctx, keychainAccount)
 }
 
 // Token returns a short-lived Data API JWT for callers that need to make
 // authenticated Data API requests (the neonsync integration). The stored
 // session token is opaque and rejected by the Data API, so this exchanges the
-// session cookie for a JWT at Neon Auth's /token endpoint on each call (the
-// JWTs are short-lived by design). Returns an error when signed out, so callers
-// can treat "no token" as "not signed in".
+// session cookie for a JWT at Neon Auth's /token endpoint. Returns an error
+// when signed out, so callers can treat "no token" as "not signed in".
+//
+// The JWT is cached until it nears expiry, and only one mint runs at a time.
+// Minting per call instead put a request on the auth endpoint for every sharing
+// operation: opening a screen that fans out several at once (Teams asks for the
+// team list plus one share view per team) sent a burst of mints in parallel and
+// tripped Neon Auth's rate limiter.
 func (s *Service) Token(ctx context.Context) (string, error) {
 	sess, err := s.loadSession(ctx)
 	if err != nil {
@@ -224,7 +305,38 @@ func (s *Service) Token(ctx context.Context) (string, error) {
 	if base == "" {
 		return "", ErrNotConfigured
 	}
-	return mintJWT(ctx, s.http, base, sess.Cookie)
+
+	// Held across the mint so concurrent callers queue behind one request and
+	// then read its result from the cache, rather than each firing their own.
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+
+	if s.token != "" && s.tokenCookie == sess.Cookie && time.Now().Before(s.tokenExp) {
+		return s.token, nil
+	}
+
+	token, err := mintJWT(ctx, s.http, base, sess.Cookie)
+	if err != nil {
+		return "", err
+	}
+	s.token = token
+	s.tokenCookie = sess.Cookie
+	if exp, ok := jwtExpiry(token); ok {
+		s.tokenExp = exp.Add(-tokenRefreshMargin)
+	} else {
+		s.tokenExp = time.Now().Add(tokenFallbackTTL)
+	}
+	return token, nil
+}
+
+// forgetToken drops the cached JWT. Called on sign-out so a revoked session
+// leaves no usable credential behind in memory.
+func (s *Service) forgetToken() {
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+	s.token = ""
+	s.tokenCookie = ""
+	s.tokenExp = time.Time{}
 }
 
 func (s *Service) loadSession(ctx context.Context) (session, error) {

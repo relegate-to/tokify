@@ -26,9 +26,24 @@ type identityRow struct {
 	EmailHash string `json:"email_hash,omitempty"`
 	// DisplayName is the self-chosen human name published for the roster. omitempty
 	// so a name-less re-publish (e.g. an email_hash backfill) never clobbers a name
-	// already set — only an explicit PublishDisplayName writes it.
+	// already set — only an explicit PublishProfile writes it.
 	DisplayName string `json:"display_name,omitempty"`
-	CreatedAt   string `json:"created_at,omitempty"`
+	// ImageURL is the self-published avatar (usually an inline data: URI). It is
+	// a pointer so the three cases stay distinct under omitempty: nil omits the
+	// key entirely, leaving whatever is published intact — which is what keeps a
+	// keys-only re-publish (publishIdentity) from wiping an avatar — while a
+	// pointer to "" is sent and clears it. A plain string could not express both.
+	ImageURL  *string `json:"image_url,omitempty"`
+	CreatedAt string  `json:"created_at,omitempty"`
+}
+
+// imageURL reads the avatar off a fetched row, flattening SQL NULL / an absent
+// column to "" so read sites never dereference.
+func (r identityRow) imageURL() string {
+	if r.ImageURL == nil {
+		return ""
+	}
+	return *r.ImageURL
 }
 
 // audienceRow mirrors audiences. current_epoch is server-maintained (bump-pointer
@@ -172,7 +187,22 @@ func getIdentitiesByEmailHash(ctx context.Context, hc *http.Client, base, token,
 }
 
 // upsertIdentity writes the caller's own public identity row (RLS: own row only).
+//
+// image_url was added to identities after display_name, so a deployment still on
+// the older schema refuses the whole write — and with it the display name that
+// travels in the same row. Retry without the avatar rather than let a missing
+// column empty every roster of its names; the next publish carries the picture
+// once the schema catches up.
 func upsertIdentity(ctx context.Context, hc *http.Client, base, token string, row identityRow) error {
+	err := postIdentity(ctx, hc, base, token, row)
+	if err == nil || row.ImageURL == nil || !isUnknownColumn(err) {
+		return err
+	}
+	row.ImageURL = nil
+	return postIdentity(ctx, hc, base, token, row)
+}
+
+func postIdentity(ctx context.Context, hc *http.Client, base, token string, row identityRow) error {
 	body, err := json.Marshal(row)
 	if err != nil {
 		return err

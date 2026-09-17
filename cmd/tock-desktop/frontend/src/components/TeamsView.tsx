@@ -56,6 +56,7 @@ import {
 } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { MemberAvatar } from '@/components/MemberAvatar';
 
 // The team's history window maps straight to the share filter's since_days: it is
 // the single control over how far back a team can see, and it applies to everyone
@@ -83,11 +84,6 @@ function memberLabel(
     return m.DisplayName.trim() || emails[m.UserID] || shortID(m.UserID);
 }
 
-function memberInitial(label: string): string {
-    const c = label.trim()[0];
-    return c ? c.toUpperCase() : '?';
-}
-
 function scopeSummary(share: neonsync.ShareView | null): string {
     if (!share || !share.HasShare || share.Projects.length === 0) {
         return 'Not sharing any projects yet';
@@ -110,30 +106,27 @@ function inviteErrorText(e: unknown, email: string): string {
 
 // A tinted initial disc. The color is deterministic per user id (same hashing as
 // project tags), so a person keeps one color everywhere they appear.
+// Avatar is the roster-sized MemberAvatar: same picture-over-initial disc, a
+// size up from the activity-row default and with the tighter overlap the stacked
+// team row uses.
 function Avatar({
     userID,
     label,
+    image,
     stacked,
 }: {
     userID: string;
     label: string;
+    image?: string;
     stacked?: boolean;
 }) {
-    const color = projectColor(userID);
     return (
-        <span
-            title={label}
-            className={cn(
-                'flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-card text-[11px] font-semibold',
-                stacked && '-ml-2.5',
-            )}
-            style={{
-                backgroundColor: `color-mix(in oklab, ${color} 22%, transparent)`,
-                color,
-            }}
-        >
-            {memberInitial(label)}
-        </span>
+        <MemberAvatar
+            seed={userID}
+            label={label}
+            image={image}
+            className={cn('size-8 text-[11px]', stacked && '-ml-2.5')}
+        />
     );
 }
 
@@ -646,6 +639,7 @@ function TeamCard({
                                         m.UserID === selfUserID,
                                         inviteEmails,
                                     )}
+                                    image={m.ImageURL}
                                     stacked={i > 0}
                                 />
                             ))}
@@ -801,7 +795,11 @@ function TeamCard({
                                     key={m.UserID}
                                     className="group flex items-center gap-3 py-2"
                                 >
-                                    <Avatar userID={m.UserID} label={label} />
+                                    <Avatar
+                                        userID={m.UserID}
+                                        label={label}
+                                        image={m.ImageURL}
+                                    />
                                     <div className="flex min-w-0 flex-1 items-center gap-2">
                                         <span className="min-w-0 truncate text-sm">
                                             {label}

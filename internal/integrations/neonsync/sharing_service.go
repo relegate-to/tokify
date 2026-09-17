@@ -175,25 +175,31 @@ func (s *Service) publishIdentity(ctx context.Context, base, token, userID, emai
 	return nil
 }
 
-// PublishDisplayName writes the caller's self-chosen name onto their public
-// identity row so team rosters can read it (the "everyone publishes their own
-// name" model). It re-upserts the identity with the same public keys and the
-// name set; email_hash is omitted (omitempty), so this never disturbs a
-// previously published discovery hash. Requires an unlocked sharing identity.
-func (s *Service) PublishDisplayName(ctx context.Context, name string) error {
+// PublishProfile writes the caller's self-chosen name and avatar onto their
+// public identity row so team rosters can read them (the "everyone publishes
+// their own profile" model). It re-upserts the identity with the same public
+// keys and both display fields set; email_hash is omitted (omitempty), so this
+// never disturbs a previously published discovery hash. Requires an unlocked
+// sharing identity.
+//
+// Both fields are always written, so clearing an avatar propagates: image is
+// taken by value here and sent as an explicit empty string rather than omitted.
+func (s *Service) PublishProfile(ctx context.Context, name, image string) error {
 	sess, err := s.session(ctx)
 	if err != nil {
 		return err
 	}
 	pub := sess.id.Public()
+	image = strings.TrimSpace(image)
 	row := identityRow{
 		UserID:      sess.userID,
 		PubEnc:      b64(pub.EncPub),
 		PubSig:      b64(pub.SigPub),
 		DisplayName: strings.TrimSpace(name),
+		ImageURL:    &image,
 	}
 	if uerr := upsertIdentity(ctx, s.http, sess.base, sess.token, row); uerr != nil {
-		return gerrors.Wrap(uerr, "publish display name")
+		return gerrors.Wrap(uerr, "publish profile")
 	}
 	return nil
 }

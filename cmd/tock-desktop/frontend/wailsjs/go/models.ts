@@ -6,6 +6,7 @@ export namespace main {
 	    team_name: string;
 	    author_id: string;
 	    author_name: string;
+	    author_image: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SharedActivity(source);
@@ -18,6 +19,7 @@ export namespace main {
 	        this.team_name = source["team_name"];
 	        this.author_id = source["author_id"];
 	        this.author_name = source["author_name"];
+	        this.author_image = source["author_image"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -183,6 +185,7 @@ export namespace neonauth {
 	    user_id?: string;
 	    email?: string;
 	    name?: string;
+	    image?: string;
 	    pending_verification?: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -196,6 +199,7 @@ export namespace neonauth {
 	        this.user_id = source["user_id"];
 	        this.email = source["email"];
 	        this.name = source["name"];
+	        this.image = source["image"];
 	        this.pending_verification = source["pending_verification"];
 	    }
 	}
@@ -242,6 +246,7 @@ export namespace neonsync {
 	    Pinned: boolean;
 	    DisplayName: string;
 	    Status: string;
+	    ImageURL: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TeamMember(source);
@@ -254,6 +259,7 @@ export namespace neonsync {
 	        this.Pinned = source["Pinned"];
 	        this.DisplayName = source["DisplayName"];
 	        this.Status = source["Status"];
+	        this.ImageURL = source["ImageURL"];
 	    }
 	}
 	export class ProjectShare {

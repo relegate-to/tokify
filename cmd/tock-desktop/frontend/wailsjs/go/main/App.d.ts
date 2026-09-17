@@ -27,6 +27,8 @@ export function AuthSignUp(arg1:string,arg2:string,arg3:string):Promise<neonauth
 
 export function AuthStatus():Promise<neonauth.Status>;
 
+export function AuthUpdateAvatar(arg1:string):Promise<neonauth.Status>;
+
 export function AuthVerifyEmail(arg1:string,arg2:string,arg3:string):Promise<neonauth.Status>;
 
 export function CheckForUpdate():Promise<main.UpdateInfo>;

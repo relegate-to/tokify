@@ -41,6 +41,26 @@ column is opaque base64, and no filter is ever evaluated by the database. The
 consciously accepted metadata leakage (the sharing graph and grant time-window
 bounds) is documented in the file's header comment.
 
+### Reload the Data API schema cache after applying
+
+Whenever the schema adds a column, reload PostgREST's schema cache:
+
+```sh
+psql "$NEON_CONNECTION_STRING" -c "NOTIFY pgrst, 'reload schema';"
+```
+
+Skipping this fails in a way that looks like a client bug rather than a missing
+migration, because reads and writes disagree. `select=*` is passed through to
+Postgres and so returns the new column immediately, while an INSERT or UPDATE
+naming it is validated against the cached column list and rejected with
+
+```
+PGRST204  column "<name>" of relation "<table>" does not exist
+```
+
+So the column is visibly present when you go looking for it, and only writes
+fail. Verify a new column by writing to it, not by selecting it.
+
 ### Test the sharing RLS
 
 `scripts/sharing-rls-test.sh` is a self-contained harness that spins up an

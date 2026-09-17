@@ -116,6 +116,7 @@ function ProjectShareCard({
                         <MemberAvatar
                             seed={m.UserID}
                             label={memberLabel(m)}
+                            image={m.ImageURL}
                             titled={false}
                             className="size-6"
                         />

@@ -69,6 +69,9 @@ type TeamMember struct {
 	// Status is 'invited' (invited, not yet accepted) or 'active' (accepted), so
 	// the roster can flag a pending invite distinctly from a joined member.
 	Status string
+	// ImageURL is the member's self-published avatar (identities.image_url),
+	// empty when they have published none — the roster falls back to initials.
+	ImageURL string
 }
 
 // ListAudiences returns the caller's team audiences — every audience they are a
@@ -164,6 +167,7 @@ func (s *Service) ListAudiences(ctx context.Context) ([]TeamInfo, error) {
 					Role:        m.Role,
 					Pinned:      pinned,
 					DisplayName: identities[m.MemberID].DisplayName,
+					ImageURL:    identities[m.MemberID].imageURL(),
 					Status:      m.Status,
 				})
 			}
@@ -481,11 +485,20 @@ func (s *Service) InviteByEmail(ctx context.Context, audienceID, email, role str
 	return userID, nil
 }
 
-// ResolveDisplayNames maps each user id to its published display name (empty
-// when the user has published none). Best-effort per id: an unreadable identity
-// is simply omitted. Used by the app layer to label shared entries by author
-// without leaking display concerns into the decrypt path.
-func (s *Service) ResolveDisplayNames(ctx context.Context, userIDs []string) (map[string]string, error) {
+// Profile is the display half of a published identity: what a shared entry or a
+// roster needs to render its author as a person. Either field may be empty when
+// the user has published none.
+type Profile struct {
+	DisplayName string
+	ImageURL    string
+}
+
+// ResolveProfiles maps each user id to its published display name and avatar.
+// Best-effort per id: an unreadable identity is simply omitted, and a caller
+// reading a missing id gets the zero Profile. Used by the app layer to label
+// shared entries by author without leaking display concerns into the decrypt
+// path.
+func (s *Service) ResolveProfiles(ctx context.Context, userIDs []string) (map[string]Profile, error) {
 	sess, err := s.session(ctx)
 	if err != nil {
 		return nil, err
@@ -494,9 +507,9 @@ func (s *Service) ResolveDisplayNames(ctx context.Context, userIDs []string) (ma
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]string, len(rows))
+	out := make(map[string]Profile, len(rows))
 	for id, row := range rows {
-		out[id] = row.DisplayName
+		out[id] = Profile{DisplayName: row.DisplayName, ImageURL: row.imageURL()}
 	}
 	return out, nil
 }
@@ -558,6 +571,7 @@ func (s *Service) ListMembers(ctx context.Context, audienceID string) ([]TeamMem
 			Role:        m.Role,
 			Pinned:      pinned,
 			DisplayName: identities[m.MemberID].DisplayName,
+			ImageURL:    identities[m.MemberID].imageURL(),
 			Status:      m.Status,
 		})
 	}

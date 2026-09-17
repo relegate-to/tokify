@@ -141,6 +141,19 @@ CREATE INDEX IF NOT EXISTS identities_email_hash_idx ON public.identities (email
 ALTER TABLE public.identities
     ADD COLUMN IF NOT EXISTS display_name text;
 
+-- image_url: the self-chosen avatar, published alongside display_name so a
+-- roster shows faces rather than initials. Normally a small `data:image/...`
+-- URI written inline (the client downscales to a 128px square, ~10KB), so an
+-- avatar needs no blob store and no second fetch to render; an https URL is
+-- accepted and stored verbatim too. ACCEPTED LEAKAGE (§7): like display_name
+-- this is plaintext PII readable by every authenticated caller — a picture of a
+-- person is arguably more identifying than their name, and publishing one is
+-- opt-in for exactly that reason. Nullable and owner-writable only (identities
+-- RLS), so an avatar-less identity stays valid and no one can stamp a picture
+-- onto someone else's row.
+ALTER TABLE public.identities
+    ADD COLUMN IF NOT EXISTS image_url text;
+
 -- ---------------------------------------------------------------------------
 -- audiences: the universal sharing primitive (plan §1). `current_epoch` is a
 -- pointer into audience_epochs. It DEFAULTS TO 0 meaning "no epoch minted yet";

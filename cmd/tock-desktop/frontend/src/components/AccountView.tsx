@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft,
+    Camera,
     Clock,
     Database,
     FolderKanban,
@@ -15,6 +16,7 @@ import {
 import {
     AuthResendVerification,
     AuthSignIn,
+    AuthUpdateAvatar,
     AuthSignOut,
     AuthSignUp,
     AuthStatus,
@@ -28,7 +30,9 @@ import { neonauth } from '../../wailsjs/go/models';
 
 import type { Activity } from '@/types';
 import { authErrorText } from '@/lib/errors';
+import { cn } from '@/lib/utils';
 import { accountInitials } from '@/lib/account';
+import { AvatarError, readAvatarFile } from '@/lib/avatar';
 import { formatTotal } from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import {
@@ -71,8 +75,9 @@ export function AccountView({
     const [password, setPassword] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
-    // Set to the pending email after a sign-up that requires verification; while
-    // present the card shows the code-entry step instead of the sign-in tabs.
+    // Set to the pending email whenever verification is outstanding — after a
+    // sign-up that requires it, or a sign-in that found the account unverified.
+    // While present the card shows the code-entry step instead of the tabs.
     const [pendingEmail, setPendingEmail] = useState('');
     const [code, setCode] = useState('');
     const [notice, setNotice] = useState('');
@@ -140,8 +145,10 @@ export function AccountView({
                     ? await AuthSignIn(email.trim(), password)
                     : await AuthSignUp(email.trim(), password, name.trim());
             if (next.pending_verification) {
-                // Account created; Neon Auth emailed a code. Hold the password so
-                // verifyEmail can sign in once the code is confirmed.
+                // The account exists but is unverified — either sign-up just
+                // created it, or sign-in found an earlier one still unconfirmed.
+                // Either way a code was emailed; hold the password so verifyEmail
+                // can sign in once it is confirmed.
                 setPendingEmail(next.email || email.trim());
                 setCode('');
                 setNotice('');
@@ -200,6 +207,45 @@ export function AccountView({
         setCode('');
         setError('');
         setNotice('');
+    };
+
+    // The avatar doubles as its own file input: clicking the picture opens the
+    // picker, so the card needs no separate upload control.
+    const avatarInput = useRef<HTMLInputElement>(null);
+    const [savingAvatar, setSavingAvatar] = useState(false);
+
+    const writeAvatar = async (image: string, done: string) => {
+        setSavingAvatar(true);
+        try {
+            applyStatus(await AuthUpdateAvatar(image));
+            toast.success(done);
+        } catch (err) {
+            toast.error('Could not update your picture', {
+                description:
+                    err instanceof AvatarError ? err.message : authErrorText(err),
+            });
+        } finally {
+            setSavingAvatar(false);
+        }
+    };
+
+    const pickAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        // Clear the input first: without it, re-picking the same file after a
+        // failure fires no change event.
+        e.target.value = '';
+        if (!file || savingAvatar) return;
+        let image: string;
+        try {
+            image = await readAvatarFile(file);
+        } catch (err) {
+            toast.error('Could not update your picture', {
+                description:
+                    err instanceof AvatarError ? err.message : authErrorText(err),
+            });
+            return;
+        }
+        await writeAvatar(image, 'Picture updated');
     };
 
     const signOut = async () => {
@@ -277,6 +323,7 @@ export function AccountView({
 
     const signedInName = (status?.name ?? '').trim();
     const signedInEmail = (status?.email ?? '').trim();
+    const signedInImage = (status?.image ?? '').trim();
     const initials = useMemo(
         () => accountInitials(signedInName, signedInEmail),
         [signedInName, signedInEmail],
@@ -328,12 +375,42 @@ export function AccountView({
                         </div>
                     ) : status.signed_in ? (
                         <div className="flex items-center gap-4">
-                            <div
-                                aria-hidden
-                                className="flex size-14 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium tracking-wide text-foreground/80"
+                            <input
+                                ref={avatarInput}
+                                type="file"
+                                accept="image/*"
+                                hidden
+                                onChange={pickAvatar}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => avatarInput.current?.click()}
+                                disabled={savingAvatar}
+                                aria-label="Change picture"
+                                className="group relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-sm font-medium tracking-wide text-foreground/80 outline-none ring-offset-2 ring-offset-card focus-visible:ring-2 focus-visible:ring-ring"
                             >
                                 {initials}
-                            </div>
+                                {signedInImage && (
+                                    <img
+                                        src={signedInImage}
+                                        alt=""
+                                        draggable={false}
+                                        className="absolute inset-0 size-full object-cover"
+                                    />
+                                )}
+                                <span
+                                    className={cn(
+                                        'absolute inset-0 flex items-center justify-center bg-foreground/45 text-background opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100',
+                                        savingAvatar && 'opacity-100',
+                                    )}
+                                >
+                                    {savingAvatar ? (
+                                        <Loader2 className="size-4 animate-spin" />
+                                    ) : (
+                                        <Camera className="size-4" />
+                                    )}
+                                </span>
+                            </button>
                             <div className="flex min-w-0 flex-1 flex-col">
                                 <span className="truncate text-sm font-medium">
                                     {signedInName || 'Signed in'}
@@ -341,6 +418,18 @@ export function AccountView({
                                 <span className="truncate text-xs text-muted-foreground">
                                     {signedInEmail || 'No email'}
                                 </span>
+                                {signedInImage && (
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            writeAvatar('', 'Picture removed')
+                                        }
+                                        disabled={savingAvatar}
+                                        className="mt-1 self-start text-xs text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"
+                                    >
+                                        Remove picture
+                                    </button>
+                                )}
                             </div>
                             <Button
                                 variant="outline"

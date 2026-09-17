@@ -3,6 +3,7 @@ package neonauth
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	gerrors "github.com/go-faster/errors"
 )
@@ -93,7 +95,7 @@ func signInEmail(ctx context.Context, hc *http.Client, base, email, password str
 // verification is required. On success the account's email is marked verified;
 // it does not reliably return a session, so callers sign in afterwards.
 func verifyEmailOTP(ctx context.Context, hc *http.Client, base, email, otp string) error {
-	return postJSON(ctx, hc, endpoint(base, "/email-otp/verify-email"), map[string]string{
+	return postJSON(ctx, hc, endpoint(base, "/email-otp/verify-email"), "", map[string]string{
 		"email": email,
 		"otp":   otp,
 	})
@@ -101,9 +103,22 @@ func verifyEmailOTP(ctx context.Context, hc *http.Client, base, email, otp strin
 
 // sendVerificationOTP asks Neon Auth to (re)send the email-verification code.
 func sendVerificationOTP(ctx context.Context, hc *http.Client, base, email string) error {
-	return postJSON(ctx, hc, endpoint(base, "/email-otp/send-verification-otp"), map[string]string{
+	return postJSON(ctx, hc, endpoint(base, "/email-otp/send-verification-otp"), "", map[string]string{
 		"email": email,
 		"type":  "email-verification",
+	})
+}
+
+// updateImage sets the signed-in account's profile picture through Better Auth's
+// /update-user. Only the `image` key is sent, so the account's name is left as
+// it is. The server scopes the write to the session's own user, so there is no
+// user id to pass.
+//
+// Authenticates with the session cookie: /update-user rejects the bearer token
+// with 401, exactly as /token does.
+func updateImage(ctx context.Context, hc *http.Client, base, cookie, image string) error {
+	return postJSON(ctx, hc, endpoint(base, "/update-user"), cookie, map[string]string{
+		"image": image,
 	})
 }
 
@@ -153,9 +168,15 @@ func postCredentials(ctx context.Context, hc *http.Client, url string, body map[
 }
 
 // postJSON drives endpoints that return no session (the email-OTP verification
-// calls). It surfaces Better Auth's error body on non-2xx and otherwise reports
-// success, sharing the Origin handling and body cap with postCredentials.
-func postJSON(ctx context.Context, hc *http.Client, url string, body map[string]string) error {
+// calls and the profile update). It surfaces Better Auth's error body on non-2xx
+// and otherwise reports success, sharing the Origin handling and body cap with
+// postCredentials.
+//
+// Session-authenticated endpoints here take the session COOKIE, not the bearer
+// token — the same rule /token follows (see the session type). Passing the
+// bearer instead is answered with 401. An empty cookie sends no credential at
+// all, for the endpoints that authenticate by the emailed code.
+func postJSON(ctx context.Context, hc *http.Client, url, cookie string, body map[string]string) error {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -165,6 +186,9 @@ func postJSON(ctx context.Context, hc *http.Client, url string, body map[string]
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
 	if origin := originOf(url); origin != "" {
 		req.Header.Set("Origin", origin)
 	}
@@ -236,6 +260,28 @@ func mintJWT(ctx context.Context, hc *http.Client, base, cookie string) (string,
 	return out.Token, nil
 }
 
+// jwtExpiry reads the `exp` claim out of a minted JWT. The signature is not
+// verified: this is the server's own answer to our own mint request, and the
+// claim is only used to decide when to ask for the next one. Reports false for
+// anything it can't read, leaving the caller to pick a conservative lifetime.
+func jwtExpiry(token string) (time.Time, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return time.Time{}, false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return time.Time{}, false
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if uerr := json.Unmarshal(payload, &claims); uerr != nil || claims.Exp <= 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(claims.Exp, 0), true
+}
+
 // signOut revokes the session server-side. Best-effort: the caller deletes the
 // local token regardless of the outcome.
 func signOut(ctx context.Context, hc *http.Client, base, token string) error {
@@ -257,6 +303,16 @@ func signOut(ctx context.Context, hc *http.Client, base, token string) error {
 	return nil
 }
 
+// apiErr is a Better Auth error response. It keeps the machine-readable code
+// alongside the message so callers can branch on a specific failure while the
+// UI still shows the server's own wording.
+type apiErr struct {
+	Code    string
+	Message string
+}
+
+func (e *apiErr) Error() string { return e.Message }
+
 // apiError extracts Better Auth's `{ "message", "code" }` error body so the UI
 // can show the real reason ("Invalid email or password") rather than a status.
 func apiError(status int, body []byte) error {
@@ -265,7 +321,21 @@ func apiError(status int, body []byte) error {
 		Code    string `json:"code"`
 	}
 	if json.Unmarshal(body, &e) == nil && e.Message != "" {
-		return errors.New(e.Message)
+		return &apiErr{Code: e.Code, Message: e.Message}
 	}
 	return fmt.Errorf("neonauth: request failed (%d)", status)
+}
+
+// isEmailNotVerified reports whether an error is Better Auth refusing sign-in
+// because the account's email was never confirmed. The message is checked as
+// well as the code: older Neon Auth deployments return the message alone.
+func isEmailNotVerified(err error) bool {
+	var e *apiErr
+	if !errors.As(err, &e) {
+		return false
+	}
+	if strings.EqualFold(e.Code, "EMAIL_NOT_VERIFIED") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(e.Message), "email not verified")
 }

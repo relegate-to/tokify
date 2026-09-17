@@ -8,6 +8,9 @@ export type Activity = models.Activity;
 export type SharedMeta = {
     authorId: string;
     authorName: string;
+    // authorImage is the author's published avatar, empty when they have none —
+    // the badge falls back to a tinted initial then.
+    authorImage: string;
     teamName: string;
 };
 

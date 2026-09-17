@@ -737,7 +737,11 @@ func (a *App) AuthSignIn(email, password string) (neonauth.Status, error) {
 	if err != nil {
 		return status, err
 	}
-	a.unlockSync(ctx, email, password, status.UserID)
+	// An unverified account yields no session, only a prompt for the code; there
+	// is nothing to unlock until AuthVerifyEmail establishes one.
+	if status.SignedIn {
+		a.unlockSync(ctx, email, password, status.UserID)
+	}
 	return status, nil
 }
 
@@ -800,6 +804,29 @@ func (a *App) AuthResendVerification(email string) error {
 	return a.neonAuth.ResendVerification(ctx, strings.TrimSpace(email))
 }
 
+// AuthUpdateAvatar sets the signed-in account's profile picture and republishes
+// it onto the sharing identity, so the change reaches teammates' rosters as well
+// as this Mac. `image` is a self-contained data: URI produced by the frontend
+// (a downscaled square); passing an empty string removes the avatar.
+//
+// The republish is best-effort and deliberately not fatal: the avatar is already
+// saved on the account at that point, and sharing may simply be locked or
+// offline. The next publishSelfProfile — on unlock, invite, or team create —
+// carries it across.
+func (a *App) AuthUpdateAvatar(image string) (neonauth.Status, error) {
+	if a.neonAuth == nil {
+		return neonauth.Status{}, errors.New("auth unavailable")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	status, err := a.neonAuth.UpdateAvatar(ctx, image)
+	if err != nil {
+		return status, err
+	}
+	a.publishSelfProfile(ctx)
+	return status, nil
+}
+
 // unlockSync provisions or recovers the sync encryption key from the password.
 // Best-effort: a failure here (offline, sync unconfigured) must not fail an
 // otherwise-successful sign-in, so it is logged and swallowed.
@@ -817,7 +844,7 @@ func (a *App) unlockSync(ctx context.Context, email, password, userID string) {
 		fmt.Fprintf(os.Stderr, "neonsync: unlock: %v\n", err)
 		return
 	}
-	a.publishSelfName(ctx)
+	a.publishSelfProfile(ctx)
 }
 
 // forceSyncEnabled keeps sync on for every signed-in session. A failure to
@@ -832,22 +859,28 @@ func (a *App) forceSyncEnabled() {
 	}
 }
 
-// publishSelfName best-effort republishes the signed-in user's name (from the
-// auth profile) onto their sharing identity, so anyone who sees them resolves a
-// name rather than an id: a team roster, or — the reverse of that — an invitee
-// reading who invited them. Called on unlock and before any invite/create action
-// so the name is present the moment someone else needs it. A failure (sharing
-// locked, offline) is ignored; the next call retries.
-func (a *App) publishSelfName(ctx context.Context) {
+// publishSelfProfile best-effort republishes the signed-in user's name and
+// avatar (from the auth profile) onto their sharing identity, so anyone who sees
+// them resolves a person rather than an id: a team roster, or — the reverse of
+// that — an invitee reading who invited them. Called on unlock and before any
+// invite/create action so the profile is present the moment someone else needs
+// it. A failure (sharing locked, offline) is ignored; the next call retries.
+func (a *App) publishSelfProfile(ctx context.Context) {
 	if a.neonSync == nil || a.neonAuth == nil {
 		return
 	}
-	name := strings.TrimSpace(a.neonAuth.Status().Name)
-	if name == "" {
+	status := a.neonAuth.Status()
+	name := strings.TrimSpace(status.Name)
+	image := strings.TrimSpace(status.Image)
+	// Nothing to say about this user yet. Publishing two empty fields would only
+	// overwrite whatever a previous run put there.
+	if name == "" && image == "" {
 		return
 	}
-	if err := a.neonSync.PublishDisplayName(ctx, name); err != nil {
-		fmt.Fprintf(os.Stderr, "neonsync: publish display name: %v\n", err)
+	if err := a.neonSync.PublishProfile(ctx, name, image); err != nil {
+		// PublishProfile already names itself in the wrap; prefixing it again
+		// would print "publish profile: publish profile: ...".
+		fmt.Fprintf(os.Stderr, "neonsync: %v\n", err)
 	}
 }
 
@@ -1273,7 +1306,7 @@ func (a *App) SharingCreateTeam(name string) (TeamView, error) {
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
-	a.publishSelfName(ctx)
+	a.publishSelfProfile(ctx)
 	id, err := a.neonSync.CreateAudience(ctx)
 	if err != nil {
 		return TeamView{}, err
@@ -1392,6 +1425,10 @@ func (a *App) SharingAcceptInvite(audienceID string) error {
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
 	defer cancel()
+	// Joining is the moment the rest of the team first sees this user, and a
+	// session that has been signed in since before the profile existed has never
+	// run the unlock-time publish. Republish so the roster names them.
+	a.publishSelfProfile(ctx)
 	if err := a.neonSync.AcceptInvite(ctx, strings.TrimSpace(audienceID)); err != nil {
 		return err
 	}
@@ -1451,7 +1488,7 @@ func (a *App) SharingAddMember(audienceID, userID, role string) (string, error) 
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
-	a.publishSelfName(ctx)
+	a.publishSelfProfile(ctx)
 	fp, err := a.neonSync.AddMemberTOFU(ctx, strings.TrimSpace(audienceID), strings.TrimSpace(userID), role, true)
 	if err != nil {
 		return "", err
@@ -1476,7 +1513,7 @@ func (a *App) SharingInviteByEmail(audienceID, email, role string) (string, erro
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
-	a.publishSelfName(ctx)
+	a.publishSelfProfile(ctx)
 	userID, err := a.neonSync.InviteByEmail(ctx, strings.TrimSpace(audienceID), strings.TrimSpace(email), role, true)
 	if err != nil {
 		return "", err
@@ -1548,6 +1585,9 @@ type SharedActivity struct {
 	TeamName   string          `json:"team_name"`
 	AuthorID   string          `json:"author_id"`
 	AuthorName string          `json:"author_name"`
+	// AuthorImage is the author's published avatar, empty when they have none;
+	// the UI falls back to a tinted initial then.
+	AuthorImage string `json:"author_image"`
 }
 
 // SharingSharedEntries returns every activity shared with the caller across all
@@ -1587,7 +1627,7 @@ func (a *App) SharingSharedEntries() ([]SharedActivity, error) {
 }
 
 // fetchSharedEntries runs the full shared read path: list decrypted entries,
-// resolve author display names, and tag each with the caller's local team name.
+// resolve author profiles, and tag each with the caller's local team name.
 // This is the expensive network + crypto walk that the cache exists to hide.
 func (a *App) fetchSharedEntries(ctx context.Context) ([]SharedActivity, error) {
 	entries, err := a.neonSync.ListSharedEntries(ctx)
@@ -1598,7 +1638,7 @@ func (a *App) fetchSharedEntries(ctx context.Context) ([]SharedActivity, error) 
 	for _, e := range entries {
 		authorIDs = append(authorIDs, e.AuthorID)
 	}
-	names, _ := a.neonSync.ResolveDisplayNames(ctx, authorIDs)
+	profiles, _ := a.neonSync.ResolveProfiles(ctx, authorIDs)
 	out := make([]SharedActivity, 0, len(entries))
 	for _, e := range entries {
 		teamName := ""
@@ -1606,11 +1646,12 @@ func (a *App) fetchSharedEntries(ctx context.Context) ([]SharedActivity, error) 
 			teamName = a.teamNames.Name(e.AudienceID)
 		}
 		out = append(out, SharedActivity{
-			Activity:   e.Activity,
-			AudienceID: e.AudienceID,
-			TeamName:   teamName,
-			AuthorID:   e.AuthorID,
-			AuthorName: names[e.AuthorID],
+			Activity:    e.Activity,
+			AudienceID:  e.AudienceID,
+			TeamName:    teamName,
+			AuthorID:    e.AuthorID,
+			AuthorName:  profiles[e.AuthorID].DisplayName,
+			AuthorImage: profiles[e.AuthorID].ImageURL,
 		})
 	}
 	return out, nil

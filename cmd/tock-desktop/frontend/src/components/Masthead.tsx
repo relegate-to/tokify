@@ -339,12 +339,24 @@ export function Masthead({
                 >
                   <span
                     aria-hidden
-                    className="flex size-[21px] shrink-0 items-center justify-center rounded-[6px] bg-muted text-[10.5px] font-semibold leading-none text-foreground/70 [&_svg]:size-3"
+                    className="relative flex size-[21px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] bg-muted text-[10.5px] font-semibold leading-none text-foreground/70 [&_svg]:size-3"
                   >
                     {account?.signed_in ? (
                       accountInitials(account.name, account.email)
                     ) : (
                       <User />
+                    )}
+                    {/* Layered over the initials rather than replacing them, so a
+                        broken or still-decoding picture leaves the pill intact.
+                        The square keeps this marker reading as "you" — the tinted
+                        circles elsewhere are other people. */}
+                    {account?.signed_in && account.image && (
+                      <img
+                        src={account.image}
+                        alt=""
+                        draggable={false}
+                        className="absolute inset-0 size-full object-cover"
+                      />
                     )}
                   </span>
                   <span className="max-w-40 truncate text-sm text-foreground/90">
