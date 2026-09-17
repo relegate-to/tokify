@@ -3,6 +3,7 @@ import {
     ArrowLeft,
     ArrowUpCircle,
     CircleCheck,
+    Copy,
     ExternalLink,
     MessageSquareWarning,
     RefreshCw,
@@ -10,11 +11,15 @@ import {
 import { toast } from 'sonner';
 
 import {
+    AgentSetup,
     AppVersion,
     CheckForUpdate,
 } from '../../wailsjs/go/main/App';
-import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
-import { main } from '../../wailsjs/go/models';
+import {
+    BrowserOpenURL,
+    ClipboardSetText,
+} from '../../wailsjs/runtime/runtime';
+import { main, mcpserver } from '../../wailsjs/go/models';
 
 import type { ActivityView, Theme } from '@/types';
 import { cn } from '@/lib/utils';
@@ -112,12 +117,83 @@ export function SettingsView({
 
             <div className="flex flex-col gap-3">
                 <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    AI agents
+                </h3>
+                <AgentSetupCard />
+            </div>
+
+            <div className="flex flex-col gap-3">
+                <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     About
                 </h3>
                 <div className="flex flex-col divide-y rounded-xl border bg-card shadow-sm">
                     <UpdateRow />
                     <ReportIssueRow />
                 </div>
+            </div>
+        </div>
+    );
+}
+
+type AgentClient = 'claude' | 'json';
+
+function AgentSetupCard() {
+    const [setup, setSetup] = useState<mcpserver.Setup | null>(null);
+    const [client, setClient] = useState<AgentClient>('claude');
+
+    useEffect(() => {
+        AgentSetup()
+            .then(setSetup)
+            .catch(() => {});
+    }, []);
+
+    const snippet =
+        client === 'claude' ? setup?.claude_command : setup?.json_config;
+
+    const copy = async () => {
+        if (!snippet) return;
+        const ok = await ClipboardSetText(snippet).catch(() => false);
+        if (ok) {
+            toast.success(
+                client === 'claude' ? 'Command copied' : 'Config copied',
+            );
+        } else {
+            toast.error('Could not copy to clipboard');
+        }
+    };
+
+    return (
+        <div className="flex flex-col divide-y rounded-xl border bg-card shadow-sm">
+            <SettingSegmentedRow
+                title="Connect an AI agent"
+                description="Lets an assistant like Claude read your hours, fill in gaps, and fix entries."
+                value={client}
+                onChange={setClient}
+                options={[
+                    { value: 'claude', label: 'Claude Code' },
+                    { value: 'json', label: 'Other apps' },
+                ]}
+            />
+            <div className="flex flex-col gap-2 px-4 py-3">
+                <div className="flex items-start gap-2">
+                    <pre className="min-w-0 flex-1 whitespace-pre-wrap break-all rounded-md bg-muted/40 px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground select-text">
+                        {snippet ?? 'Loading…'}
+                    </pre>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={copy}
+                        disabled={!snippet}
+                    >
+                        <Copy className="size-3.5" />
+                        Copy
+                    </Button>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                    {client === 'claude'
+                        ? 'Run this in Terminal, then ask Claude to fill in your hours.'
+                        : "Add this to your app's MCP servers config, then restart it."}
+                </span>
             </div>
         </div>
     );

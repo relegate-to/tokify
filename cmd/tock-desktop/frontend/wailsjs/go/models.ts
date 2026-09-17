@@ -109,6 +109,25 @@ export namespace main {
 
 }
 
+export namespace mcpserver {
+	
+	export class Setup {
+	    claude_command: string;
+	    json_config: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Setup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.claude_command = source["claude_command"];
+	        this.json_config = source["json_config"];
+	    }
+	}
+
+}
+
 export namespace models {
 	
 	export class Activity {

@@ -3,7 +3,11 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"fyne.io/systray"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3" // register goqu sqlite3 dialect for the sqlite backend
@@ -13,12 +17,27 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+
+	"github.com/kriuchkov/tock/internal/app/mcpserver"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
+	// `tock-desktop mcp` serves agents over stdio and must never start the UI:
+	// an MCP client spawns it as a headless child process.
+	if len(os.Args) > 1 && os.Args[1] == mcpArg {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		err := mcpserver.Serve(ctx)
+		stop()
+		if err != nil {
+			println("Error:", err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Create an instance of the app structure
 	app := NewApp()
 

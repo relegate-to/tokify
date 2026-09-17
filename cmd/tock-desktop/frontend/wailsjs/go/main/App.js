@@ -10,6 +10,10 @@ export function AddActivity(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddActivity'](arg1, arg2, arg3, arg4);
 }
 
+export function AgentSetup() {
+  return window['go']['main']['App']['AgentSetup']();
+}
+
 export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }

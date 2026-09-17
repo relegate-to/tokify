@@ -26,11 +26,14 @@ License: **GPL-3.0-or-later**, inherited from tock.
 ```
 cmd/tock-desktop      Wails desktop app (Tokify additions live here)
   app.go              Wails-bound App struct; owns app Runtime; tray code
-  main.go             wails.Run + systray wiring (darwin-only build tag)
+  main.go             wails.Run + systray wiring (darwin-only build tag);
+                      `tock-desktop mcp` serves agents over stdio instead
   frontend/           React + TypeScript + Vite + Tailwind v4 + shadcn/ui
   build/              Wails output (.app) and platform assets
 internal/             Tokify domain and application code
   app/                application services (runtime, export, storage, …)
+    logbook/          agent-facing list/add/edit/delete rules (overlaps, time parsing)
+    mcpserver/        MCP tools over logbook; setup snippets shown in Settings
   adapters/           SQLite plus the legacy text-log migration reader
   core/               models, ports, errors — the domain
   services/activity   activity service

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	exportapp "github.com/kriuchkov/tock/internal/app/export"
+	"github.com/kriuchkov/tock/internal/app/mcpserver"
 	projectreg "github.com/kriuchkov/tock/internal/app/projects"
 	"github.com/kriuchkov/tock/internal/app/runtime"
 	appstorage "github.com/kriuchkov/tock/internal/app/storage"
@@ -674,6 +676,22 @@ func (a *App) OpenApplicationDataDirectory() error {
 		return errors.Wrap(err, "open application data directory")
 	}
 	return nil
+}
+
+// mcpArg is the subcommand that makes this binary an MCP server (see main).
+const mcpArg = "mcp"
+
+// AgentSetup returns how to register this app's MCP server with an AI agent,
+// pointing at the running executable so the path matches the installed app.
+func (a *App) AgentSetup() (mcpserver.Setup, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return mcpserver.Setup{}, errors.Wrap(err, "locate executable")
+	}
+	if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+		exe = resolved
+	}
+	return mcpserver.SetupFor(exe, mcpArg)
 }
 
 // ActivityLogPath returns the active local activity database path. The method
