@@ -303,15 +303,15 @@ func signOut(ctx context.Context, hc *http.Client, base, token string) error {
 	return nil
 }
 
-// apiErr is a Better Auth error response. It keeps the machine-readable code
+// betterAuthError is a Better Auth error response. It keeps the machine-readable code
 // alongside the message so callers can branch on a specific failure while the
 // UI still shows the server's own wording.
-type apiErr struct {
+type betterAuthError struct {
 	Code    string
 	Message string
 }
 
-func (e *apiErr) Error() string { return e.Message }
+func (e *betterAuthError) Error() string { return e.Message }
 
 // apiError extracts Better Auth's `{ "message", "code" }` error body so the UI
 // can show the real reason ("Invalid email or password") rather than a status.
@@ -321,7 +321,7 @@ func apiError(status int, body []byte) error {
 		Code    string `json:"code"`
 	}
 	if json.Unmarshal(body, &e) == nil && e.Message != "" {
-		return &apiErr{Code: e.Code, Message: e.Message}
+		return &betterAuthError{Code: e.Code, Message: e.Message}
 	}
 	return fmt.Errorf("neonauth: request failed (%d)", status)
 }
@@ -330,7 +330,7 @@ func apiError(status int, body []byte) error {
 // because the account's email was never confirmed. The message is checked as
 // well as the code: older Neon Auth deployments return the message alone.
 func isEmailNotVerified(err error) bool {
-	var e *apiErr
+	var e *betterAuthError
 	if !errors.As(err, &e) {
 		return false
 	}

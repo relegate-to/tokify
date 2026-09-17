@@ -77,12 +77,8 @@ func TestFilterValidUntil(t *testing.T) {
 
 	f := shareFilter{SinceDays: 7}
 	a := act("p", now)
-	u := f.validUntil(a)
-	if u == nil {
-		t.Fatal("windowed filter should give a valid_until")
-	}
 	want := now.AddDate(0, 0, 7)
-	if !u.Equal(want) {
+	if u := f.validUntil(a); u == nil || !u.Equal(want) {
 		t.Fatalf("valid_until = %v, want %v (start + window)", u, want)
 	}
 }

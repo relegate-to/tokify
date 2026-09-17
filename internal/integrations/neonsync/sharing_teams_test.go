@@ -51,7 +51,9 @@ func TestUpsertIdentityFallsBackWhenImageColumnMissing(t *testing.T) {
 		bodies = append(bodies, row)
 		if _, ok := row["image_url"]; ok {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"code":"PGRST204","message":"Could not find the 'image_url' column of 'identities' in the schema cache"}`))
+			_, _ = w.Write(
+				[]byte(`{"code":"PGRST204","message":"Could not find the 'image_url' column of 'identities' in the schema cache"}`),
+			)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -78,7 +80,7 @@ func TestUpsertIdentityFallsBackWhenImageColumnMissing(t *testing.T) {
 // and a keys-only publish (no avatar to strip) must never be retried.
 func TestUpsertIdentityDoesNotRetryOtherFailures(t *testing.T) {
 	var writes int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writes++
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"code":"42501","message":"permission denied"}`))
