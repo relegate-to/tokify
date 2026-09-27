@@ -73,6 +73,9 @@ type Service struct {
 	tombstones *tombstoneStore
 	restores   *tombstoneStore
 	pins       *PinStore
+
+	sharedMu sync.Mutex
+	shared   sharedReadState
 }
 
 // SyncStatus is the snapshot the Account panel renders.
@@ -260,9 +263,13 @@ func unwrapFromRow(password string, row *userKeysRow) ([]byte, []byte, error) {
 	return dek, kek, nil
 }
 
-// Lock clears the cached DEK and the cached sharing identity. Called on sign-out.
+// Lock clears the cached DEK, the cached sharing identity, and the shared
+// entries decrypted with them. Called on sign-out.
 func (s *Service) Lock(ctx context.Context) error {
 	s.clearIdentity(ctx)
+	s.sharedMu.Lock()
+	s.shared = sharedReadState{}
+	s.sharedMu.Unlock()
 	return s.store.Delete(ctx, dekAccount)
 }
 
@@ -333,43 +340,57 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 		return s.Status(), gerrors.Wrap(err, "propagate restorations")
 	}
 
-	// A sharing session exists only once the identity is provisioned+unlocked.
-	// When present, push entries in their v2 form (AAD-bound, author-signed) so
-	// audience members can read them, then reconcile grants after the push (the
-	// grants FK requires entries to exist first). When absent, fall back to the
-	// legacy account-DEK push; sharing stays dormant.
-	sess, sessErr := s.session(ctx)
-	if sessErr == nil {
-		if err = s.pushSharedEntries(ctx, sess, localByID); err != nil {
-			return s.Status(), err
-		}
-	} else if err = s.push(ctx, base, token, dek, localByID); err != nil {
+	reconcileErrs, err := s.pushAndReconcile(ctx, base, token, dek, localByID, delIDs)
+	if err != nil {
 		return s.Status(), err
 	}
-	if err = markDeleted(ctx, s.http, base, token, mapKeys(delIDs)); err != nil {
-		return s.Status(), gerrors.Wrap(err, "propagate deletions")
-	}
-	if sessErr == nil {
-		// Reconcile-on-write across my audiences. Per-audience failures (e.g. an
-		// unverifiable epoch chain, §2b) are collected and must not abort the sync
-		// of everything else; they surface via the status error line.
-		if rerrs := s.reconcileAudiences(ctx, sess, localByID, time.Now()); len(rerrs) > 0 {
-			err = rerrs[0]
-		}
-	}
-	merged, perr := s.pull(ctx, base, token, dek, localByID, delIDs)
-	if perr != nil {
-		return s.Status(), perr
+	merged, err := s.pull(ctx, base, token, dek, localByID, delIDs)
+	if err != nil {
+		return s.Status(), err
 	}
 	if err = s.confirmRestorations(dek, restoreIDs); err != nil {
 		return s.Status(), err
 	}
 
 	s.recordSync(merged)
-	if err != nil {
-		return s.Status(), err
+	if len(reconcileErrs) > 0 {
+		return s.Status(), reconcileErrs[0]
 	}
 	return s.Status(), nil
+}
+
+// pushAndReconcile pushes the local entries, propagates deletions, and
+// reconciles grants. A sharing session exists only once the identity is
+// provisioned+unlocked. When present, push entries in their v2 form (AAD-bound,
+// author-signed) so audience members can read them, then reconcile grants after
+// the push (the grants FK requires entries to exist first). When absent, fall
+// back to the legacy account-DEK push; sharing stays dormant.
+//
+// Per-audience reconcile failures (e.g. an unverifiable epoch chain, §2b) must
+// not abort the sync of everything else, so they come back separately from the
+// error for the caller to surface after the sync completes.
+func (s *Service) pushAndReconcile(
+	ctx context.Context,
+	base, token string,
+	dek []byte,
+	localByID map[string]models.Activity,
+	delIDs map[string]struct{},
+) ([]error, error) {
+	sess, sessErr := s.session(ctx)
+	if sessErr == nil {
+		if err := s.pushSharedEntries(ctx, sess, localByID); err != nil {
+			return nil, err
+		}
+	} else if err := s.push(ctx, base, token, dek, localByID); err != nil {
+		return nil, err
+	}
+	if err := markDeleted(ctx, s.http, base, token, mapKeys(delIDs)); err != nil {
+		return nil, gerrors.Wrap(err, "propagate deletions")
+	}
+	if sessErr == nil {
+		return s.reconcileAudiences(ctx, sess, localByID, time.Now()), nil
+	}
+	return nil, nil
 }
 
 // pendingDeletions turns the tombstones read at the start of this sync into the

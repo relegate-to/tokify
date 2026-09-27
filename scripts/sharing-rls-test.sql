@@ -489,14 +489,179 @@ SELECT expect_fail('carol',
        VALUES ('lnkX','audL','deadbeef','synthX','w','n','s','tb','tbn','alice')$q$,
     'carol cannot forge a link_shares row as alice');
 
--- ---- audiences DELETE is confined to LINK audiences (§8). alice CANNOT delete
--- the non-link audA (RLS matches no row), but CAN delete her link audience,
--- and the cascade reaps its link_shares row.
+-- ---- Change tracking (Section 7) ------------------------------------------
+-- Cursors are stashed in session GUCs so queries run as other roles can read
+-- them. mark(name) records audA's current seq / structure_seq.
 RESET role;
-SELECT test_as('alice', $q$DELETE FROM public.audiences WHERE id='audA'$q$);
+CREATE OR REPLACE FUNCTION mark(name text) RETURNS void LANGUAGE sql AS $$
+    SELECT set_config('test.' || name, seq::text, false),
+           set_config('test.' || name || '_s', structure_seq::text, false)
+      FROM public.audience_changes WHERE audience_id = 'audA';
+$$;
+CREATE OR REPLACE FUNCTION audA_seq() RETURNS bigint LANGUAGE sql AS $$
+    SELECT seq FROM public.audience_changes WHERE audience_id = 'audA';
+$$;
+CREATE OR REPLACE FUNCTION audA_structure_seq() RETURNS bigint LANGUAGE sql AS $$
+    SELECT structure_seq FROM public.audience_changes WHERE audience_id = 'audA';
+$$;
+
+SELECT assert_count('bob', $q$SELECT count(*) FROM public.audience_changes WHERE audience_id='audA'$q$, 1,
+    'member bob sees audA''s change row');
+SELECT assert_count('carol', 'SELECT count(*) FROM public.audience_changes', 0,
+    'non-member carol sees no change rows');
+SELECT expect_fail('bob',
+    $q$UPDATE public.audience_changes SET seq = 0$q$,
+    'bob cannot write audience_changes');
+SELECT expect_fail('bob',
+    $q$SELECT public.sharing_bump('audA', true)$q$,
+    'sharing_bump is not callable through the API');
+
+RESET role;
+SELECT mark('c0');
+SELECT assert_count('bob',
+    $q$SELECT count(*) FROM public.sharing_audience_delta('audA', current_setting('test.c0')::bigint)$q$, 0,
+    'delta at the current cursor is empty');
+
+-- A re-push of an unchanged entry (fresh nonce, same id) must not count.
+RESET role;
+SELECT test_as('alice', $q$UPDATE public.entries SET ciphertext='ct1b', nonce='n1b' WHERE id='e_appr'$q$);
+RESET role;
+DO $$
+BEGIN
+    IF audA_seq() <> current_setting('test.c0')::bigint THEN
+        RAISE EXCEPTION 'FAIL: re-encrypting an entry moved the audience cursor';
+    END IF;
+    RAISE NOTICE 'PASS: re-encrypting an entry leaves the cursor alone';
+END $$;
+
+-- A client cannot rewrite a grant's change_seq.
+RESET role;
+SELECT test_as('alice', $q$UPDATE public.entry_audience_grants SET change_seq = 0 WHERE entry_id='e_appr'$q$);
+RESET role;
+DO $$
+BEGIN
+    IF (SELECT change_seq FROM public.entry_audience_grants WHERE entry_id='e_appr' AND audience_id='audA') = 0 THEN
+        RAISE EXCEPTION 'FAIL: client PATCH rewrote grant change_seq';
+    END IF;
+    RAISE NOTICE 'PASS: grant change_seq is pinned against client writes';
+END $$;
+
+-- A new grant appears in the delta with its entry, and is not structural.
+RESET role;
+SELECT test_as('alice', $q$
+    INSERT INTO public.entries (id, user_id, ciphertext, nonce) VALUES ('e_new','alice','ctN','nN');
+    INSERT INTO public.entry_audience_grants (entry_id, audience_id, epoch, author_id, wrapped_dek, author_sig, valid_from)
+    VALUES ('e_new','audA',(SELECT current_epoch FROM public.audiences WHERE id='audA'),'alice','wdN','gsN', now() - interval '1h')
+$q$);
+RESET role;
+SELECT assert_count('bob',
+    $q$SELECT count(*) FROM public.sharing_audience_delta('audA', current_setting('test.c0')::bigint)
+       WHERE entry_id='e_new' AND entry->>'ciphertext' = 'ctN'$q$, 1,
+    'new grant shows up in bob''s delta with its entry');
+SELECT assert_count('bob',
+    $q$SELECT count(*) FROM public.sharing_audience_delta('audA', current_setting('test.c0')::bigint)$q$, 1,
+    'delta holds only the new grant');
+DO $$
+BEGIN
+    IF audA_seq() <= current_setting('test.c0')::bigint THEN
+        RAISE EXCEPTION 'FAIL: grant insert did not move the cursor';
+    END IF;
+    IF audA_structure_seq() <> current_setting('test.c0_s')::bigint THEN
+        RAISE EXCEPTION 'FAIL: grant insert counted as structural';
+    END IF;
+    RAISE NOTICE 'PASS: grant insert moves seq but not structure_seq';
+END $$;
+
+-- An entry that becomes invisible to bob (back to pending) is still reported,
+-- with a NULL entry, so bob's client knows to drop it.
+RESET role;
+SELECT mark('c1');
+SELECT test_as('alice', $q$UPDATE public.entries SET contribution_status='pending' WHERE id='e_new'$q$);
+RESET role;
+SELECT assert_count('bob',
+    $q$SELECT count(*) FROM public.sharing_audience_delta('audA', current_setting('test.c1')::bigint)
+       WHERE entry_id='e_new' AND entry IS NULL$q$, 1,
+    'entry hidden from bob is reported with a NULL entry');
+
+-- A tombstone flip is reported with deleted=true.
+RESET role;
+UPDATE public.entries SET contribution_status='approved' WHERE id='e_new';
+SELECT mark('c2');
+SELECT test_as('alice', $q$UPDATE public.entries SET deleted=true WHERE id='e_new'$q$);
+RESET role;
+SELECT assert_count('bob',
+    $q$SELECT count(*) FROM public.sharing_audience_delta('audA', current_setting('test.c2')::bigint)
+       WHERE entry_id='e_new' AND (entry->>'deleted')::boolean$q$, 1,
+    'tombstoned entry is reported as deleted');
+
+-- A deleted grant leaves a removal record members can read, not a delta row.
+RESET role;
+SELECT mark('c3');
+SELECT test_as('alice', $q$DELETE FROM public.entry_audience_grants WHERE entry_id='e_new' AND audience_id='audA'$q$);
+RESET role;
+SELECT assert_count('bob',
+    $q$SELECT count(*) FROM public.grant_removals
+       WHERE audience_id='audA' AND entry_id='e_new' AND seq > current_setting('test.c3')::bigint$q$, 1,
+    'grant delete is recorded in grant_removals');
+SELECT assert_count('bob',
+    $q$SELECT count(*) FROM public.sharing_audience_delta('audA', current_setting('test.c3')::bigint)$q$, 0,
+    'deleted grant is absent from the delta');
+SELECT assert_count('carol', 'SELECT count(*) FROM public.grant_removals', 0,
+    'non-member carol sees no removals');
+
+-- Removals older than 30 days are pruned on the next delete, advancing the floor.
+RESET role;
+UPDATE public.grant_removals SET removed_at = now() - interval '31 days' WHERE entry_id='e_new';
+SELECT test_as('alice', $q$
+    INSERT INTO public.entries (id, user_id, ciphertext, nonce) VALUES ('e_new2','alice','ctN2','nN2');
+    INSERT INTO public.entry_audience_grants (entry_id, audience_id, epoch, author_id, wrapped_dek, author_sig)
+    VALUES ('e_new2','audA',(SELECT current_epoch FROM public.audiences WHERE id='audA'),'alice','wdN2','gsN2');
+    DELETE FROM public.entry_audience_grants WHERE entry_id='e_new2' AND audience_id='audA'
+$q$);
+RESET role;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM public.grant_removals WHERE entry_id='e_new') THEN
+        RAISE EXCEPTION 'FAIL: 31-day-old removal was not pruned';
+    END IF;
+    IF (SELECT removals_floor FROM public.audience_changes WHERE audience_id='audA')
+       <= current_setting('test.c3')::bigint THEN
+        RAISE EXCEPTION 'FAIL: pruning did not advance removals_floor';
+    END IF;
+    RAISE NOTICE 'PASS: old removals pruned and floor advanced';
+END $$;
+
+-- Membership changes are structural. An invitee sees the change row (so the
+-- client lists the team) but no grants, removals, or delta rows.
+RESET role;
+SELECT mark('c4');
+SELECT test_as('alice', $q$INSERT INTO public.audience_members (audience_id, member_id, role, status)
+                           VALUES ('audA','carol','member','invited')$q$);
+RESET role;
+DO $$
+BEGIN
+    IF audA_structure_seq() <= current_setting('test.c4_s')::bigint THEN
+        RAISE EXCEPTION 'FAIL: member insert did not move structure_seq';
+    END IF;
+    RAISE NOTICE 'PASS: membership change is structural';
+END $$;
+SELECT assert_count('carol', $q$SELECT count(*) FROM public.audience_changes WHERE audience_id='audA'$q$, 1,
+    'invitee carol sees audA''s change row');
+SELECT assert_count('carol', 'SELECT count(*) FROM public.sharing_audience_delta(''audA'', 0)', 0,
+    'invitee carol gets an empty delta');
+SELECT assert_count('carol', 'SELECT count(*) FROM public.grant_removals', 0,
+    'invitee carol sees no removals');
+RESET role;
+DELETE FROM public.audience_members WHERE audience_id='audA' AND member_id='carol';
+
+-- ---- audiences DELETE is creator-only. bob (a member, not the creator)
+-- cannot delete audA; alice can delete her link audience, and the cascade
+-- reaps its link_shares row.
+RESET role;
+SELECT test_as('bob', $q$DELETE FROM public.audiences WHERE id='audA'$q$);
 RESET role;
 SELECT assert_count('alice', $q$SELECT count(*) FROM public.audiences WHERE id='audA'$q$, 1,
-    'link-only delete policy leaves non-link audA intact');
+    'non-creator bob cannot delete audA');
 RESET role;
 SELECT test_as('alice', $q$DELETE FROM public.audiences WHERE id='audL'$q$);
 RESET role;
@@ -504,6 +669,23 @@ SELECT assert_count('alice', $q$SELECT count(*) FROM public.audiences WHERE id='
     'alice deletes her own link audience');
 SELECT assert_count('alice', $q$SELECT count(*) FROM public.link_shares WHERE audience_id='audL'$q$, 0,
     'deleting the link audience cascades its link_shares row away');
+
+-- The creator deleting a whole team cascades through the change-tracking
+-- triggers without tripping them (the audience is gone before its members and
+-- grants are), and reaps the team's change row and removals.
+RESET role;
+SELECT test_as('alice', $q$DELETE FROM public.audiences WHERE id='audA'$q$);
+RESET role;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM public.audiences WHERE id='audA')
+       OR EXISTS (SELECT 1 FROM public.audience_changes WHERE audience_id='audA')
+       OR EXISTS (SELECT 1 FROM public.grant_removals WHERE audience_id='audA')
+       OR EXISTS (SELECT 1 FROM public.entry_audience_grants WHERE audience_id='audA') THEN
+        RAISE EXCEPTION 'FAIL: team delete left rows behind';
+    END IF;
+    RAISE NOTICE 'PASS: creator deletes a team and the cascade reaps its tracking rows';
+END $$;
 
 \echo '==================================================================='
 \echo 'ALL RLS ASSERTIONS PASSED'

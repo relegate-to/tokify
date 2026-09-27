@@ -182,6 +182,20 @@ func (p *PinStore) Export() ([]byte, error) {
 	return json.Marshal(f)
 }
 
+// trustState renders the pinned fingerprints as a comparable string, so a
+// cached shared view can tell it was verified under different trust decisions.
+// Epoch watermarks are left out: they only ratchet, and reads advance them.
+func (p *PinStore) trustState() (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	f, err := p.load()
+	if err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(f.Fingerprints)
+	return string(data), err
+}
+
 // MergeRemote folds another device's pin file (as produced by Export) into the
 // local one so a freshly signed-in device inherits the trust decisions made
 // elsewhere instead of showing every teammate as unverified. Fingerprints union

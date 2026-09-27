@@ -54,7 +54,7 @@ func (r *runner) runWatch(ctx context.Context, args []string) error {
 	flags := newFlagSet("watch", watchHelp, r.stderr)
 	boolFlag(flags, &options.follow, "follow", "f", false, "Keep printing updates")
 	durationFlag(flags, &options.interval, "interval", "n", time.Second, "Update interval")
-	stringFlag(flags, &options.format, "format", "F", "", "Output template")
+	stringFlag(flags, &options.format, "format", "F", "Output template")
 	flags.StringVar(&options.idle, "idle", "", "Idle text")
 	flags.BoolVar(&options.jsonOutput, "json", false, "Print JSON")
 	if err := flags.Parse(args); err != nil {
@@ -125,10 +125,7 @@ func (r *runner) currentStatus(ctx context.Context, now time.Time) (status, erro
 		return status{Duration: "00:00:00"}, nil
 	}
 	latest := activities[len(activities)-1]
-	elapsed := now.Sub(latest.StartTime)
-	if elapsed < 0 {
-		elapsed = 0
-	}
+	elapsed := max(now.Sub(latest.StartTime), 0)
 	elapsed = elapsed.Round(time.Second)
 	return status{
 		Running:        true,

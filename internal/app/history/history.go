@@ -71,34 +71,32 @@ func (j *Journal) Status() Status {
 }
 
 func (j *Journal) Undo(ctx context.Context) (Outcome, error) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if len(j.undo) == 0 {
-		return Outcome{Status: status(j.undo, j.redo)}, nil
-	}
-	entry := j.undo[len(j.undo)-1]
-	applied := reverse(entry.Changes)
-	if err := j.repo.ApplyChanges(ctx, applied); err != nil {
-		return Outcome{Status: status(j.undo, j.redo)}, err
-	}
-	j.undo = j.undo[:len(j.undo)-1]
-	j.redo = append(j.redo, entry)
-	return Outcome{Label: entry.Label, Changes: applied, Status: status(j.undo, j.redo)}, nil
+	return j.step(ctx, &j.undo, &j.redo, reverse)
 }
 
 func (j *Journal) Redo(ctx context.Context) (Outcome, error) {
+	return j.step(ctx, &j.redo, &j.undo, cloneChanges)
+}
+
+// step applies the newest entry of from (its changes passed through apply) and
+// moves it onto to. Undo and redo are the same move in opposite directions.
+func (j *Journal) step(
+	ctx context.Context,
+	from, to *[]Entry,
+	apply func([]models.ActivityChange) []models.ActivityChange,
+) (Outcome, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if len(j.redo) == 0 {
+	if len(*from) == 0 {
 		return Outcome{Status: status(j.undo, j.redo)}, nil
 	}
-	entry := j.redo[len(j.redo)-1]
-	applied := cloneChanges(entry.Changes)
+	entry := (*from)[len(*from)-1]
+	applied := apply(entry.Changes)
 	if err := j.repo.ApplyChanges(ctx, applied); err != nil {
 		return Outcome{Status: status(j.undo, j.redo)}, err
 	}
-	j.redo = j.redo[:len(j.redo)-1]
-	j.undo = append(j.undo, entry)
+	*from = (*from)[:len(*from)-1]
+	*to = append(*to, entry)
 	return Outcome{Label: entry.Label, Changes: applied, Status: status(j.undo, j.redo)}, nil
 }
 

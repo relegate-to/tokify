@@ -30,6 +30,16 @@ type fakePostgREST struct {
 	linkShares []linkShareRow
 	entries    []sharedEntryRow
 	operations []string
+	requests   []string
+
+	// Change tracking (sharing_schema.sql Section 7). untracked makes the fake
+	// answer like a server that predates it.
+	untracked bool
+	seq       int64
+	changes   map[string]*audienceChangeRow
+	grantSeqs map[string]int64 // by entry_id + "|" + audience_id
+	entrySeqs map[string]int64
+	removals  map[string][]grantRemovalRow
 }
 
 func (f *fakePostgREST) handler() http.Handler {
@@ -43,7 +53,112 @@ func (f *fakePostgREST) handler() http.Handler {
 	mux.HandleFunc("/identities", f.handleIdentities)
 	mux.HandleFunc("/link_shares", f.handleLinkShares)
 	mux.HandleFunc("/entries", f.handleEntries)
-	return mux
+	mux.HandleFunc("/audience_changes", f.handleAudienceChanges)
+	mux.HandleFunc("/grant_removals", f.handleGrantRemovals)
+	mux.HandleFunc("/rpc/sharing_audience_delta", f.handleAudienceDelta)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.requests = append(f.requests, r.Method+" "+r.URL.Path)
+		mux.ServeHTTP(w, r)
+	})
+}
+
+// bump mimics sharing_bump: record one change on an audience and return its
+// number.
+func (f *fakePostgREST) bump(audienceID string, structural bool) int64 {
+	if f.changes == nil {
+		f.changes = map[string]*audienceChangeRow{}
+	}
+	ch := f.changes[audienceID]
+	if ch == nil {
+		ch = &audienceChangeRow{AudienceID: audienceID}
+		f.changes[audienceID] = ch
+	}
+	f.seq++
+	ch.Seq = f.seq
+	if structural {
+		ch.StructureSeq = f.seq
+	}
+	return f.seq
+}
+
+// setEntryDeleted mimics a tombstone PATCH and entries_track_change.
+func (f *fakePostgREST) setEntryDeleted(entryID string) {
+	for i := range f.entries {
+		if f.entries[i].ID == entryID {
+			f.entries[i].Deleted = true
+		}
+	}
+	if f.entrySeqs == nil {
+		f.entrySeqs = map[string]int64{}
+	}
+	for _, g := range f.grants {
+		if g.EntryID == entryID {
+			f.entrySeqs[entryID] = f.bump(g.AudienceID, false)
+		}
+	}
+}
+
+func (f *fakePostgREST) notTracked(w http.ResponseWriter) bool {
+	if !f.untracked {
+		return false
+	}
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write([]byte(`{"code":"PGRST205","message":"Could not find the table in the schema cache"}`))
+	return true
+}
+
+func (f *fakePostgREST) handleAudienceChanges(w http.ResponseWriter, _ *http.Request) {
+	if f.notTracked(w) {
+		return
+	}
+	rows := make([]audienceChangeRow, 0, len(f.changes))
+	for _, ch := range f.changes {
+		rows = append(rows, *ch)
+	}
+	writeJSON(w, rows)
+}
+
+func (f *fakePostgREST) handleGrantRemovals(w http.ResponseWriter, r *http.Request) {
+	if f.notTracked(w) {
+		return
+	}
+	since, _ := strconv.ParseInt(strings.TrimPrefix(r.URL.Query().Get("seq"), "gt."), 10, 64)
+	var out []grantRemovalRow
+	for _, rm := range f.removals[eqParam(r, "audience_id")] {
+		if rm.Seq > since {
+			out = append(out, rm)
+		}
+	}
+	writeJSON(w, out)
+}
+
+func (f *fakePostgREST) handleAudienceDelta(w http.ResponseWriter, r *http.Request) {
+	if f.notTracked(w) {
+		return
+	}
+	var args struct {
+		Aud   string `json:"aud"`
+		Since int64  `json:"since"`
+	}
+	_ = json.Unmarshal(readBody(r), &args)
+	out := []deltaRow{}
+	for _, g := range f.grants {
+		if g.AudienceID != args.Aud {
+			continue
+		}
+		if f.grantSeqs[g.EntryID+"|"+g.AudienceID] <= args.Since && f.entrySeqs[g.EntryID] <= args.Since {
+			continue
+		}
+		row := deltaRow{grantRow: g}
+		for i := range f.entries {
+			if f.entries[i].ID == g.EntryID {
+				e := f.entries[i]
+				row.Entry = &e
+			}
+		}
+		out = append(out, row)
+	}
+	writeJSON(w, out)
 }
 
 func (f *fakePostgREST) handleLinkShares(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +202,7 @@ func (f *fakePostgREST) handleEntries(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		return
 	}
-	writeJSON(w, f.entries)
+	writeJSON(w, selectRows(r, f.entries, "id", func(e sharedEntryRow) string { return e.ID }))
 }
 
 func (f *fakePostgREST) handleAudiences(w http.ResponseWriter, r *http.Request) {
@@ -107,6 +222,9 @@ func (f *fakePostgREST) handleEpochs(w http.ResponseWriter, r *http.Request) {
 		decodeOneOrMany(r, &rows)
 		f.epochs = append(f.epochs, rows...)
 		f.bumpPointer(rows) // mimic the bump-pointer trigger
+		for _, e := range rows {
+			f.bump(e.AudienceID, true)
+		}
 		w.WriteHeader(http.StatusCreated)
 		return
 	}
@@ -139,6 +257,7 @@ func (f *fakePostgREST) handleMembers(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			f.members = append(f.members, n)
+			f.bump(n.AudienceID, true)
 		}
 		w.WriteHeader(http.StatusCreated)
 		return
@@ -153,6 +272,7 @@ func (f *fakePostgREST) handleMembers(w http.ResponseWriter, r *http.Request) {
 		for i := range f.members {
 			if f.members[i].AudienceID == aud && f.members[i].MemberID == member {
 				f.members[i].Status = patch.Status
+				f.bump(aud, true)
 			}
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -190,6 +310,7 @@ func (f *fakePostgREST) handleEpochKeys(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			f.epochKeys = append(f.epochKeys, n)
+			f.bump(n.AudienceID, true)
 		}
 		w.WriteHeader(http.StatusCreated)
 	case http.MethodDelete:
@@ -199,6 +320,7 @@ func (f *fakePostgREST) handleEpochKeys(w http.ResponseWriter, r *http.Request) 
 		kept := f.epochKeys[:0]
 		for _, e := range f.epochKeys {
 			if e.AudienceID == aud && strconv.Itoa(e.Epoch) == epoch && members[e.MemberID] {
+				f.bump(aud, true)
 				continue
 			}
 			kept = append(kept, e)
@@ -273,6 +395,12 @@ func (f *fakePostgREST) handleGrants(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		f.grants = append(f.grants, rows...)
+		if f.grantSeqs == nil {
+			f.grantSeqs = map[string]int64{}
+		}
+		for _, n := range rows {
+			f.grantSeqs[n.EntryID+"|"+n.AudienceID] = f.bump(n.AudienceID, false)
+		}
 		w.WriteHeader(http.StatusCreated)
 	case http.MethodDelete:
 		f.deleteGrant(eqParam(r, "entry_id"), eqParam(r, "audience_id"))
@@ -286,6 +414,11 @@ func (f *fakePostgREST) deleteGrant(entryID, audienceID string) {
 	kept := f.grants[:0]
 	for _, g := range f.grants {
 		if g.EntryID == entryID && g.AudienceID == audienceID {
+			if f.removals == nil {
+				f.removals = map[string][]grantRemovalRow{}
+			}
+			f.removals[audienceID] = append(f.removals[audienceID],
+				grantRemovalRow{EntryID: entryID, Seq: f.bump(audienceID, false)})
 			continue
 		}
 		kept = append(kept, g)

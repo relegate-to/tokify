@@ -108,19 +108,7 @@ func (r *runner) run(ctx context.Context, args []string) error {
 	command := args[commandAt]
 	commandArgs := args[commandAt+1:]
 	if command == "help" || command == "-h" || command == "--help" {
-		if len(commandArgs) == 0 {
-			fmt.Fprint(r.stdout, rootHelp)
-			return nil
-		}
-		if len(commandArgs) > 1 {
-			return errors.New("help accepts at most one command")
-		}
-		help, ok := commandHelp(commandArgs[0])
-		if !ok {
-			return fmt.Errorf("unknown command %q", commandArgs[0])
-		}
-		fmt.Fprint(r.stdout, help)
-		return nil
+		return r.runHelp(commandArgs)
 	}
 	if command == "version" {
 		fmt.Fprintln(r.stdout, version())
@@ -151,6 +139,22 @@ func (r *runner) run(ctx context.Context, args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q; run tokify help", command)
 	}
+}
+
+func (r *runner) runHelp(args []string) error {
+	if len(args) == 0 {
+		fmt.Fprint(r.stdout, rootHelp)
+		return nil
+	}
+	if len(args) > 1 {
+		return errors.New("help accepts at most one command")
+	}
+	help, ok := commandHelp(args[0])
+	if !ok {
+		return fmt.Errorf("unknown command %q", args[0])
+	}
+	fmt.Fprint(r.stdout, help)
+	return nil
 }
 
 func (r *runner) ensureRuntime(ctx context.Context) error {

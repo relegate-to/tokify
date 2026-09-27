@@ -40,10 +40,10 @@ type addOptions struct {
 func (r *runner) runAdd(ctx context.Context, args []string) error {
 	options := addOptions{}
 	flags := newFlagSet("add", addHelp, r.stderr)
-	stringFlag(flags, &options.project, "project", "p", "", "Project name")
-	stringFlag(flags, &options.description, "description", "d", "", "Activity description")
-	stringFlag(flags, &options.start, "start", "s", "", "Start time")
-	stringFlag(flags, &options.end, "end", "e", "", "End time")
+	stringFlag(flags, &options.project, "project", "p", "Project name")
+	stringFlag(flags, &options.description, "description", "d", "Activity description")
+	stringFlag(flags, &options.start, "start", "s", "Start time")
+	stringFlag(flags, &options.end, "end", "e", "End time")
 	flags.DurationVar(&options.duration, "duration", 0, "Activity duration")
 	flags.StringVar(&options.notes, "note", "", "Activity notes")
 	flags.BoolVar(&options.jsonOutput, "json", false, "Print JSON")
@@ -131,7 +131,7 @@ func (r *runner) runList(ctx context.Context, args []string) error {
 	flags.StringVar(&options.date, "date", "", "One local day")
 	flags.StringVar(&options.from, "from", "", "Range start")
 	flags.StringVar(&options.to, "to", "", "Range end")
-	stringFlag(flags, &options.project, "project", "p", "", "Project filter")
+	stringFlag(flags, &options.project, "project", "p", "Project filter")
 	flags.BoolVar(&options.jsonOutput, "json", false, "Print JSON")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -223,10 +223,10 @@ func (r *runner) runEdit(ctx context.Context, args []string) error {
 	flags := newFlagSet("edit", editHelp, r.stderr)
 	var project, description, newStart, end, notes string
 	var jsonOutput bool
-	stringFlag(flags, &project, "project", "p", "", "New project")
-	stringFlag(flags, &description, "description", "d", "", "New description")
+	stringFlag(flags, &project, "project", "p", "New project")
+	stringFlag(flags, &description, "description", "d", "New description")
 	flags.StringVar(&newStart, "new-start", "", "New start time")
-	stringFlag(flags, &end, "end", "e", "", "New end time")
+	stringFlag(flags, &end, "end", "e", "New end time")
 	flags.StringVar(&notes, "note", "", "Replacement notes")
 	flags.BoolVar(&jsonOutput, "json", false, "Print JSON")
 	if err := flags.Parse(args); err != nil {

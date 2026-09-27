@@ -1278,3 +1278,362 @@ REVOKE ALL ON public.link_shares FROM anonymous;
 REVOKE EXECUTE ON FUNCTION public.sharing_link_fetch(text, integer, integer) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.sharing_link_fetch(text, integer, integer) TO anonymous;
 GRANT  EXECUTE ON FUNCTION public.sharing_link_fetch(text, integer, integer) TO authenticated;
+
+-- ===========================================================================
+-- SECTION 7 — Change tracking for incremental shared reads
+--
+-- Lets a member's poll ask "what changed in my audiences since cursor N"
+-- instead of re-reading every grant and entry. Every change that affects a
+-- member's shared view draws a number from one global sequence and records it
+-- on the audience's audience_changes row:
+--
+--   seq            — last change of any kind (grants, entry status/tombstone)
+--   structure_seq  — last epoch, epoch-key, or membership change; clients
+--                    re-read the whole audience when this moves, because those
+--                    change what they can see or decrypt without touching rows
+--   removals_floor — grant_removals at or below this seq have been pruned, so a
+--                    cursor older than it must re-read the whole audience
+--
+-- ORDERING: a number is drawn only while holding the audience's
+-- audience_changes row lock (sharing_bump), which is held to commit. Numbers
+-- for one audience therefore become visible in increasing order: once a
+-- reader has seen seq N commit, nothing numbered below N can commit later.
+-- That is what makes `change_seq > cursor` a complete delta.
+--
+-- Leakage: change timing per audience, which grant-insert timing already
+-- reveals (Section 1 header). No plaintext, no new sharing-graph edges.
+-- Clients never write these tables or columns; triggers do, as the owner.
+-- ===========================================================================
+
+CREATE SEQUENCE IF NOT EXISTS public.sharing_change_seq;
+
+CREATE TABLE IF NOT EXISTS public.audience_changes (
+    audience_id    text   PRIMARY KEY,
+    seq            bigint NOT NULL DEFAULT 0,
+    structure_seq  bigint NOT NULL DEFAULT 0,
+    removals_floor bigint NOT NULL DEFAULT 0,
+    CONSTRAINT audience_changes_audience_fk
+        FOREIGN KEY (audience_id) REFERENCES public.audiences (id) ON DELETE CASCADE
+);
+
+-- One row per deleted grant, so a delta can tell members to drop an entry.
+-- Pruned after 30 days by the removal trigger (advancing removals_floor).
+CREATE TABLE IF NOT EXISTS public.grant_removals (
+    audience_id text        NOT NULL,
+    entry_id    text        NOT NULL,
+    seq         bigint      NOT NULL,
+    removed_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (audience_id, seq),
+    CONSTRAINT grant_removals_audience_fk
+        FOREIGN KEY (audience_id) REFERENCES public.audiences (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS grant_removals_prune_idx
+    ON public.grant_removals (audience_id, removed_at);
+
+-- Pre-existing rows keep change_seq 0; a client's first read of an audience is
+-- always a full read, so only rows changed after it need a real number.
+ALTER TABLE public.entry_audience_grants
+    ADD COLUMN IF NOT EXISTS change_seq bigint NOT NULL DEFAULT 0;
+ALTER TABLE public.entries
+    ADD COLUMN IF NOT EXISTS change_seq bigint NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS entry_audience_grants_change_idx
+    ON public.entry_audience_grants (audience_id, change_seq);
+CREATE INDEX IF NOT EXISTS entries_change_seq_idx
+    ON public.entries (change_seq);
+
+-- Locks (creating if needed) the audience's change row. Returns false when the
+-- audience no longer exists — the cascade of an audience DELETE fires the
+-- member/grant triggers after the parent row is gone, and there is nothing
+-- left to track.
+CREATE OR REPLACE FUNCTION public.sharing_lock_changes(aud text)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM public.audiences WHERE id = aud) THEN
+        RETURN false;
+    END IF;
+    INSERT INTO public.audience_changes (audience_id) VALUES (aud)
+        ON CONFLICT (audience_id) DO NOTHING;
+    PERFORM 1 FROM public.audience_changes WHERE audience_id = aud FOR UPDATE;
+    RETURN true;
+END;
+$$;
+
+-- Records one change on `aud` and returns its number (NULL if the audience is
+-- gone). Lock first, then draw — see ORDERING above.
+CREATE OR REPLACE FUNCTION public.sharing_bump(aud text, structural boolean)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    s bigint;
+BEGIN
+    IF NOT public.sharing_lock_changes(aud) THEN
+        RETURN NULL;
+    END IF;
+    s := nextval('public.sharing_change_seq');
+    UPDATE public.audience_changes
+       SET seq = s,
+           structure_seq = CASE WHEN structural THEN s ELSE structure_seq END
+     WHERE audience_id = aud;
+    RETURN s;
+END;
+$$;
+
+-- Internal to the triggers below; never callable through the Data API.
+REVOKE EXECUTE ON FUNCTION public.sharing_lock_changes(text)   FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.sharing_bump(text, boolean)  FROM PUBLIC;
+
+-- Grants: stamp inserts and revocations; pin change_seq on every other UPDATE
+-- so a client PATCH cannot rewrite it.
+CREATE OR REPLACE FUNCTION public.grants_track_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND NEW.revoked IS NOT DISTINCT FROM OLD.revoked
+       AND NEW.revoked_by IS NOT DISTINCT FROM OLD.revoked_by THEN
+        NEW.change_seq := OLD.change_seq;
+        RETURN NEW;
+    END IF;
+    NEW.change_seq := COALESCE(public.sharing_bump(NEW.audience_id, false), 0);
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS grants_track_change ON public.entry_audience_grants;
+CREATE TRIGGER grants_track_change
+    BEFORE INSERT OR UPDATE ON public.entry_audience_grants
+    FOR EACH ROW EXECUTE FUNCTION public.grants_track_change();
+
+-- Grant deletes: log the removal under a fresh number and prune old ones.
+CREATE OR REPLACE FUNCTION public.grants_track_removal()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    s      bigint;
+    pruned bigint;
+BEGIN
+    s := public.sharing_bump(OLD.audience_id, false);
+    IF s IS NULL THEN
+        RETURN OLD;
+    END IF;
+    INSERT INTO public.grant_removals (audience_id, entry_id, seq)
+        VALUES (OLD.audience_id, OLD.entry_id, s);
+
+    WITH gone AS (
+        DELETE FROM public.grant_removals
+         WHERE audience_id = OLD.audience_id
+           AND removed_at < now() - interval '30 days'
+        RETURNING seq
+    )
+    SELECT max(seq) INTO pruned FROM gone;
+    IF pruned IS NOT NULL THEN
+        UPDATE public.audience_changes
+           SET removals_floor = GREATEST(removals_floor, pruned)
+         WHERE audience_id = OLD.audience_id;
+    END IF;
+    RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS grants_track_removal ON public.entry_audience_grants;
+CREATE TRIGGER grants_track_removal
+    AFTER DELETE ON public.entry_audience_grants
+    FOR EACH ROW EXECUTE FUNCTION public.grants_track_removal();
+
+-- Entries: only a tombstone flip or an approval-status change alters what
+-- members see. Every sync re-upserts unchanged entries with fresh ciphertext
+-- (random nonce), so anything else must NOT count as a change or every push
+-- would invalidate every member's view. The entry gets one number drawn after
+-- locking every audience that holds a grant on it, in a fixed order.
+CREATE OR REPLACE FUNCTION public.entries_track_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    aud    text;
+    locked text[] := '{}';
+    s      bigint;
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        NEW.change_seq := 0;
+        RETURN NEW;
+    END IF;
+    IF NEW.deleted IS NOT DISTINCT FROM OLD.deleted
+       AND NEW.contribution_status IS NOT DISTINCT FROM OLD.contribution_status THEN
+        NEW.change_seq := OLD.change_seq;
+        RETURN NEW;
+    END IF;
+
+    FOR aud IN
+        SELECT audience_id FROM public.entry_audience_grants
+         WHERE entry_id = NEW.id
+         ORDER BY audience_id
+    LOOP
+        IF public.sharing_lock_changes(aud) THEN
+            locked := locked || aud;
+        END IF;
+    END LOOP;
+    IF cardinality(locked) = 0 THEN
+        NEW.change_seq := OLD.change_seq;
+        RETURN NEW;
+    END IF;
+
+    s := nextval('public.sharing_change_seq');
+    UPDATE public.audience_changes SET seq = s WHERE audience_id = ANY (locked);
+    NEW.change_seq := s;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS entries_track_change ON public.entries;
+CREATE TRIGGER entries_track_change
+    BEFORE INSERT OR UPDATE ON public.entries
+    FOR EACH ROW EXECUTE FUNCTION public.entries_track_change();
+
+-- Epochs, epoch keys, and membership: structural changes.
+CREATE OR REPLACE FUNCTION public.sharing_track_structure()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        PERFORM public.sharing_bump(OLD.audience_id, true);
+    ELSE
+        PERFORM public.sharing_bump(NEW.audience_id, true);
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS audience_epochs_track_structure ON public.audience_epochs;
+CREATE TRIGGER audience_epochs_track_structure
+    AFTER INSERT ON public.audience_epochs
+    FOR EACH ROW EXECUTE FUNCTION public.sharing_track_structure();
+
+DROP TRIGGER IF EXISTS audience_epoch_keys_track_structure ON public.audience_epoch_keys;
+CREATE TRIGGER audience_epoch_keys_track_structure
+    AFTER INSERT OR DELETE ON public.audience_epoch_keys
+    FOR EACH ROW EXECUTE FUNCTION public.sharing_track_structure();
+
+DROP TRIGGER IF EXISTS audience_members_track_structure ON public.audience_members;
+CREATE TRIGGER audience_members_track_structure
+    AFTER INSERT OR UPDATE OR DELETE ON public.audience_members
+    FOR EACH ROW EXECUTE FUNCTION public.sharing_track_structure();
+
+-- Audiences that predate this section start with a nonzero cursor, so a
+-- client's first poll after the migration does one full read and then deltas.
+INSERT INTO public.audience_changes (audience_id, seq, structure_seq)
+SELECT id, s, s
+  FROM (SELECT id, nextval('public.sharing_change_seq') AS s FROM public.audiences) a
+ON CONFLICT (audience_id) DO NOTHING;
+
+-- Entries changed since `since` that hold a grant in `aud`, for members of
+-- `aud` only. SECURITY DEFINER because an entry that just became invisible to
+-- the caller (rejected, say) must still be reported so the caller drops it;
+-- only the id comes back, which the caller could already see on the grant.
+CREATE OR REPLACE FUNCTION public.sharing_changed_entries(aud text, since bigint)
+RETURNS SETOF text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT e.id
+      FROM public.entries e
+      JOIN public.entry_audience_grants g
+        ON g.entry_id = e.id AND g.audience_id = aud
+     WHERE e.change_seq > since
+       AND public.sharing_is_member(aud);
+$$;
+
+-- The delta a member applies on top of its cached view: every grant in `aud`
+-- that changed since `since`, or whose entry did, joined to the entry as the
+-- caller may see it. SECURITY INVOKER, so grants and entries RLS apply as
+-- usual; `entry` is NULL when the caller can no longer see the entry.
+-- Deleted grants are not here — read grant_removals for those.
+CREATE OR REPLACE FUNCTION public.sharing_audience_delta(aud text, since bigint)
+RETURNS TABLE (
+    entry_id    text,
+    audience_id text,
+    epoch       integer,
+    author_id   text,
+    wrapped_dek text,
+    author_sig  text,
+    valid_from  timestamptz,
+    valid_until timestamptz,
+    revoked     boolean,
+    change_seq  bigint,
+    entry       jsonb
+)
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+    SELECT g.entry_id, g.audience_id, g.epoch, g.author_id, g.wrapped_dek,
+           g.author_sig, g.valid_from, g.valid_until, g.revoked, g.change_seq,
+           CASE WHEN e.id IS NULL THEN NULL ELSE jsonb_build_object(
+               'id', e.id,
+               'user_id', e.user_id,
+               'ciphertext', e.ciphertext,
+               'nonce', e.nonce,
+               'version', e.version,
+               'author_sig', e.author_sig,
+               'contribution_status', e.contribution_status,
+               'deleted', e.deleted
+           ) END
+      FROM public.entry_audience_grants g
+      LEFT JOIN public.entries e ON e.id = g.entry_id
+     WHERE g.audience_id = aud
+       AND (g.change_seq > since
+            OR g.entry_id IN (SELECT public.sharing_changed_entries(aud, since)));
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.sharing_changed_entries(text, bigint) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.sharing_audience_delta(text, bigint)  FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.sharing_changed_entries(text, bigint) TO authenticated;
+GRANT  EXECUTE ON FUNCTION public.sharing_audience_delta(text, bigint)  TO authenticated;
+
+ALTER TABLE public.audience_changes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audience_changes FORCE ROW LEVEL SECURITY;
+
+-- Same visibility as the audiences row itself (audiences_select).
+DROP POLICY IF EXISTS audience_changes_select ON public.audience_changes;
+CREATE POLICY audience_changes_select ON public.audience_changes
+    FOR SELECT
+    TO authenticated
+    USING (
+        public.sharing_has_membership(audience_id)
+        OR public.sharing_is_audience_creator(audience_id)
+    );
+
+ALTER TABLE public.grant_removals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.grant_removals FORCE ROW LEVEL SECURITY;
+
+-- Same visibility as the grants they record (entry_audience_grants_select).
+DROP POLICY IF EXISTS grant_removals_select ON public.grant_removals;
+CREATE POLICY grant_removals_select ON public.grant_removals
+    FOR SELECT
+    TO authenticated
+    USING (public.sharing_is_member(audience_id));
+
+GRANT SELECT ON public.audience_changes TO authenticated;
+GRANT SELECT ON public.grant_removals   TO authenticated;

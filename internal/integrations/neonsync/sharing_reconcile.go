@@ -12,9 +12,10 @@ import (
 )
 
 // This file holds the write/read data paths that ride on top of the sharing
-// operations: the v2 entry push (AAD-bound, author-signed), the shared read path
-// (list-granted -> unwrap -> verify author sig -> decrypt), and reconcile-on-
-// write, which runs inside SyncNow AFTER the push so entries exist before grants.
+// operations: the v2 entry push (AAD-bound, author-signed), the per-entry
+// decrypt of the shared read path (unwrap -> verify author sig -> decrypt; the
+// polling around it is in sharing_read.go), and reconcile-on-write, which runs
+// inside SyncNow AFTER the push so entries exist before grants.
 
 // pushSharedEntries pushes every completed local entry in its v2 form: the
 // payload sealed under the derived DEK, bound to EntryAAD{entryID, version 1,
@@ -219,100 +220,6 @@ func (s *Service) cleanupStaleGrants(
 		}
 	}
 	return nil
-}
-
-// ListSharedEntries is the shared read path: it returns every entry granted to
-// the caller across the audiences they belong to, decrypted and author-verified,
-// WITHOUT merging any of it into the local log. For each audience it verifies the
-// epoch chain, then for each live grant it unwraps the epoch key, unwraps the
-// DEK (GrantAAD-bound), verifies the author signature against the PINNED author
-// identity (hard fail if unpinned), and decrypts the payload.
-func (s *Service) ListSharedEntries(ctx context.Context) ([]SharedEntry, error) {
-	sess, err := s.session(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// Converge trust decisions from the account's other devices before reading:
-	// without this a device provisioned in a past session would render teammates
-	// as unverified and hard-fail on ErrNotPinned for their shared entries.
-	s.pullPins(ctx, sess)
-	audiences, err := getAudiences(ctx, s.http, sess.base, sess.token)
-	if err != nil {
-		return nil, err
-	}
-
-	var out []SharedEntry
-	for _, aud := range audiences {
-		entries, aerr := s.readAudienceEntries(ctx, sess, aud.ID)
-		if aerr != nil {
-			return nil, gerrors.Wrapf(aerr, "audience %s", aud.ID)
-		}
-		out = append(out, entries...)
-	}
-	return out, nil
-}
-
-func (s *Service) readAudienceEntries(ctx context.Context, sess *sharingSession, audienceID string) ([]SharedEntry, error) {
-	verified, err := s.verifiedEpochs(ctx, sess, audienceID)
-	if err != nil {
-		return nil, err
-	}
-	if len(verified) == 0 {
-		return nil, nil
-	}
-
-	grants, err := getGrantsForAudience(ctx, s.http, sess.base, sess.token, audienceID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Only grants that are not my own authored entries are "shared to me"; a
-	// grant I authored points at my own entry, already in my local log. Filter to
-	// other authors, live, and within the time window.
-	now := time.Now()
-	epochPrivs := make(map[int][]byte)
-	authorPubs := make(map[string]sharing.PublicIdentity)
-	var wantIDs []string
-	live := make(map[string]grantRow)
-	for _, g := range grants {
-		if g.AuthorID == sess.userID || g.Revoked {
-			continue
-		}
-		if !grantLive(g, now) {
-			continue
-		}
-		wantIDs = append(wantIDs, g.EntryID)
-		live[g.EntryID] = g
-	}
-	if len(wantIDs) == 0 {
-		return nil, nil
-	}
-
-	rows, err := getEntriesByIDs(ctx, s.http, sess.base, sess.token, wantIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	var out []SharedEntry
-	for _, row := range rows {
-		if row.Deleted {
-			continue
-		}
-		g := live[row.ID]
-		act, aerr := s.decryptSharedEntry(ctx, sess, audienceID, g, row, epochPrivs, authorPubs)
-		if aerr != nil {
-			// A single undecryptable/unverifiable row is skipped, not fatal — but an
-			// unpinned author is a hard fail surfaced to the caller.
-			if errors.Is(aerr, ErrNotPinned) {
-				return nil, aerr
-			}
-			continue
-		}
-		out = append(out, SharedEntry{
-			AudienceID: audienceID, AuthorID: row.UserID, Activity: act, Status: row.ContributionStatus,
-		})
-	}
-	return out, nil
 }
 
 // decryptSharedEntry performs the per-entry read: unwrap the epoch key (cached

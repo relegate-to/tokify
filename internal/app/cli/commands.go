@@ -43,9 +43,9 @@ type startOptions struct {
 func (r *runner) runStart(ctx context.Context, args []string) error {
 	options := startOptions{}
 	flags := newFlagSet("start", startHelp, r.stderr)
-	stringFlag(flags, &options.project, "project", "p", "", "Project name")
-	stringFlag(flags, &options.description, "description", "d", "", "Activity description")
-	stringFlag(flags, &options.at, "time", "t", "", "Start time")
+	stringFlag(flags, &options.project, "project", "p", "Project name")
+	stringFlag(flags, &options.description, "description", "d", "Activity description")
+	stringFlag(flags, &options.at, "time", "t", "Start time")
 	flags.StringVar(&options.notes, "note", "", "Initial activity notes")
 	flags.StringVar(&options.tags, "tags", "", "Comma-separated tags")
 	flags.BoolVar(&options.jsonOutput, "json", false, "Print JSON")
@@ -85,7 +85,7 @@ func (r *runner) runStop(ctx context.Context, args []string) error {
 	flags := newFlagSet("stop", stopHelp, r.stderr)
 	var at, notes, tags string
 	var jsonOutput bool
-	stringFlag(flags, &at, "time", "t", "", "Stop time")
+	stringFlag(flags, &at, "time", "t", "Stop time")
 	flags.StringVar(&notes, "note", "", "Activity notes")
 	flags.StringVar(&tags, "tags", "", "Comma-separated tags")
 	flags.BoolVar(&jsonOutput, "json", false, "Print JSON")
@@ -135,7 +135,7 @@ func (r *runner) runCurrent(ctx context.Context, args []string) error {
 	flags := newFlagSet("current", currentHelp, r.stderr)
 	var format string
 	var jsonOutput bool
-	stringFlag(flags, &format, "format", "F", "", "Output template")
+	stringFlag(flags, &format, "format", "F", "Output template")
 	flags.BoolVar(&jsonOutput, "json", false, "Print JSON")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -183,9 +183,9 @@ Options:
 func (r *runner) runContinue(ctx context.Context, args []string) error {
 	options := startOptions{}
 	flags := newFlagSet("continue", continueHelp, r.stderr)
-	stringFlag(flags, &options.project, "project", "p", "", "Project override")
-	stringFlag(flags, &options.description, "description", "d", "", "Description override")
-	stringFlag(flags, &options.at, "time", "t", "", "Start time")
+	stringFlag(flags, &options.project, "project", "p", "Project override")
+	stringFlag(flags, &options.description, "description", "d", "Description override")
+	stringFlag(flags, &options.at, "time", "t", "Start time")
 	flags.StringVar(&options.notes, "note", "", "Initial activity notes")
 	flags.StringVar(&options.tags, "tags", "", "Comma-separated tags")
 	flags.BoolVar(&options.jsonOutput, "json", false, "Print JSON")
@@ -322,9 +322,9 @@ func splitTags(value string) []string {
 	return tags
 }
 
-func stringFlag(flags *flag.FlagSet, target *string, name, short, value, usage string) {
-	flags.StringVar(target, name, value, usage)
-	flags.StringVar(target, short, value, usage+" (shorthand)")
+func stringFlag(flags *flag.FlagSet, target *string, name, short, usage string) {
+	flags.StringVar(target, name, "", usage)
+	flags.StringVar(target, short, "", usage+" (shorthand)")
 }
 
 func intFlag(flags *flag.FlagSet, target *int, name, short string, value int, usage string) {

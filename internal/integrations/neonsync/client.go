@@ -127,26 +127,40 @@ func upsertEntries(ctx context.Context, hc *http.Client, base, token string, row
 // resurrecting the entry from their still-live local copy. RLS scopes the PATCH
 // to the JWT owner. ids are hex content hashes, so they need no URL escaping.
 func markDeleted(ctx context.Context, hc *http.Client, base, token string, ids []string) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	path := "/entries?id=in.(" + strings.Join(ids, ",") + ")"
-	body := []byte(`{"deleted":true}`)
-	_, err := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
-	return err
+	return inBatches(ids, func(batch []string) error {
+		path := "/entries?id=in.(" + strings.Join(batch, ",") + ")"
+		body := []byte(`{"deleted":true}`)
+		_, err := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
+		return err
+	})
 }
 
 // markRestored clears cloud tombstones only for entries explicitly restored by
 // the user. Normal pushes continue to omit deleted=false, so an ordinary stale
 // local copy can never resurrect a deletion from another device.
 func markRestored(ctx context.Context, hc *http.Client, base, token string, ids []string) error {
-	if len(ids) == 0 {
-		return nil
+	return inBatches(ids, func(batch []string) error {
+		path := "/entries?id=in.(" + strings.Join(batch, ",") + ")"
+		body := []byte(`{"deleted":false}`)
+		_, err := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
+		return err
+	})
+}
+
+// idBatchSize caps how many values go into one PostgREST `in.(...)` filter. The
+// filter rides in the request line, which proxies commonly cap near 8 KB; entry
+// ids are 64-char hex hashes, so 100 of them stay around 6.5 KB.
+const idBatchSize = 100
+
+// inBatches calls fn over consecutive slices of ids no longer than idBatchSize,
+// stopping at the first error.
+func inBatches(ids []string, fn func(batch []string) error) error {
+	for start := 0; start < len(ids); start += idBatchSize {
+		if err := fn(ids[start:min(start+idBatchSize, len(ids))]); err != nil {
+			return err
+		}
 	}
-	path := "/entries?id=in.(" + strings.Join(ids, ",") + ")"
-	body := []byte(`{"deleted":false}`)
-	_, err := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
-	return err
+	return nil
 }
 
 // doJSON performs one Data API request with the bearer JWT and returns the
@@ -233,4 +247,19 @@ func isUniqueViolation(err error) bool {
 func isUnknownColumn(err error) bool {
 	var e *apiStatusError
 	return errors.As(err, &e) && (e.code == "PGRST204" || e.code == "42703")
+}
+
+// isMissingSchema reports whether err is PostgREST saying a table or function
+// does not exist (PGRST205/42P01, PGRST202/42883) — how a deployment that has
+// not applied a newer migration answers a request for one of its objects.
+func isMissingSchema(err error) bool {
+	var e *apiStatusError
+	if !errors.As(err, &e) {
+		return false
+	}
+	switch e.code {
+	case "PGRST205", "42P01", "PGRST202", "42883":
+		return true
+	}
+	return false
 }

@@ -46,13 +46,13 @@ psql_in() {
 echo "==> waiting for postgres to accept connections"
 for _ in $(seq 1 60); do
     if "$DOCKER" exec -e PGPASSWORD="$PGPASS" "$CONTAINER" \
-        pg_isready -U postgres -d tokify >/dev/null 2>&1; then
+        pg_isready -h 127.0.0.1 -U postgres -d tokify >/dev/null 2>&1; then
         break
     fi
     sleep 0.5
 done
 "$DOCKER" exec -e PGPASSWORD="$PGPASS" "$CONTAINER" \
-    pg_isready -U postgres -d tokify >/dev/null 2>&1 \
+    pg_isready -h 127.0.0.1 -U postgres -d tokify >/dev/null 2>&1 \
     || { echo "error: postgres never became ready" >&2; exit 1; }
 
 # --------------------------------------------------------------------------

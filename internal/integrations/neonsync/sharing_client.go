@@ -137,9 +137,9 @@ func getIdentity(ctx context.Context, hc *http.Client, base, token, userID strin
 // The read path treats it as an unpinnable identity (a hard failure to trust).
 var errIdentityNotFound = gerrors.New("neonsync: no published identity")
 
-// getIdentities fetches published identities for many users in one request,
-// keyed by user_id — the batched form of getIdentity that a roster or an author
-// list uses instead of a per-user round-trip. A user with no published identity
+// getIdentities fetches published identities for many users in batched
+// requests, keyed by user_id — the batched form of getIdentity that a roster or
+// an author list uses instead of a per-user round-trip. A user with no published identity
 // is simply absent from the map; empty in, empty out.
 func getIdentities(ctx context.Context, hc *http.Client, base, token string, userIDs []string) (map[string]identityRow, error) {
 	out := make(map[string]identityRow, len(userIDs))
@@ -155,17 +155,23 @@ func getIdentities(ctx context.Context, hc *http.Client, base, token string, use
 		seen[id] = struct{}{}
 		quoted = append(quoted, q(id))
 	}
-	path := "/identities?select=*&user_id=in.(" + strings.Join(quoted, ",") + ")"
-	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	err := inBatches(quoted, func(batch []string) error {
+		path := "/identities?select=*&user_id=in.(" + strings.Join(batch, ",") + ")"
+		data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+		if err != nil {
+			return err
+		}
+		var rows []identityRow
+		if uerr := json.Unmarshal(data, &rows); uerr != nil {
+			return gerrors.Wrap(uerr, "decode identities")
+		}
+		for _, r := range rows {
+			out[r.UserID] = r
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	var rows []identityRow
-	if uerr := json.Unmarshal(data, &rows); uerr != nil {
-		return nil, gerrors.Wrap(uerr, "decode identities")
-	}
-	for _, r := range rows {
-		out[r.UserID] = r
 	}
 	return out, nil
 }
@@ -325,9 +331,9 @@ func getMembers(ctx context.Context, hc *http.Client, base, token, audienceID st
 	return rows, nil
 }
 
-// getMembersByAudiences fetches members for many audiences in one request,
+// getMembersByAudiences fetches members for many audiences in batched requests,
 // grouped by audience_id — the batched form of getMembers so a roster over N
-// teams costs one round-trip, not N. Empty in, empty map out.
+// teams doesn't cost N round-trips. Empty in, empty map out.
 func getMembersByAudiences(
 	ctx context.Context,
 	hc *http.Client,
@@ -342,17 +348,23 @@ func getMembersByAudiences(
 	for i, id := range audienceIDs {
 		quoted[i] = q(id)
 	}
-	path := "/audience_members?select=*&audience_id=in.(" + strings.Join(quoted, ",") + ")"
-	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+	err := inBatches(quoted, func(batch []string) error {
+		path := "/audience_members?select=*&audience_id=in.(" + strings.Join(batch, ",") + ")"
+		data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+		if err != nil {
+			return err
+		}
+		var rows []audienceMemberRow
+		if uerr := json.Unmarshal(data, &rows); uerr != nil {
+			return gerrors.Wrap(uerr, "decode members")
+		}
+		for _, r := range rows {
+			out[r.AudienceID] = append(out[r.AudienceID], r)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	var rows []audienceMemberRow
-	if uerr := json.Unmarshal(data, &rows); uerr != nil {
-		return nil, gerrors.Wrap(uerr, "decode members")
-	}
-	for _, r := range rows {
-		out[r.AudienceID] = append(out[r.AudienceID], r)
 	}
 	return out, nil
 }
@@ -436,11 +448,13 @@ func deleteEpochKeys(ctx context.Context, hc *http.Client, base, token, audience
 	for i, m := range memberIDs {
 		quoted[i] = q(m)
 	}
-	path := "/audience_epoch_keys?audience_id=eq." + q(audienceID) +
-		"&epoch=eq." + strconv.Itoa(epoch) +
-		"&member_id=in.(" + strings.Join(quoted, ",") + ")"
-	_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
-	return err
+	return inBatches(quoted, func(batch []string) error {
+		path := "/audience_epoch_keys?audience_id=eq." + q(audienceID) +
+			"&epoch=eq." + strconv.Itoa(epoch) +
+			"&member_id=in.(" + strings.Join(batch, ",") + ")"
+		_, err := doJSON(ctx, hc, http.MethodDelete, endpoint(base, path), token, nil, "return=minimal")
+		return err
+	})
 }
 
 // getMyEpochKeys fetches the epoch keys wrapped to the caller for one audience
@@ -580,22 +594,95 @@ func deleteAudienceName(ctx context.Context, hc *http.Client, base, token, audie
 	return err
 }
 
-// --- entries (shared read path) ---
+// --- change tracking (sharing_schema.sql Section 7) ---
 
-// getEntryByID fetches a single entry the caller can see (own row or a live
-// grant). Used by the shared read path to pull granted entries for decryption.
-func getEntriesByIDs(ctx context.Context, hc *http.Client, base, token string, ids []string) ([]sharedEntryRow, error) {
-	if len(ids) == 0 {
-		return nil, nil
+// audienceChangeRow mirrors audience_changes: the cursors a member compares
+// against its cached view to decide whether an audience needs re-reading.
+type audienceChangeRow struct {
+	AudienceID    string `json:"audience_id"`
+	Seq           int64  `json:"seq"`
+	StructureSeq  int64  `json:"structure_seq"`
+	RemovalsFloor int64  `json:"removals_floor"`
+}
+
+func getAudienceChanges(ctx context.Context, hc *http.Client, base, token string) ([]audienceChangeRow, error) {
+	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, "/audience_changes?select=*"), token, nil, "")
+	if err != nil {
+		return nil, err
 	}
-	path := "/entries?select=*&id=in.(" + strings.Join(ids, ",") + ")"
+	var rows []audienceChangeRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode audience changes")
+	}
+	return rows, nil
+}
+
+type grantRemovalRow struct {
+	EntryID string `json:"entry_id"`
+	Seq     int64  `json:"seq"`
+}
+
+// getGrantRemovals lists grants deleted from an audience after `since`.
+func getGrantRemovals(ctx context.Context, hc *http.Client, base, token, audienceID string, since int64) ([]grantRemovalRow, error) {
+	path := "/grant_removals?select=entry_id,seq&audience_id=eq." + q(audienceID) +
+		"&seq=gt." + strconv.FormatInt(since, 10)
 	data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
 	if err != nil {
 		return nil, err
 	}
-	var rows []sharedEntryRow
+	var rows []grantRemovalRow
 	if uerr := json.Unmarshal(data, &rows); uerr != nil {
-		return nil, gerrors.Wrap(uerr, "decode shared entries")
+		return nil, gerrors.Wrap(uerr, "decode grant removals")
+	}
+	return rows, nil
+}
+
+// deltaRow is one row of sharing_audience_delta: a grant that changed, or whose
+// entry did, with the entry as the caller may see it — nil once it is hidden.
+type deltaRow struct {
+	grantRow
+
+	Entry *sharedEntryRow `json:"entry"`
+}
+
+func getAudienceDelta(ctx context.Context, hc *http.Client, base, token, audienceID string, since int64) ([]deltaRow, error) {
+	body, err := json.Marshal(map[string]any{"aud": audienceID, "since": since})
+	if err != nil {
+		return nil, err
+	}
+	data, err := doJSON(ctx, hc, http.MethodPost, endpoint(base, "/rpc/sharing_audience_delta"), token, body, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []deltaRow
+	if uerr := json.Unmarshal(data, &rows); uerr != nil {
+		return nil, gerrors.Wrap(uerr, "decode audience delta")
+	}
+	return rows, nil
+}
+
+// --- entries (shared read path) ---
+
+// getEntriesByIDs fetches the entries the caller can see (own rows or live
+// grants) among ids. Used by the shared read path to pull granted entries for
+// decryption.
+func getEntriesByIDs(ctx context.Context, hc *http.Client, base, token string, ids []string) ([]sharedEntryRow, error) {
+	var rows []sharedEntryRow
+	err := inBatches(ids, func(batch []string) error {
+		path := "/entries?select=*&id=in.(" + strings.Join(batch, ",") + ")"
+		data, err := doJSON(ctx, hc, http.MethodGet, endpoint(base, path), token, nil, "")
+		if err != nil {
+			return err
+		}
+		var page []sharedEntryRow
+		if uerr := json.Unmarshal(data, &page); uerr != nil {
+			return gerrors.Wrap(uerr, "decode shared entries")
+		}
+		rows = append(rows, page...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return rows, nil
 }
