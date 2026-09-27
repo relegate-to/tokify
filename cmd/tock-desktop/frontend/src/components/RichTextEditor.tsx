@@ -18,6 +18,7 @@ import {
 
 import { cn } from '@/lib/utils';
 import { NoteProject, projectPicker } from '@/components/NoteProjects';
+import { TextCaret } from '@/components/TextCaret';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -253,6 +254,7 @@ export const RichTextEditor = memo(function RichTextEditor({
     const extensions = useMemo(
         () => [
             NoteProject,
+            TextCaret,
             ...(hasProjects ? [projectPicker(() => projectsRef.current ?? [])] : []),
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] },

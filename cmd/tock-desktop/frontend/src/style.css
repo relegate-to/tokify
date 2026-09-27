@@ -48,7 +48,18 @@
         @apply flex-1;
     }
     .rich-editor-scroll {
-        @apply flex min-h-0 max-h-64 flex-1 cursor-text flex-col overflow-y-auto;
+        @apply relative flex min-h-0 max-h-64 flex-1 cursor-text flex-col overflow-y-auto;
+    }
+    .rich-editor-caret {
+        @apply pointer-events-none absolute left-0 top-0 w-0.5 rounded-full bg-foreground;
+        animation: rich-editor-caret-blink 1.05s steps(1) infinite;
+    }
+    .rich-editor-caret[hidden] { display: none; }
+    @keyframes rich-editor-caret-blink {
+        50% { opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .rich-editor-caret { animation: none; }
     }
     .rich-editor-scroll > .tiptap {
         @apply flex-1;
@@ -65,6 +76,7 @@
     .rich-editor-prose {
         @apply text-foreground outline-none;
         overflow-wrap: anywhere;
+        caret-color: transparent;
     }
     .rich-editor-prose > * + * {
         @apply mt-2;
