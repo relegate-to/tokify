@@ -9,6 +9,7 @@ import (
 	"github.com/go-faster/errors"
 
 	"github.com/kriuchkov/tock/internal/adapters/repositories/sqlite"
+	"github.com/kriuchkov/tock/internal/app/history"
 	"github.com/kriuchkov/tock/internal/core/ports"
 	"github.com/kriuchkov/tock/internal/services/activity"
 	"github.com/kriuchkov/tock/internal/timeutil"
@@ -18,6 +19,7 @@ type Runtime struct {
 	ActivityService ports.ActivityResolver
 	ActivityRepo    ports.ActivityRepository
 	NotesRepository ports.NotesRepository
+	History         *history.Journal
 	DataPath        string
 	TimeFormatter   *timeutil.Formatter
 }
@@ -38,6 +40,7 @@ func Load(ctx context.Context, path string) (*Runtime, error) {
 		ActivityService: activity.NewService(repo, notesRepo),
 		ActivityRepo:    repo,
 		NotesRepository: notesRepo,
+		History:         history.New(repo, 100),
 		DataPath:        filePath,
 		TimeFormatter:   timeutil.NewFormatter("24"),
 	}, nil

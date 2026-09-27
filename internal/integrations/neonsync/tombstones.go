@@ -35,6 +35,14 @@ func newTombstoneStore(settingsPath string) *tombstoneStore {
 	return &tombstoneStore{path: filepath.Join(filepath.Dir(settingsPath), "neonsync-tombstones.json")}
 }
 
+// newRestorationStore records explicit requests to make a previously deleted
+// entry live again. It uses the same locked, atomic canonical-value store as
+// tombstones, but a separate file because deletion and restoration have
+// opposite meanings during reconciliation.
+func newRestorationStore(settingsPath string) *tombstoneStore {
+	return &tombstoneStore{path: filepath.Join(filepath.Dir(settingsPath), "neonsync-restorations.json")}
+}
+
 type tombstoneFile struct {
 	Deleted []string `json:"deleted"`
 }

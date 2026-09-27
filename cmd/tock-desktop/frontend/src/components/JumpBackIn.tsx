@@ -22,6 +22,7 @@ export function JumpBackIn({
         orig: Activity,
         description: string,
         project: string,
+        notes: string,
         startISO: string,
         endISO: string,
     ) => void;

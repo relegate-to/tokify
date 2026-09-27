@@ -46,8 +46,8 @@ export function NowView({
     removingKeys: Set<string>;
     activityView: ActivityView;
     dailyGoal: number;
-    onStart: (description: string, project: string) => void;
-    onStartAt: (description: string, project: string, startISO: string) => void;
+    onStart: (description: string, project: string, notes: string) => void;
+    onStartAt: (description: string, project: string, notes: string, startISO: string) => void;
     onStop: () => void;
     onShare: (project?: string) => void;
     onResume: (orig: Activity) => void;
@@ -55,6 +55,7 @@ export function NowView({
         orig: Activity,
         description: string,
         project: string,
+        notes: string,
         startISO: string,
         endISO: string,
     ) => void;
@@ -132,7 +133,12 @@ export function NowView({
     return (
         <div className="relative mx-auto flex min-h-full w-full max-w-[1020px] flex-1 flex-col gap-[34px]">
             {running ? (
-                <NowRunning activity={running} onStop={onStop} />
+                <NowRunning
+                    activity={running}
+                    projects={projects}
+                    onStop={onStop}
+                    onUpdate={onUpdate}
+                />
             ) : (
                 <Starter
                     projects={projects}

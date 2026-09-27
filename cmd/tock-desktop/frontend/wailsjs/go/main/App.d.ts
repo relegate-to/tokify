@@ -7,9 +7,11 @@ import {main} from '../models';
 import {projects} from '../models';
 import {neonsync} from '../models';
 
+export function ActivityHistoryState():Promise<string>;
+
 export function ActivityLogPath():Promise<string>;
 
-export function AddActivity(arg1:string,arg2:string,arg3:string,arg4:string):Promise<models.Activity>;
+export function AddActivity(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<models.Activity>;
 
 export function AgentSetup():Promise<mcpserver.Setup>;
 
@@ -55,6 +57,8 @@ export function OpenApplicationDataDirectory():Promise<void>;
 
 export function Projects():Promise<Array<string>>;
 
+export function RedoLastActivityChange():Promise<string>;
+
 export function RemoveActivity(arg1:models.Activity):Promise<void>;
 
 export function RenameProject(arg1:string,arg2:string):Promise<projects.Project>;
@@ -97,9 +101,9 @@ export function SharingTeamMembers(arg1:string):Promise<Array<neonsync.TeamMembe
 
 export function SharingTeamShare(arg1:string):Promise<neonsync.ShareView>;
 
-export function Start(arg1:string,arg2:string):Promise<models.Activity>;
+export function Start(arg1:string,arg2:string,arg3:string):Promise<models.Activity>;
 
-export function StartAt(arg1:string,arg2:string,arg3:string):Promise<models.Activity>;
+export function StartAt(arg1:string,arg2:string,arg3:string,arg4:string):Promise<models.Activity>;
 
 export function Stop():Promise<models.Activity>;
 
@@ -109,4 +113,6 @@ export function SyncSetEnabled(arg1:boolean):Promise<neonsync.SyncStatus>;
 
 export function SyncStatus():Promise<neonsync.SyncStatus>;
 
-export function UpdateActivity(arg1:models.Activity,arg2:string,arg3:string,arg4:string,arg5:string):Promise<models.Activity>;
+export function UndoLastActivityChange():Promise<string>;
+
+export function UpdateActivity(arg1:models.Activity,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<models.Activity>;

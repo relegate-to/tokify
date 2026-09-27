@@ -6,7 +6,8 @@ Orientation file for future Claude sessions in this repo. Read this first.
 
 Tokify is a macOS menu-bar time tracker built with Wails. It began as a fork of
 [tock](https://github.com/kriuchkov/tock) by Vladimir Kriuchkov and retains its
-domain model, but the product is now desktop-only and does not ship a CLI.
+domain model. It ships a Tokify-native CLI alongside the desktop app; the old
+`tock` executable and its separate backend/config system remain retired.
 
 The desktop stores activities in SQLite (`~/.tock.db`) and imports a legacy
 `~/.tock.txt` once when the database is empty. See [`TOKIFY.md`](TOKIFY.md) for
@@ -30,8 +31,10 @@ cmd/tock-desktop      Wails desktop app (Tokify additions live here)
                       `tock-desktop mcp` serves agents over stdio instead
   frontend/           React + TypeScript + Vite + Tailwind v4 + shadcn/ui
   build/              Wails output (.app) and platform assets
+cmd/tokify            Scriptable CLI entrypoint
 internal/             Tokify domain and application code
   app/                application services (runtime, export, storage, …)
+    cli/              CLI commands over the shared SQLite runtime
     logbook/          agent-facing list/add/edit/delete rules (overlaps, time parsing)
     mcpserver/        MCP tools over logbook; setup snippets shown in Settings
   adapters/           SQLite plus the legacy text-log migration reader
@@ -51,6 +54,8 @@ make desktop-build             # host-arch .app (fast incremental)
 make desktop-build-universal   # arm64 + amd64 fat binary for release
 make desktop-run               # build, then `open Tokify.app`
 make desktop-doctor            # verify Wails toolchain
+make cli-build                 # build bin/tokify
+make cli-install               # install tokify on the Go binary path
 
 make test                      # Go tests inside Docker (golang:1.26.3)
 make linter                    # golangci-lint inside Docker

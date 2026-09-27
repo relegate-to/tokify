@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,6 +20,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	exportapp "github.com/kriuchkov/tock/internal/app/export"
+	"github.com/kriuchkov/tock/internal/app/history"
 	"github.com/kriuchkov/tock/internal/app/mcpserver"
 	projectreg "github.com/kriuchkov/tock/internal/app/projects"
 	"github.com/kriuchkov/tock/internal/app/runtime"
@@ -26,6 +28,7 @@ import (
 	teamreg "github.com/kriuchkov/tock/internal/app/teams"
 	"github.com/kriuchkov/tock/internal/appdir"
 	"github.com/kriuchkov/tock/internal/core/models"
+	"github.com/kriuchkov/tock/internal/core/ports"
 	"github.com/kriuchkov/tock/internal/integrations/neonauth"
 	"github.com/kriuchkov/tock/internal/integrations/neonsync"
 	"github.com/kriuchkov/tock/internal/timeutil"
@@ -52,6 +55,11 @@ type App struct {
 
 	syncing          atomic.Bool
 	sharedRefreshing atomic.Bool
+}
+
+func undoStateJSON(status history.Status) string {
+	data, _ := json.Marshal(status)
+	return string(data)
 }
 
 // Encrypted sync runs on its own without the user clicking "Sync now": once
@@ -313,6 +321,115 @@ func (a *App) requireRuntime() error {
 	return nil
 }
 
+func (a *App) runningActivities() ([]models.Activity, error) {
+	running := true
+	return a.rt.ActivityService.List(a.ctx, models.ActivityFilter{IsRunning: &running})
+}
+
+func (a *App) activityAt(start time.Time) (*models.Activity, error) {
+	activities, err := a.rt.ActivityService.List(a.ctx, models.ActivityFilter{})
+	if err != nil {
+		return nil, err
+	}
+	for i := range activities {
+		if activities[i].StartTime.Equal(start) {
+			return &activities[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (a *App) ensureStartAvailable(start time.Time, except *time.Time) error {
+	existing, err := a.activityAt(start)
+	if err != nil {
+		return err
+	}
+	if existing != nil && (except == nil || !existing.StartTime.Equal(*except)) {
+		return errors.New("another activity already starts at that time")
+	}
+	return nil
+}
+
+func (a *App) recordStart(before []models.Activity, created models.Activity) {
+	changes := make([]models.ActivityChange, 0, len(before)+1)
+	createdRecorded := false
+	for _, previous := range before {
+		if previous.StartTime.Equal(created.StartTime) {
+			changes = append(changes, history.Replaced(previous, created)...)
+			createdRecorded = true
+			continue
+		}
+		current, err := a.activityAt(previous.StartTime)
+		if err == nil && current != nil {
+			changes = append(changes, history.Replaced(previous, *current)...)
+		}
+	}
+	if !createdRecorded {
+		changes = append(changes, history.Created(created))
+	}
+	a.rt.History.Record("Start activity", changes...)
+}
+
+func (a *App) applyHistorySync(changes []models.ActivityChange) error {
+	if a.neonSync == nil {
+		return nil
+	}
+	for _, change := range changes {
+		if change.Before != nil {
+			if err := a.neonSync.RecordDeletion(*change.Before); err != nil {
+				return errors.Wrap(err, "record undo deletion for sync")
+			}
+		}
+		if change.After != nil {
+			if err := a.neonSync.RecordRestoration(*change.After); err != nil {
+				return errors.Wrap(err, "record undo restoration for sync")
+			}
+		}
+	}
+	a.syncSoon()
+	return nil
+}
+
+// ActivityHistoryState describes the next available undo and redo actions.
+func (a *App) ActivityHistoryState() (string, error) {
+	if err := a.requireRuntime(); err != nil {
+		return "", err
+	}
+	return undoStateJSON(a.rt.History.Status()), nil
+}
+
+// UndoLastActivityChange reverses the latest activity mutation from this desktop session.
+func (a *App) UndoLastActivityChange() (string, error) {
+	if err := a.requireRuntime(); err != nil {
+		return "", err
+	}
+	outcome, err := a.rt.History.Undo(a.ctx)
+	if err != nil {
+		return undoStateJSON(outcome.Status), err
+	}
+	a.refreshTrayTitle()
+	if err = a.applyHistorySync(outcome.Changes); err != nil {
+		return undoStateJSON(outcome.Status), err
+	}
+	return undoStateJSON(outcome.Status), nil
+}
+
+// RedoLastActivityChange reapplies the latest activity mutation undone in this desktop session.
+func (a *App) RedoLastActivityChange() (string, error) {
+	if err := a.requireRuntime(); err != nil {
+		return "", err
+	}
+	outcome, err := a.rt.History.Redo(a.ctx)
+	if err != nil {
+		return undoStateJSON(outcome.Status), err
+	}
+	a.refreshTrayTitle()
+	if err = a.applyHistorySync(outcome.Changes); err != nil {
+		return undoStateJSON(outcome.Status), err
+	}
+	return undoStateJSON(outcome.Status), nil
+}
+
 // GetRunning returns the activity currently being tracked, or nil if nothing
 // is running. The window's hero state.
 func (a *App) GetRunning() (*models.Activity, error) {
@@ -366,7 +483,7 @@ func (a *App) ListPastYear() ([]models.Activity, error) {
 
 // Start begins a new activity. Description is required; project is optional.
 // Starting a new one stops anything already running.
-func (a *App) Start(description, project string) (*models.Activity, error) {
+func (a *App) Start(description, project, notes string) (*models.Activity, error) {
 	if err := a.requireRuntime(); err != nil {
 		return nil, err
 	}
@@ -374,11 +491,17 @@ func (a *App) Start(description, project string) (*models.Activity, error) {
 	if description == "" {
 		return nil, errors.New("describe what you're working on")
 	}
+	before, err := a.runningActivities()
+	if err != nil {
+		return nil, err
+	}
 	act, err := a.rt.ActivityService.Start(a.ctx, models.StartActivityRequest{
 		Description: description,
 		Project:     strings.TrimSpace(project),
+		Notes:       notes,
 	})
 	if err == nil {
+		a.recordStart(before, *act)
 		a.refreshTrayTitle()
 		a.syncSoon()
 	}
@@ -387,7 +510,7 @@ func (a *App) Start(description, project string) (*models.Activity, error) {
 
 // StartAt begins a new activity with an explicit start time — for when the
 // user forgot to start tracking earlier. Otherwise identical to Start.
-func (a *App) StartAt(description, project, startISO string) (*models.Activity, error) {
+func (a *App) StartAt(description, project, notes, startISO string) (*models.Activity, error) {
 	if err := a.requireRuntime(); err != nil {
 		return nil, err
 	}
@@ -402,12 +525,21 @@ func (a *App) StartAt(description, project, startISO string) (*models.Activity, 
 	if start.After(time.Now()) {
 		return nil, errors.New("start time must be in the past")
 	}
+	if err = a.ensureStartAvailable(start, nil); err != nil {
+		return nil, err
+	}
+	before, err := a.runningActivities()
+	if err != nil {
+		return nil, err
+	}
 	act, err := a.rt.ActivityService.Start(a.ctx, models.StartActivityRequest{
 		Description: description,
 		Project:     strings.TrimSpace(project),
+		Notes:       notes,
 		StartTime:   start,
 	})
 	if err == nil {
+		a.recordStart(before, *act)
 		a.refreshTrayTitle()
 		a.syncSoon()
 	}
@@ -416,7 +548,7 @@ func (a *App) StartAt(description, project, startISO string) (*models.Activity, 
 
 // AddActivity creates a completed activity with arbitrary start and end times —
 // for back-filling tracked work that wasn't recorded live.
-func (a *App) AddActivity(description, project, startISO, endISO string) (*models.Activity, error) {
+func (a *App) AddActivity(description, project, notes, startISO, endISO string) (*models.Activity, error) {
 	if err := a.requireRuntime(); err != nil {
 		return nil, err
 	}
@@ -435,13 +567,18 @@ func (a *App) AddActivity(description, project, startISO, endISO string) (*model
 	if !end.After(start) {
 		return nil, errors.New("end must be after start")
 	}
+	if err = a.ensureStartAvailable(start, nil); err != nil {
+		return nil, err
+	}
 	act, err := a.rt.ActivityService.Add(a.ctx, models.AddActivityRequest{
 		Description: description,
 		Project:     strings.TrimSpace(project),
+		Notes:       notes,
 		StartTime:   start,
 		EndTime:     end,
 	})
 	if err == nil {
+		a.rt.History.Record("Add activity", history.Created(*act))
 		a.syncSoon()
 	}
 	return act, err
@@ -452,8 +589,15 @@ func (a *App) Stop() (*models.Activity, error) {
 	if err := a.requireRuntime(); err != nil {
 		return nil, err
 	}
+	before, err := a.GetRunning()
+	if err != nil {
+		return nil, err
+	}
 	act, err := a.rt.ActivityService.Stop(a.ctx, models.StopActivityRequest{})
 	if err == nil {
+		if before != nil {
+			a.rt.History.Record("Stop activity", history.Replaced(*before, *act)...)
+		}
 		a.refreshTrayTitle()
 		a.syncSoon()
 	}
@@ -465,7 +609,7 @@ func (a *App) Stop() (*models.Activity, error) {
 // original start, the activity is moved to the new start time (the repo's
 // key) by removing the original row and saving under the new key. End time
 // changes are applied in place.
-func (a *App) UpdateActivity(orig models.Activity, description, project, startISO, endISO string) (*models.Activity, error) {
+func (a *App) UpdateActivity(orig models.Activity, description, project, notes, startISO, endISO string) (*models.Activity, error) {
 	if err := a.requireRuntime(); err != nil {
 		return nil, err
 	}
@@ -476,6 +620,7 @@ func (a *App) UpdateActivity(orig models.Activity, description, project, startIS
 	updated := orig
 	updated.Description = description
 	updated.Project = strings.TrimSpace(project)
+	updated.Notes = notes
 
 	newStart := orig.StartTime
 	if s := strings.TrimSpace(startISO); s != "" {
@@ -498,16 +643,21 @@ func (a *App) UpdateActivity(orig models.Activity, description, project, startIS
 	if newEnd != nil && newStart.After(*newEnd) {
 		return nil, errors.New("start must not be after end")
 	}
-
 	if !newStart.Equal(orig.StartTime) {
-		if err := a.rt.ActivityService.Remove(a.ctx, orig); err != nil {
+		if err := a.ensureStartAvailable(newStart, &orig.StartTime); err != nil {
 			return nil, err
 		}
-		updated.StartTime = newStart
 	}
+
+	updated.StartTime = newStart
 	updated.EndTime = newEnd
 
-	if err := a.rt.ActivityRepo.Save(a.ctx, updated); err != nil {
+	changes := history.Replaced(orig, updated)
+	changeRepo, ok := a.rt.ActivityRepo.(ports.ActivityChangeRepository)
+	if !ok {
+		return nil, errors.New("activity history is unavailable")
+	}
+	if err := changeRepo.ApplyChanges(a.ctx, changes); err != nil {
 		return nil, err
 	}
 	// An edit changes the entry's content id, orphaning the pre-edit row in the
@@ -517,6 +667,7 @@ func (a *App) UpdateActivity(orig models.Activity, description, project, startIS
 		_ = a.neonSync.RecordDeletion(orig)
 		a.syncSoon()
 	}
+	a.rt.History.Record("Edit activity", changes...)
 	a.refreshTrayTitle()
 	return &updated, nil
 }
@@ -526,13 +677,19 @@ func (a *App) RemoveActivity(orig models.Activity) error {
 	if err := a.requireRuntime(); err != nil {
 		return err
 	}
-	if err := a.rt.ActivityService.Remove(a.ctx, orig); err != nil {
+	change := history.Deleted(orig)
+	changeRepo, ok := a.rt.ActivityRepo.(ports.ActivityChangeRepository)
+	if !ok {
+		return errors.New("activity history is unavailable")
+	}
+	if err := changeRepo.ApplyChanges(a.ctx, []models.ActivityChange{change}); err != nil {
 		return err
 	}
 	if a.neonSync != nil {
 		_ = a.neonSync.RecordDeletion(orig)
 		a.syncSoon()
 	}
+	a.rt.History.Record("Delete activity", change)
 	a.refreshTrayTitle()
 	return nil
 }

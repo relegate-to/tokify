@@ -21,13 +21,14 @@ import {
     PopoverTrigger,
 } from '@/components/ui/popover';
 import { ProjectField } from '@/components/ProjectField';
+import { RichTextEditor } from '@/components/RichTextEditor';
 
 export function AddPastButton({
     projects,
     onAddPast,
 }: {
     projects: string[];
-    onAddPast: (description: string, project: string, startISO: string, endISO: string) => void;
+    onAddPast: (description: string, project: string, notes: string, startISO: string, endISO: string) => void;
 }) {
     const [open, setOpen] = useState(false);
     return (
@@ -61,10 +62,11 @@ function AddPastDialog({
     open: boolean;
     onOpenChange: (v: boolean) => void;
     projects: string[];
-    onAddPast: (description: string, project: string, startISO: string, endISO: string) => void;
+    onAddPast: (description: string, project: string, notes: string, startISO: string, endISO: string) => void;
 }) {
     const [description, setDescription] = useState('');
     const [project, setProject] = useState('');
+    const [notes, setNotes] = useState('');
     const [date, setDate] = useState<Date>(() => startOfDay(new Date()));
     const [datePickerOpen, setDatePickerOpen] = useState(false);
     const [startStr, setStartStr] = useState('09:00');
@@ -74,6 +76,7 @@ function AddPastDialog({
         if (!open) return;
         setDescription('');
         setProject('');
+        setNotes('');
         setDate(startOfDay(new Date()));
         setStartStr('09:00');
         setEndStr('10:00');
@@ -99,7 +102,7 @@ function AddPastDialog({
             toast.error('End must be after start');
             return;
         }
-        onAddPast(trimmed, project.trim(), startISO, endISO);
+        onAddPast(trimmed, project.trim(), notes, startISO, endISO);
         onOpenChange(false);
     };
 
@@ -126,6 +129,19 @@ function AddPastDialog({
                                 if (e.key === 'Enter') submit();
                             }}
                             placeholder="What were you working on?"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs text-muted-foreground">
+                            Notes <span className="opacity-60">· optional</span>
+                        </label>
+                        <RichTextEditor
+                            value={notes}
+                            onValueChange={setNotes}
+                            placeholder="Details, links, or next steps"
+                            ariaLabel="Activity notes"
+                            className="min-h-28"
+                            contentClassName="min-h-20 px-3 py-2 text-[15px] leading-7"
                         />
                     </div>
                     <div className="flex flex-col gap-1.5">

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { FileText, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { EASE_THUNK } from '@/lib/motion';
 import { buildClockISO, formatClock } from '@/lib/time';
 import { Input } from '@/components/ui/input';
 import { ProjectPicker } from '@/components/ProjectPicker';
+import { RichTextEditor } from '@/components/RichTextEditor';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 export function Starter({
     projects,
@@ -17,16 +20,19 @@ export function Starter({
     projects: string[];
     lastStop: Date | null;
     defaultProject: string;
-    onStart: (description: string, project: string) => void;
-    onStartAt: (description: string, project: string, startISO: string) => void;
+    onStart: (description: string, project: string, notes: string) => void;
+    onStartAt: (description: string, project: string, notes: string, startISO: string) => void;
 }) {
     const [text, setText] = useState('');
+    const [notes, setNotes] = useState('');
+    const [notesOpen, setNotesOpen] = useState(false);
     const [project, setProject] = useState(defaultProject);
     // Activities load after this mounts, so adopt the default until the picker
     // is touched; after that the choice is the user's.
     const projectTouched = useRef(false);
     const [startAt, setStartAt] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const notesEditorRef = useRef<HTMLDivElement>(null);
     const startAtRef = useRef<HTMLInputElement>(null);
     const startAtOpen = startAt !== null;
 
@@ -60,11 +66,13 @@ export function Starter({
                 toast.error('Start time must be in the past');
                 return;
             }
-            onStartAt(trimmed, project.trim(), iso);
+            onStartAt(trimmed, project.trim(), notes, iso);
         } else {
-            onStart(trimmed, project.trim());
+            onStart(trimmed, project.trim(), notes);
         }
         setText('');
+        setNotes('');
+        setNotesOpen(false);
         setStartAt(null);
     };
 
@@ -109,6 +117,45 @@ export function Starter({
                         }}
                         suggestions={projects}
                     />
+                    <span
+                        aria-hidden
+                        className="h-[13px] w-px shrink-0 bg-border"
+                    />
+                    <Dialog open={notesOpen} onOpenChange={setNotesOpen}>
+                        <DialogTrigger asChild>
+                            <button
+                                type="button"
+                                className="flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3.5"
+                            >
+                                <FileText />
+                                {notes ? 'Edit notes' : 'Add notes'}
+                            </button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-lg" onOpenAutoFocus={(event) => {
+                            const input = notesEditorRef.current?.querySelector<HTMLElement>('[contenteditable="true"]');
+                            if (input) {
+                                event.preventDefault();
+                                input.focus();
+                            }
+                        }}>
+                            <DialogHeader>
+                                <DialogTitle>Activity notes</DialogTitle>
+                                <DialogDescription>These notes will be included when you start the activity.</DialogDescription>
+                            </DialogHeader>
+                            <div ref={notesEditorRef}>
+                                <RichTextEditor
+                                    value={notes}
+                                    onValueChange={setNotes}
+                                    placeholder="Notes, links, or next steps"
+                                    ariaLabel="Activity notes"
+                                    contentClassName="min-h-48 px-3 py-2 text-[15px] leading-7"
+                                />
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button type="button">Done</Button></DialogClose>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                     <span
                         aria-hidden
                         className="h-[13px] w-px shrink-0 bg-border"

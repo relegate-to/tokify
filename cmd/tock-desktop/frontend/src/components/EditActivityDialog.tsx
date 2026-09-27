@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ProjectField } from '@/components/ProjectField';
+import { RichTextEditor } from '@/components/RichTextEditor';
 
 export function EditActivityDialog({
     open,
@@ -27,7 +28,7 @@ export function EditActivityDialog({
     onOpenChange: (v: boolean) => void;
     activity: Activity;
     projects: string[];
-    onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
+    onUpdate: (orig: Activity, description: string, project: string, notes: string, startISO: string, endISO: string) => void;
 }) {
     const start = new Date(activity.start_time as any);
     const end = activity.end_time ? new Date(activity.end_time as any) : null;
@@ -35,6 +36,7 @@ export function EditActivityDialog({
 
     const [desc, setDesc] = useState(activity.description ?? '');
     const [project, setProject] = useState(activity.project ?? '');
+    const [notes, setNotes] = useState(activity.notes ?? '');
     const [startStr, setStartStr] = useState(formatClock(start));
     const [endStr, setEndStr] = useState(end ? formatClock(end) : '');
 
@@ -44,10 +46,11 @@ export function EditActivityDialog({
         if (!open) return;
         setDesc(activity.description ?? '');
         setProject(activity.project ?? '');
+        setNotes(activity.notes ?? '');
         setStartStr(formatClock(start));
         setEndStr(end ? formatClock(end) : '');
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, activity.description, activity.project, activity.start_time, activity.end_time]);
+    }, [open, activity.description, activity.project, activity.notes, activity.start_time, activity.end_time]);
 
     const submit = () => {
         const trimmed = desc.trim();
@@ -73,7 +76,7 @@ export function EditActivityDialog({
             }
             endISO = built;
         }
-        onUpdate(activity, trimmed, project.trim(), startISO, endISO);
+        onUpdate(activity, trimmed, project.trim(), notes, startISO, endISO);
         onOpenChange(false);
     };
 
@@ -101,6 +104,19 @@ export function EditActivityDialog({
                                 if (e.key === 'Enter') submit();
                             }}
                             placeholder="What were you working on?"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs text-muted-foreground">
+                            Notes
+                        </label>
+                        <RichTextEditor
+                            value={notes}
+                            onValueChange={setNotes}
+                            placeholder="Details, links, or next steps"
+                            ariaLabel="Activity notes"
+                            className="min-h-28"
+                            contentClassName="min-h-24 px-3 py-2 text-[15px] leading-7"
                         />
                     </div>
                     <div className="flex flex-col gap-1.5">

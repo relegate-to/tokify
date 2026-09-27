@@ -136,6 +136,19 @@ func markDeleted(ctx context.Context, hc *http.Client, base, token string, ids [
 	return err
 }
 
+// markRestored clears cloud tombstones only for entries explicitly restored by
+// the user. Normal pushes continue to omit deleted=false, so an ordinary stale
+// local copy can never resurrect a deletion from another device.
+func markRestored(ctx context.Context, hc *http.Client, base, token string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	path := "/entries?id=in.(" + strings.Join(ids, ",") + ")"
+	body := []byte(`{"deleted":false}`)
+	_, err := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=minimal")
+	return err
+}
+
 // doJSON performs one Data API request with the bearer JWT and returns the
 // response body. prefer, when non-empty, sets the PostgREST Prefer header.
 func doJSON(ctx context.Context, hc *http.Client, method, url, token string, body []byte, prefer string) ([]byte, error) {

@@ -1,6 +1,7 @@
 package neonsync
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -70,6 +71,7 @@ type Service struct {
 	settings   Settings
 	path       string
 	tombstones *tombstoneStore
+	restores   *tombstoneStore
 	pins       *PinStore
 }
 
@@ -107,6 +109,7 @@ func NewService(activities ActivityStore, tokens TokenProvider) (*Service, error
 		settings:   s,
 		path:       path,
 		tombstones: newTombstoneStore(path),
+		restores:   newRestorationStore(path),
 		pins:       newPinStore(path),
 	}, nil
 }
@@ -286,10 +289,14 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 		return s.Status(), gerrors.Wrap(err, "auth token")
 	}
 
-	// Read tombstones before the local log. Deletions write the log first and the
-	// tombstone second, so any tombstone seen here has its removal reflected in
-	// the list below; an entry that is still listed was genuinely recreated.
+	// Read pending intents before the local log. Mutations write SQLite first and
+	// the intent second; the local snapshot below is therefore authoritative if
+	// deletion and restoration records race across processes.
 	tombstoned, err := s.tombstones.all()
+	if err != nil {
+		return s.Status(), err
+	}
+	restored, err := s.restores.all()
 	if err != nil {
 		return s.Status(), err
 	}
@@ -314,6 +321,16 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 	delIDs, err := s.pendingDeletions(dek, tombstoned, localByID)
 	if err != nil {
 		return s.Status(), err
+	}
+	restoreIDs, err := s.pendingRestorations(dek, restored, localByID)
+	if err != nil {
+		return s.Status(), err
+	}
+	// Explicit restoration is the sole path allowed to clear a remote tombstone.
+	// Do it before push/pull: an absent row is harmless (push creates it), while
+	// an existing deleted row must be live before pull or it wins over the undo.
+	if err = markRestored(ctx, s.http, base, token, mapKeys(restoreIDs)); err != nil {
+		return s.Status(), gerrors.Wrap(err, "propagate restorations")
 	}
 
 	// A sharing session exists only once the identity is provisioned+unlocked.
@@ -343,6 +360,9 @@ func (s *Service) SyncNow(ctx context.Context) (SyncStatus, error) {
 	merged, perr := s.pull(ctx, base, token, dek, localByID, delIDs)
 	if perr != nil {
 		return s.Status(), perr
+	}
+	if err = s.confirmRestorations(dek, restoreIDs); err != nil {
+		return s.Status(), err
 	}
 
 	s.recordSync(merged)
@@ -380,6 +400,48 @@ func (s *Service) pendingDeletions(
 		}
 	}
 	return del, nil
+}
+
+// pendingRestorations selects queued restorations whose entries are still live
+// locally. A restoration whose row was deleted again before sync is stale and
+// must not clear the cloud tombstone.
+func (s *Service) pendingRestorations(
+	dek []byte,
+	restored [][]byte,
+	localByID map[string]models.Activity,
+) (map[string]struct{}, error) {
+	live := make(map[string]struct{})
+	stale := make(map[string]struct{})
+	for _, c := range restored {
+		id := EntryID(dek, c)
+		if _, ok := localByID[id]; ok {
+			live[id] = struct{}{}
+			continue
+		}
+		stale[string(c)] = struct{}{}
+	}
+	if len(stale) > 0 {
+		if err := s.restores.retain(func(c []byte) bool {
+			_, drop := stale[string(c)]
+			return !drop
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return live, nil
+}
+
+// confirmRestorations removes only intents successfully carried through the
+// entire sync. Values added by another process after this sync's initial read
+// remain queued unless they identify the same already-restored cloud row.
+func (s *Service) confirmRestorations(dek []byte, restored map[string]struct{}) error {
+	if len(restored) == 0 {
+		return nil
+	}
+	return s.restores.retain(func(c []byte) bool {
+		_, done := restored[EntryID(dek, c)]
+		return !done
+	})
 }
 
 // push writes one encrypted row per completed local entry, keyed by content hash
@@ -509,7 +571,32 @@ func (s *Service) RecordDeletion(activity models.Activity) error {
 	if s.dataURL() == "" {
 		return nil
 	}
-	return s.tombstones.add(canonicalize(activity))
+	canonical := canonicalize(activity)
+	if err := s.tombstones.add(canonical); err != nil {
+		return err
+	}
+	// SQLite state remains authoritative if this best-effort cancellation loses
+	// a cross-file race: pendingRestorations drops intents for absent rows.
+	_ = s.restores.retain(func(c []byte) bool { return !bytes.Equal(c, canonical) })
+	return nil
+}
+
+// RecordRestoration persists explicit user intent to revive an activity. It is
+// not equivalent to Save: sync normally preserves remote tombstones, whereas a
+// restoration is allowed to clear deleted=true for this exact content id.
+func (s *Service) RecordRestoration(activity models.Activity) error {
+	if activity.EndTime == nil {
+		return nil
+	}
+	if s.dataURL() == "" {
+		return nil
+	}
+	canonical := canonicalize(activity)
+	if err := s.restores.add(canonical); err != nil {
+		return err
+	}
+	_ = s.tombstones.retain(func(c []byte) bool { return !bytes.Equal(c, canonical) })
+	return nil
 }
 
 // mapKeys returns the keys of a set as a slice.

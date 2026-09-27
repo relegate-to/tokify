@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { FileText, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 
 import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
@@ -21,7 +21,7 @@ import { EditActivityDialog } from '@/components/EditActivityDialog';
 
 const ROW_HEIGHT = 'h-11';
 const ROW_GRID =
-    'grid grid-cols-[68px_136px_minmax(0,1fr)_68px_52px] items-center px-3';
+    'grid grid-cols-[68px_136px_minmax(0,1fr)_68px_80px] items-center px-3';
 
 // The Log lists a day in columns you scan top-down; the tracker's recents ledger
 // is a denser hairline-ruled list whose whole row starts the task again. Same
@@ -45,7 +45,7 @@ export const ActivityRow = memo(function ActivityRow({
     activity: ActivityItem;
     projects: string[];
     isRemoving?: boolean;
-    onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
+    onUpdate: (orig: Activity, description: string, project: string, notes: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
     onResume?: (orig: Activity) => void;
     readOnly?: boolean;
@@ -88,6 +88,7 @@ export const ActivityRow = memo(function ActivityRow({
             aria-label={onResume && !readOnly ? resumeLabel : undefined}
             onClick={startResume}
             onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     startResume();
@@ -122,23 +123,42 @@ export const ActivityRow = memo(function ActivityRow({
             <span className="w-[72px] shrink-0 text-right font-mono text-[13px] tabular-nums text-secondary-foreground">
                 {formatTotal(ms)}
             </span>
-            <span className="flex w-6 shrink-0 items-center justify-end">
+            <span className="flex w-12 shrink-0 items-center justify-end gap-1">
                 {shared ? (
                     <SharedAuthorBadge shared={shared} />
                 ) : (
                     !readOnly && (
-                        <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onRemove(activity);
-                            }}
-                            className="text-destructive opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
-                            title="Delete"
-                        >
-                            <Trash2 />
-                        </Button>
+                        <>
+                            <Button
+                                size="icon-xs"
+                                variant="ghost"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditOpen(true);
+                                }}
+                                className={cn(
+                                    'transition-opacity focus-visible:opacity-100',
+                                    activity.notes
+                                        ? 'text-muted-foreground opacity-70 hover:opacity-100'
+                                        : 'opacity-0 group-hover/row:opacity-100',
+                                )}
+                                title={activity.notes ? 'Edit activity and notes' : 'Edit activity'}
+                            >
+                                {activity.notes ? <FileText /> : <Pencil />}
+                            </Button>
+                            <Button
+                                size="icon-xs"
+                                variant="ghost"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRemove(activity);
+                                }}
+                                className="text-destructive opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+                                title="Delete"
+                            >
+                                <Trash2 />
+                            </Button>
+                        </>
                     )
                 )}
             </span>
@@ -199,6 +219,20 @@ export const ActivityRow = memo(function ActivityRow({
                 ) : (
                     !readOnly && (
                         <>
+                            <Button
+                                size="icon-xs"
+                                variant="ghost"
+                                onClick={() => setEditOpen(true)}
+                                className={cn(
+                                    'transition-opacity focus-visible:opacity-100',
+                                    activity.notes
+                                        ? 'text-muted-foreground opacity-70 hover:opacity-100'
+                                        : 'opacity-0 group-hover/row:opacity-100',
+                                )}
+                                title={activity.notes ? 'Edit activity and notes' : 'Edit activity'}
+                            >
+                                {activity.notes ? <FileText /> : <Pencil />}
+                            </Button>
                             {onResume && (
                                 <Button
                                     size="icon-xs"

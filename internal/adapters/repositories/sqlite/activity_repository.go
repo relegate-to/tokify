@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/go-faster/errors"
@@ -217,6 +219,132 @@ func (r *ActivityRepository) Remove(ctx context.Context, activity models.Activit
 		return errors.Wrap(err, "remove activity")
 	}
 	return nil
+}
+
+// ApplyChanges atomically replaces the expected activity states with their new
+// states. Existing rows are matched by their complete user-visible value, not
+// only by start time; a stale undo therefore returns ErrActivityChanged instead
+// of deleting or overwriting a newer edit.
+func (r *ActivityRepository) ApplyChanges(ctx context.Context, changes []models.ActivityChange) error {
+	if len(changes) == 0 {
+		return nil
+	}
+	if err := validateChanges(changes); err != nil {
+		return err
+	}
+
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.Wrap(err, "begin activity changes")
+	}
+	defer tx.Rollback() //nolint:errcheck // commit is the success path
+
+	for _, change := range changes {
+		if change.Before == nil {
+			continue
+		}
+		matched, matchErr := removeExactActivity(ctx, tx, *change.Before)
+		if matchErr != nil {
+			return matchErr
+		}
+		if !matched {
+			return coreErrors.ErrActivityChanged
+		}
+	}
+	for _, change := range changes {
+		if change.After == nil {
+			continue
+		}
+		inserted, insertErr := insertActivityIfAbsent(ctx, tx, *change.After)
+		if insertErr != nil {
+			return insertErr
+		}
+		if !inserted {
+			return coreErrors.ErrActivityChanged
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return errors.Wrap(err, "commit activity changes")
+	}
+	return nil
+}
+
+func validateChanges(changes []models.ActivityChange) error {
+	seen := make(map[string]struct{}, len(changes))
+	for i, change := range changes {
+		if change.Before == nil && change.After == nil {
+			return fmt.Errorf("activity change %d has no state", i)
+		}
+		start := changeStart(change)
+		if change.Before != nil && change.After != nil && !change.Before.StartTime.Equal(change.After.StartTime) {
+			return fmt.Errorf("activity change %d moves start time; use delete and create changes", i)
+		}
+		key := start.UTC().Format(time.RFC3339Nano)
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("activity change %d repeats start time", i)
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
+func changeStart(change models.ActivityChange) time.Time {
+	if change.Before != nil {
+		return change.Before.StartTime
+	}
+	return change.After.StartTime
+}
+
+func removeExactActivity(ctx context.Context, tx *sql.Tx, activity models.Activity) (bool, error) {
+	tags, err := json.Marshal(activity.Tags)
+	if err != nil {
+		return false, errors.Wrap(err, "serialize expected activity tags")
+	}
+	var endTime any
+	if activity.EndTime != nil {
+		endTime = activity.EndTime.UTC()
+	}
+	result, err := tx.ExecContext(ctx, `
+		DELETE FROM activities
+		WHERE start_time = ?
+		  AND description = ?
+		  AND project = ?
+		  AND ((end_time IS NULL AND ? IS NULL) OR end_time = ?)
+		  AND COALESCE(notes, '') = ?
+		  AND COALESCE(tags, 'null') = ?
+	`, activity.StartTime.UTC(), activity.Description, activity.Project,
+		endTime, endTime, activity.Notes, string(tags))
+	if err != nil {
+		return false, errors.Wrap(err, "remove expected activity")
+	}
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "count removed activity")
+	}
+	return removed == 1, nil
+}
+
+func insertActivityIfAbsent(ctx context.Context, tx *sql.Tx, activity models.Activity) (bool, error) {
+	tags, err := json.Marshal(activity.Tags)
+	if err != nil {
+		return false, errors.Wrap(err, "serialize activity tags")
+	}
+	var endTime any
+	if activity.EndTime != nil {
+		endTime = activity.EndTime.UTC()
+	}
+	result, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO activities (description, project, start_time, end_time, notes, tags)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, activity.Description, activity.Project, activity.StartTime.UTC(), endTime, activity.Notes, string(tags))
+	if err != nil {
+		return false, errors.Wrap(err, "insert activity change")
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "count inserted activity")
+	}
+	return inserted == 1, nil
 }
 
 func (r *ActivityRepository) RenameProject(ctx context.Context, oldName, newName string) (int, error) {

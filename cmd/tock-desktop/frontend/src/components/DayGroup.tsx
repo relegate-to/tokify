@@ -81,7 +81,7 @@ export function DayGroup({
     projects: string[];
     removingKeys: Set<string>;
     variant?: 'now' | 'history';
-    onUpdate: (orig: Activity, description: string, project: string, startISO: string, endISO: string) => void;
+    onUpdate: (orig: Activity, description: string, project: string, notes: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
     onResume?: (orig: Activity) => void;
 }) {

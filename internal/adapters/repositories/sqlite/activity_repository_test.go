@@ -375,3 +375,88 @@ func TestSQLiteRepository_ProjectMutations(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, "Keep", got[0].Project)
 }
+
+func TestSQLiteRepositoryApplyChangesRestoresDeletedActivity(t *testing.T) {
+	ctx := t.Context()
+	repo := setupTestDB(t)
+	start := time.Date(2026, 9, 25, 9, 0, 0, 123456000, time.Local)
+	end := start.Add(45 * time.Minute)
+	original := models.Activity{
+		Description: "Recover this",
+		Project:     "Tokify",
+		StartTime:   start,
+		EndTime:     &end,
+		Notes:       "- [x] preserved",
+		Tags:        []string{"important"},
+	}
+	require.NoError(t, repo.Save(ctx, original))
+	require.NoError(t, repo.Remove(ctx, original))
+
+	require.NoError(t, repo.ApplyChanges(ctx, []models.ActivityChange{{After: &original}}))
+	got, err := repo.Find(ctx, models.ActivityFilter{})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, original.Description, got[0].Description)
+	assert.Equal(t, original.Project, got[0].Project)
+	assert.True(t, original.StartTime.Equal(got[0].StartTime))
+	require.NotNil(t, got[0].EndTime)
+	assert.True(t, original.EndTime.Equal(*got[0].EndTime))
+	assert.Equal(t, original.Notes, got[0].Notes)
+	assert.Equal(t, original.Tags, got[0].Tags)
+}
+
+func TestSQLiteRepositoryApplyChangesNeverOverwritesReusedStart(t *testing.T) {
+	ctx := t.Context()
+	repo := setupTestDB(t)
+	start := time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)
+	deleted := models.Activity{Description: "Deleted", Project: "Old", StartTime: start}
+	replacement := models.Activity{Description: "New work", Project: "New", StartTime: start}
+	require.NoError(t, repo.Save(ctx, replacement))
+
+	err := repo.ApplyChanges(ctx, []models.ActivityChange{{After: &deleted}})
+	require.ErrorIs(t, err, coreErrors.ErrActivityChanged)
+	got, findErr := repo.Find(ctx, models.ActivityFilter{})
+	require.NoError(t, findErr)
+	require.Len(t, got, 1)
+	assert.Equal(t, replacement.Description, got[0].Description)
+	assert.Equal(t, replacement.Project, got[0].Project)
+}
+
+func TestSQLiteRepositoryApplyChangesRollsBackWholeActionOnConflict(t *testing.T) {
+	ctx := t.Context()
+	repo := setupTestDB(t)
+	start := time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)
+	first := models.Activity{Description: "First", Project: "A", StartTime: start}
+	stale := models.Activity{Description: "Stale", Project: "B", StartTime: start.Add(time.Hour)}
+	current := models.Activity{Description: "Current", Project: "B", StartTime: stale.StartTime}
+	require.NoError(t, repo.Save(ctx, first))
+	require.NoError(t, repo.Save(ctx, current))
+
+	err := repo.ApplyChanges(ctx, []models.ActivityChange{
+		{Before: &first},
+		{Before: &stale},
+	})
+	require.ErrorIs(t, err, coreErrors.ErrActivityChanged)
+	got, findErr := repo.Find(ctx, models.ActivityFilter{})
+	require.NoError(t, findErr)
+	require.Len(t, got, 2)
+	assert.Equal(t, "First", got[0].Description)
+	assert.Equal(t, "Current", got[1].Description)
+}
+
+func TestSQLiteRepositoryApplyChangesRejectsStaleEdit(t *testing.T) {
+	ctx := t.Context()
+	repo := setupTestDB(t)
+	start := time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)
+	original := models.Activity{Description: "Original", Project: "A", StartTime: start}
+	edited := models.Activity{Description: "Edited", Project: "A", StartTime: start}
+	newer := models.Activity{Description: "Newer", Project: "A", StartTime: start}
+	require.NoError(t, repo.Save(ctx, newer))
+
+	err := repo.ApplyChanges(ctx, []models.ActivityChange{{Before: &original, After: &edited}})
+	require.ErrorIs(t, err, coreErrors.ErrActivityChanged)
+	got, findErr := repo.Find(ctx, models.ActivityFilter{})
+	require.NoError(t, findErr)
+	require.Len(t, got, 1)
+	assert.Equal(t, "Newer", got[0].Description)
+}

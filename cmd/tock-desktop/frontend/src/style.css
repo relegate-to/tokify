@@ -4,6 +4,150 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@layer components {
+    .rich-editor-prose .note-project {
+        @apply mb-3 mt-8 border-b border-border pb-2 text-sm font-medium text-muted-foreground;
+    }
+    .rich-editor-prose .note-project:first-child { margin-top: 0; }
+    .note-project-options {
+        @apply fixed z-50 w-[280px] rounded-lg border border-border bg-popover p-1.5 text-sm text-popover-foreground shadow-lg;
+    }
+    .note-project-options[hidden] { display: none; }
+    .note-project-options input {
+        @apply mb-1 w-full border-b border-border bg-transparent px-3 pb-2 pt-1.5 text-sm outline-none placeholder:text-muted-foreground;
+    }
+    .note-project-options button {
+        @apply block w-full truncate rounded-md px-3 py-2 text-left hover:bg-muted;
+    }
+    .note-project-options button[aria-selected='true'] { @apply bg-muted; }
+    .rich-text-editor {
+        @apply flex min-w-0 flex-col rounded-lg border border-border bg-card/45 text-foreground transition-colors focus-within:border-ring;
+    }
+    .rich-editor-toolbar {
+        @apply flex min-h-10 shrink-0 flex-wrap items-center gap-x-0.5 gap-y-1 rounded-t-lg border-b border-border/70 px-1.5 py-1.5;
+    }
+    .rich-editor-tool-group {
+        @apply flex shrink-0 items-center;
+    }
+    .rich-editor-tool {
+        @apply flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/45 disabled:pointer-events-none disabled:opacity-30;
+    }
+    .rich-editor-tool svg {
+        @apply size-3.5;
+    }
+    .rich-editor-tool.is-active {
+        @apply bg-muted text-foreground;
+    }
+    .rich-editor-todo {
+        @apply w-auto gap-1.5 px-2 text-xs font-medium;
+    }
+    .rich-editor-divider {
+        @apply mx-0.5 h-3.5 w-px shrink-0 bg-border;
+    }
+    .rich-editor-toolbar-spacer {
+        @apply flex-1;
+    }
+    .rich-editor-scroll {
+        @apply flex min-h-0 max-h-64 flex-1 cursor-text flex-col overflow-y-auto;
+    }
+    .rich-editor-scroll > .tiptap {
+        @apply flex-1;
+    }
+    .rich-editor-document {
+        @apply rounded-none border-0 bg-transparent;
+    }
+    .rich-editor-document .rich-editor-toolbar {
+        @apply rounded-lg border border-border/70 bg-card/50 px-2;
+    }
+    .rich-editor-document .rich-editor-scroll {
+        @apply max-h-none overflow-visible;
+    }
+    .rich-editor-prose {
+        @apply text-foreground outline-none;
+        overflow-wrap: anywhere;
+    }
+    .rich-editor-prose > * + * {
+        @apply mt-2;
+    }
+    .rich-editor-prose h1 {
+        @apply text-2xl font-semibold leading-snug tracking-[-0.025em];
+    }
+    .rich-editor-prose h2 {
+        @apply text-xl font-semibold leading-snug tracking-[-0.02em];
+    }
+    .rich-editor-prose h3 {
+        @apply text-base font-semibold;
+    }
+    .rich-editor-prose ul:not([data-type='taskList']) {
+        @apply list-disc pl-6;
+    }
+    .rich-editor-prose ol {
+        @apply list-decimal pl-6;
+    }
+    .rich-editor-prose li p {
+        @apply my-0;
+    }
+    .rich-editor-prose li + li {
+        @apply mt-1;
+    }
+    .rich-editor-prose ul[data-type='taskList'] {
+        @apply list-none p-0;
+    }
+    .rich-editor-prose ul[data-type='taskList'] > li {
+        @apply relative flex items-start gap-1;
+    }
+    .rich-editor-prose li:has(> .rich-editor-start-todo) > div > p:first-child {
+        @apply pr-16;
+    }
+    .rich-editor-start-todo {
+        @apply absolute right-0 top-0 rounded-md px-2 text-xs font-medium text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-wait;
+        height: 1lh;
+        line-height: inherit;
+    }
+    .rich-editor-start-todo[hidden] { display: none; }
+    .rich-editor-prose li:hover:not(:has(li:hover)) > .rich-editor-start-todo,
+    .rich-editor-prose li:focus-within:not(:has(li:focus-within)) > .rich-editor-start-todo {
+        opacity: 1;
+    }
+    @media (hover: none) {
+        .rich-editor-start-todo { opacity: 1; }
+    }
+    .rich-editor-prose ul[data-type='taskList'] > li > label {
+        @apply flex w-6 shrink-0 cursor-pointer items-center;
+        height: 1lh;
+    }
+    .rich-editor-prose ul[data-type='taskList'] > li > div {
+        @apply min-w-0 flex-1;
+    }
+    .rich-editor-prose li > div > ul,
+    .rich-editor-prose li > div > ol {
+        @apply mt-1;
+    }
+    .rich-editor-prose ul[data-type='taskList'] input[type='checkbox'] {
+        @apply m-0 size-4 cursor-pointer appearance-auto;
+        accent-color: var(--foreground);
+    }
+    .rich-editor-prose ul[data-type='taskList'] > li[data-checked='true'] > div > p {
+        @apply text-muted-foreground line-through;
+    }
+    .rich-editor-prose blockquote {
+        @apply border-l-2 border-border pl-4 italic text-muted-foreground;
+    }
+    .rich-editor-prose pre {
+        @apply overflow-x-auto rounded-lg border border-border bg-muted/60 px-4 py-3 font-mono text-[13px] leading-6;
+    }
+    .rich-editor-prose :not(pre) > code {
+        @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.88em];
+    }
+    .rich-editor-prose a {
+        @apply cursor-pointer underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground;
+    }
+    .rich-editor-prose p.is-editor-empty:first-child::before {
+        @apply pointer-events-none float-left h-0 text-muted-foreground/45;
+        content: attr(data-placeholder);
+    }
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Instrument Sans Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;

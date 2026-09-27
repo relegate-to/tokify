@@ -32,3 +32,10 @@ export type View =
     | 'account';
 export type ActivityView = 'all' | 'today' | 'none';
 export type Theme = 'auto' | 'light' | 'dark';
+
+export type UndoState = {
+    can_undo: boolean;
+    can_redo: boolean;
+    undo_label?: string;
+    redo_label?: string;
+};

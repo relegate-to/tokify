@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react';
+import { Pencil } from 'lucide-react';
 
 import type { Activity } from '@/types';
 import { cn } from '@/lib/utils';
@@ -6,20 +7,33 @@ import { projectColor } from '@/lib/colors';
 import { EASE_OUT, EASE_THUNK } from '@/lib/motion';
 import { formatClock, formatStopwatch } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
+import { EditActivityDialog } from '@/components/EditActivityDialog';
 
 const STOP_ANIM_MS = 380;
 
 export function NowRunning({
     activity,
+    projects,
     onStop,
+    onUpdate,
 }: {
     activity: Activity;
+    projects: string[];
     onStop: () => void;
+    onUpdate: (
+        orig: Activity,
+        description: string,
+        project: string,
+        notes: string,
+        startISO: string,
+        endISO: string,
+    ) => void;
 }) {
     const since = new Date(activity.start_time as any);
     const now = useNow();
     const ms = now - since.getTime();
     const [stopping, setStopping] = useState(false);
+    const [editOpen, setEditOpen] = useState(false);
     const project = activity.project || '';
 
     const handleStop = () => {
@@ -29,6 +43,7 @@ export function NowRunning({
     };
 
     return (
+        <>
         <section
             aria-label="Currently running"
             className={cn(
@@ -78,6 +93,15 @@ export function NowRunning({
                 </div>
                 <button
                     type="button"
+                    onClick={() => setEditOpen(true)}
+                    className="flex size-10 shrink-0 items-center justify-center rounded-[10px] text-running-card-muted transition-colors hover:bg-running-card-control-hover hover:text-running-card-foreground"
+                    title="Edit activity and notes"
+                    aria-label="Edit running activity and notes"
+                >
+                    <Pencil className="size-4" />
+                </button>
+                <button
+                    type="button"
                     onClick={handleStop}
                     disabled={stopping}
                     className="flex shrink-0 items-center gap-[9px] rounded-[10px] bg-running-stop px-5 py-3 text-sm font-semibold text-running-stop-foreground transition-[background-color,transform] hover:bg-running-stop-hover active:scale-95 disabled:opacity-70"
@@ -90,5 +114,13 @@ export function NowRunning({
                 </button>
             </div>
         </section>
+        <EditActivityDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            activity={activity}
+            projects={projects}
+            onUpdate={onUpdate}
+        />
+        </>
     );
 }

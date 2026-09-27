@@ -28,12 +28,15 @@ import {
     Start,
     StartAt,
     Stop,
+    ActivityHistoryState,
+    RedoLastActivityChange,
+    UndoLastActivityChange,
     UpdateActivity,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { main, neonauth } from '../wailsjs/go/models';
 
-import type { Activity, ActivityItem, ActivityView, Theme, View } from '@/types';
+import type { Activity, ActivityItem, ActivityView, Theme, UndoState, View } from '@/types';
 import { EASE_FLIP, REMOVE_ANIM_MS, REMOVE_FLIP_MS } from '@/lib/motion';
 import { captureFlip, playFlip, type FlipSnapshot } from '@/lib/flip';
 import { setProjectColorOverrides } from '@/lib/colors';
@@ -45,7 +48,14 @@ import { TeamsCacheContext } from '@/lib/teams-cache';
 import { Toaster } from '@/components/ui/sonner';
 import { Masthead } from '@/components/Masthead';
 import { NowView } from '@/components/NowView';
-import { SketchpadView } from '@/components/SketchpadView';
+import {
+    SketchpadView,
+    completeSketchpadTodo,
+    readTodoRuns,
+    writeTodoRuns,
+    type TodoRun,
+} from '@/components/SketchpadView';
+import { FinishTodoDialog } from '@/components/FinishTodoDialog';
 import { HistoryView } from '@/components/HistoryView';
 import { SettingsView } from '@/components/SettingsView';
 import { AccountView } from '@/components/AccountView';
@@ -61,6 +71,7 @@ const ACTIVITY_VIEW_KEY = 'tokify.activityView';
 const SHOW_SCROLLBARS_KEY = 'tokify.showScrollbars';
 const THEME_KEY = 'tokify.theme';
 const DAILY_GOAL_KEY = 'tokify.dailyGoal';
+const AUTO_COMPLETE_TODOS_KEY = 'tokify.autoCompleteTodos';
 const DEFAULT_DAILY_GOAL = 360;
 const DAILY_GOAL_VALUES = [240, 360, 480];
 const ACTIVITY_VIEW_VALUES: ActivityView[] = ['all', 'today', 'none'];
@@ -68,6 +79,10 @@ const LOG_VIEWS: View[] = ['history', 'reports', 'charts', 'stats'];
 const SWIPE_VIEWS: View[] = ['sketchpad', 'now', ...LOG_VIEWS];
 
 const THEME_VALUES: Theme[] = ['auto', 'light', 'dark'];
+
+function parseUndoState(value: string): UndoState {
+    return JSON.parse(value) as UndoState;
+}
 
 function readActivityView(): ActivityView {
     try {
@@ -169,6 +184,15 @@ function App() {
     const [view, setView] = useState<View>('now');
     const [sharingProject, setSharingProject] = useState<string | undefined>();
     const [running, setRunning] = useState<Activity | null>(null);
+    const [runningLoaded, setRunningLoaded] = useState(false);
+    const [finishingTodo, setFinishingTodo] = useState<TodoRun | null>(null);
+    const [autoCompleteTodos, setAutoCompleteTodos] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(AUTO_COMPLETE_TODOS_KEY) === '1';
+        } catch {
+            return false;
+        }
+    });
     const [today, setToday] = useState<Activity[]>([]);
     const [pastYear, setPastYear] = useState<Activity[]>([]);
     const [recent, setRecent] = useState<Activity[]>([]);
@@ -178,6 +202,10 @@ function App() {
     const [projects, setProjects] = useState<string[]>([]);
     const [projectShares, setProjectShares] = useState<ProjectSharesMap>({});
     const [removingKeys, setRemovingKeys] = useState<Set<string>>(new Set());
+    const [undoState, setUndoState] = useState<UndoState>({
+        can_undo: false,
+        can_redo: false,
+    });
     const [showAccount, setShowAccount] = useState<boolean>(() => {
         try {
             return localStorage.getItem(SHOW_ACCOUNT_KEY) !== '0';
@@ -260,6 +288,14 @@ function App() {
 
     useEffect(() => {
         try {
+            localStorage.setItem(AUTO_COMPLETE_TODOS_KEY, autoCompleteTodos ? '1' : '0');
+        } catch {
+            // ignore
+        }
+    }, [autoCompleteTodos]);
+
+    useEffect(() => {
+        try {
             localStorage.setItem(DAILY_GOAL_KEY, String(dailyGoal));
         } catch {
             // ignore
@@ -304,6 +340,7 @@ function App() {
             .then(([r, t, year, all, p]) => {
                 const run = (r as Activity) ?? null;
                 setRunning(isSuppressed(run) ? null : run);
+                setRunningLoaded(true);
                 setToday(withoutSuppressed((t as Activity[]) ?? []));
                 setPastYear(withoutSuppressed((year as Activity[]) ?? []));
                 setRecent(withoutSuppressed((all as Activity[]) ?? []));
@@ -312,8 +349,18 @@ function App() {
             .catch((e) => toast.error(String(e)));
     }, []);
 
+    const refreshUndoState = useCallback(() => {
+        return ActivityHistoryState()
+            .then((status) => setUndoState(parseUndoState(status)))
+            .catch(() => {
+                // History is an enhancement; activity refreshes remain usable if
+                // the backend has not finished starting yet.
+            });
+    }, []);
+
     useEffect(() => {
         refresh();
+        refreshUndoState();
         const id = setInterval(refresh, REFRESH_MS);
         return () => clearInterval(id);
     }, []);
@@ -483,44 +530,110 @@ function App() {
         };
     }, [authStatus?.signed_in]);
 
-    const handleStart = (description: string, project: string) =>
-        Start(description, project).then(() => refresh()).catch((e) => toast.error(String(e)));
-    const handleStartAt = (description: string, project: string, startISO: string) =>
-        StartAt(description, project, startISO)
-            .then(() => refresh())
+    const afterMutation = useCallback(
+        () => Promise.all([refresh(), refreshUndoState()]),
+        [refresh, refreshUndoState],
+    );
+    const handleUndo = useCallback(() => {
+        UndoLastActivityChange()
+            .then((status) => {
+                setUndoState(parseUndoState(status));
+                return refresh();
+            })
+            .then(() => toast.success('Change undone'))
+            .catch((e) => toast.error(String(e)));
+    }, [refresh]);
+    const handleRedo = useCallback(() => {
+        RedoLastActivityChange()
+            .then((status) => {
+                setUndoState(parseUndoState(status));
+                return refresh();
+            })
+            .then(() => toast.success('Change redone'))
+            .catch((e) => toast.error(String(e)));
+    }, [refresh]);
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement | null;
+            const tag = target?.tagName.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+            if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+            event.preventDefault();
+            if (event.shiftKey) handleRedo();
+            else handleUndo();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [handleRedo, handleUndo]);
+
+    // An activity started from a to-do has finished once it's no longer the
+    // running one, however it was stopped: here, from the tray, or elsewhere.
+    useEffect(() => {
+        if (!runningLoaded || finishingTodo) return;
+        const current = running ? String(running.start_time) : null;
+        const runs = readTodoRuns();
+        const finished = runs.filter((run) => run.start !== current);
+        if (finished.length === 0) return;
+        if (!autoCompleteTodos) {
+            setFinishingTodo(finished[0]);
+            return;
+        }
+        writeTodoRuns(runs.filter((run) => run.start === current));
+        const ticked = finished.filter((run) => completeSketchpadTodo(run.id));
+        if (ticked.length === 1) toast.success(`Ticked off “${ticked[0].description}”`);
+        else if (ticked.length > 1) toast.success(`Ticked off ${ticked.length} to-dos`);
+    }, [running, runningLoaded, finishingTodo, autoCompleteTodos]);
+
+    const answerFinishingTodo = (done: boolean, always: boolean) => {
+        const todo = finishingTodo;
+        if (!todo) return;
+        writeTodoRuns(readTodoRuns().filter((run) => run.start !== todo.start));
+        if (done) completeSketchpadTodo(todo.id);
+        if (always) setAutoCompleteTodos(true);
+        setFinishingTodo(null);
+    };
+
+    const handleStart = (description: string, project: string, notes: string) =>
+        Start(description, project, notes).then(afterMutation).catch((e) => toast.error(String(e)));
+    const handleStartAt = (description: string, project: string, notes: string, startISO: string) =>
+        StartAt(description, project, notes, startISO)
+            .then(afterMutation)
             .catch((e) => toast.error(String(e)));
     const handleStop = () =>
-        Stop().then(() => refresh()).catch((e) => toast.error(String(e)));
+        Stop().then(afterMutation).catch((e) => toast.error(String(e)));
     const handleResume = useCallback(
         (orig: Activity) => {
             setView('now');
-            Start(orig.description ?? '', orig.project ?? '')
-                .then(() => refresh())
+            Start(orig.description ?? '', orig.project ?? '', orig.notes ?? '')
+                .then(afterMutation)
                 .catch((e) => toast.error(String(e)));
         },
-        [refresh],
+        [afterMutation],
     );
     const handleAddPast = (
         description: string,
         project: string,
+        notes: string,
         startISO: string,
         endISO: string,
     ) =>
-        AddActivity(description, project, startISO, endISO)
-            .then(() => refresh())
+        AddActivity(description, project, notes, startISO, endISO)
+            .then(afterMutation)
             .catch((e) => toast.error(String(e)));
     const handleUpdate = useCallback(
         (
             orig: Activity,
             description: string,
             project: string,
+            notes: string,
             startISO: string,
             endISO: string,
         ) =>
-            UpdateActivity(orig, description, project, startISO, endISO)
-                .then(() => refresh())
+            UpdateActivity(orig, description, project, notes, startISO, endISO)
+                .then(afterMutation)
                 .catch((e) => toast.error(String(e))),
-        [refresh],
+        [afterMutation],
     );
     const handleRemove = useCallback(
         (orig: Activity) => {
@@ -541,6 +654,7 @@ function App() {
             // what then sprang it back to full height.
             suppressedKeys.current.add(key);
             setRemovingKeys((s) => new Set(s).add(key));
+            writeTodoRuns(readTodoRuns().filter((run) => run.start !== key));
 
             const collapsed = new Promise<void>((resolve) =>
                 window.setTimeout(resolve, REMOVE_ANIM_MS),
@@ -567,6 +681,10 @@ function App() {
                     suppressedKeys.current.delete(key);
                     forget();
                     setFlipToken((t) => t + 1);
+                    refreshUndoState();
+                    toast.success('Activity deleted', {
+                        action: { label: 'Undo', onClick: handleUndo },
+                    });
                 })
                 .catch((e) => {
                     // The entry still exists, so lifting the suppression and
@@ -577,7 +695,7 @@ function App() {
                     refresh();
                 });
         },
-        [refresh],
+        [handleUndo, refresh, refreshUndoState],
     );
 
     const handleView = (next: View) => {
@@ -659,6 +777,9 @@ function App() {
                 projects={mergedProjects}
                 invites={pendingInvites}
                 hasShared={shared.length > 0}
+                undoState={undoState}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
             />
             <main
                 ref={flipRoot}
@@ -693,7 +814,18 @@ function App() {
                         >
                             <SwiperSlide>
                                 <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
-                                    <SketchpadView />
+                                    <SketchpadView projects={mergedProjects} onStartTodo={(todo) =>
+                                        Start(todo.description, todo.project, todo.notes)
+                                            .then((activity) => {
+                                                writeTodoRuns([
+                                                    ...readTodoRuns(),
+                                                    { start: String(activity.start_time), id: todo.id, description: todo.description },
+                                                ]);
+                                                return afterMutation();
+                                            })
+                                            .then(() => setView('now'))
+                                            .catch((e) => toast.error(String(e)))
+                                    } />
                                 </div>
                             </SwiperSlide>
                             <SwiperSlide>
@@ -767,6 +899,8 @@ function App() {
                                 onDailyGoalChange={setDailyGoal}
                                 showScrollbars={showScrollbars}
                                 onShowScrollbarsChange={setShowScrollbars}
+                                autoCompleteTodos={autoCompleteTodos}
+                                onAutoCompleteTodosChange={setAutoCompleteTodos}
                                 theme={theme}
                                 onThemeChange={setTheme}
                                 onBack={() => setView('now')}
@@ -816,6 +950,10 @@ function App() {
                     )}
                 </div>
             </main>
+            <FinishTodoDialog
+                description={finishingTodo?.description ?? null}
+                onAnswer={answerFinishingTodo}
+            />
             <Toaster position="bottom-right" richColors closeButton />
         </div>
         </TeamsCacheContext.Provider>

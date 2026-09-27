@@ -78,6 +78,53 @@ The menu bar shows `● 0:42` while tracking and `○` when idle. Open the deskt
 app to start an activity, review your timeline, explore reports, manage
 projects, and configure encrypted team sharing and account settings.
 
+## Command line
+
+Tokify also has a scriptable CLI backed by the same SQLite database as the
+desktop app. Build it locally with `make cli-build` (which creates
+`bin/tokify`) or install it on your `PATH` with `make cli-install`.
+
+```sh
+tokify start "Client work" "Draft proposal"
+tokify current
+tokify stop
+tokify last
+```
+
+Completed entries can be managed without opening the app. Times accept `HH:MM`,
+`YYYY-MM-DD HH:MM`, or RFC 3339; `list` prints exact start timestamps for edits
+and deletions. Mutations reject overlapping or future entries, and deletion
+requires an explicit `--yes`.
+
+```sh
+tokify add --start "2026-09-24 13:00" --duration 45m "Admin" "Submit expenses"
+tokify list --date 2026-09-24 --project "Admin"
+tokify edit --note "Receipt batch 4" "2026-09-24T13:00:00+09:00"
+tokify remove --yes "2026-09-24T13:00:00+09:00"
+```
+
+`watch` is designed for status bars and other desktop widgets. A normal call
+prints only the current elapsed time and exits, so it is cheap to poll:
+
+```sh
+$ tokify watch
+00:42:17
+```
+
+When idle it prints nothing and exits successfully. Use `--idle`, `--json`, or
+`--format` when the consumer needs an explicit or richer status; use `--follow`
+to stream an updated line every second instead of polling:
+
+```sh
+tokify watch --idle "--:--:--"
+tokify watch --format '{{.Project}} · {{.Description}} · {{.Duration}}'
+tokify watch --follow --interval 5s
+```
+
+Run `tokify help` or `tokify <command> --help` for the complete command list.
+`TOKIFY_PROFILE` selects the same development profile as the desktop app, and
+`TOKIFY_DATABASE` can point the CLI at a different database explicitly.
+
 ## Export
 
 From the menu in the top-right of the window, you can export your activity log
@@ -99,7 +146,8 @@ team without making that activity history readable to the sync service.
 Tokify began as a desktop fork of
 [**tock**][tock] by [Vladimir Kriuchkov][kriuchkov].
 It retains the original domain model and GPL-3.0-or-later license, but now ships
-only the Tokify macOS app. See [`TOKIFY.md`](TOKIFY.md) for attribution details.
+the Tokify macOS app and `tokify` CLI rather than the old `tock` product. See
+[`TOKIFY.md`](TOKIFY.md) for attribution details.
 
 ## Development
 
@@ -107,6 +155,8 @@ only the Tokify macOS app. See [`TOKIFY.md`](TOKIFY.md) for attribution details.
 make desktop-dev     # Wails dev server with hot reload
 make desktop-build   # host-architecture .app, fast incremental
 make desktop-build-universal   # arm64 + amd64 fat binary
+make cli-build       # build bin/tokify
+make cli-install     # install tokify on your Go binary path
 make test            # Go tests (runs in Docker)
 make linter          # golangci-lint (runs in Docker)
 ```

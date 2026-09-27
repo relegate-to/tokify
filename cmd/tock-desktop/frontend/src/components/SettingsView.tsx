@@ -34,6 +34,8 @@ export function SettingsView({
     onDailyGoalChange,
     showScrollbars,
     onShowScrollbarsChange,
+    autoCompleteTodos,
+    onAutoCompleteTodosChange,
     theme,
     onThemeChange,
     onBack,
@@ -46,6 +48,8 @@ export function SettingsView({
     onDailyGoalChange: (v: number) => void;
     showScrollbars: boolean;
     onShowScrollbarsChange: (v: boolean) => void;
+    autoCompleteTodos: boolean;
+    onAutoCompleteTodosChange: (v: boolean) => void;
     theme: Theme;
     onThemeChange: (v: Theme) => void;
     onBack: () => void;
@@ -106,6 +110,12 @@ export function SettingsView({
                     description="Hidden by default for a cleaner look. Scrolling still works."
                     value={showScrollbars}
                     onChange={onShowScrollbarsChange}
+                />
+                <SettingRow
+                    title="Tick off to-dos when stopped"
+                    description="When an activity started from a to-do in your notes stops, mark the to-do done instead of asking."
+                    value={autoCompleteTodos}
+                    onChange={onAutoCompleteTodosChange}
                 />
                 <SettingRow
                     title="Show account in menu"

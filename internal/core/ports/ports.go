@@ -25,6 +25,13 @@ type ActivityRepository interface {
 	Remove(ctx context.Context, activity models.Activity) error
 }
 
+// ActivityChangeRepository applies a set of activity changes atomically. Each
+// change is conditional on its Before state still being current, so undo never
+// overwrites work written by another window, process, or sync pass.
+type ActivityChangeRepository interface {
+	ApplyChanges(ctx context.Context, changes []models.ActivityChange) error
+}
+
 type NotesRepository interface {
 	Save(ctx context.Context, activityID string, date time.Time, notes string, tags []string) error
 	Get(ctx context.Context, activityID string, date time.Time) (string, []string, error)

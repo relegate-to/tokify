@@ -3,9 +3,13 @@ package neonsync
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/kriuchkov/tock/internal/core/models"
 )
@@ -139,5 +143,106 @@ func TestPendingDeletionsKeepsTombstonesRecordedMidSync(t *testing.T) {
 	}
 	if len(got) != 2 || !bytes.Equal(got[0], deleted) || !bytes.Equal(got[1], late) {
 		t.Fatalf("want [deleted late] kept, got %q", got)
+	}
+}
+
+func TestPendingRestorationsOnlyRevivesActivitiesStillPresent(t *testing.T) {
+	store := newRestorationStore(filepath.Join(t.TempDir(), "neonsync.json"))
+	s := &Service{restores: store}
+	dek := bytes.Repeat([]byte{8}, 32)
+
+	live := []byte(`{"d":"live"}`)
+	deletedAgain := []byte(`{"d":"deleted-again"}`)
+	late := []byte(`{"d":"late"}`)
+	for _, c := range [][]byte{live, deletedAgain} {
+		if err := store.add(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	restored, err := store.all()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.add(late); err != nil {
+		t.Fatal(err)
+	}
+
+	ids, err := s.pendingRestorations(dek, restored, map[string]models.Activity{EntryID(dek, live): {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ids[EntryID(dek, live)]; !ok || len(ids) != 1 {
+		t.Fatalf("want only the live entry pending restoration, got %v", ids)
+	}
+
+	got, err := store.all()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || !bytes.Equal(got[0], live) || !bytes.Equal(got[1], late) {
+		t.Fatalf("want [live late] kept, got %q", got)
+	}
+}
+
+func TestRecordRestorationPersistsAndCancelsMatchingTombstone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "neonsync.json")
+	s := &Service{
+		settings:   Settings{DataURL: "https://example.invalid"},
+		tombstones: newTombstoneStore(path),
+		restores:   newRestorationStore(path),
+	}
+	start := time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	activity := models.Activity{Description: "Restore", StartTime: start, EndTime: &end}
+	canonical := canonicalize(activity)
+	if err := s.tombstones.add(canonical); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RecordRestoration(activity); err != nil {
+		t.Fatal(err)
+	}
+	tombstones, err := s.tombstones.all()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tombstones) != 0 {
+		t.Fatalf("matching tombstone was not cancelled: %q", tombstones)
+	}
+	restores, err := s.restores.all()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restores) != 1 || !bytes.Equal(restores[0], canonical) {
+		t.Fatalf("restoration was not persisted: %q", restores)
+	}
+}
+
+func TestMarkRestoredClearsCloudTombstone(t *testing.T) {
+	var (
+		method string
+		path   string
+		body   []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		path = r.URL.RequestURI()
+		body, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	err := markRestored(t.Context(), srv.Client(), srv.URL, "token", []string{"abc", "def"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodPatch {
+		t.Fatalf("want PATCH, got %s", method)
+	}
+	if path != "/entries?id=in.(abc,def)" {
+		t.Fatalf("unexpected path %q", path)
+	}
+	if string(body) != `{"deleted":false}` {
+		t.Fatalf("unexpected body %q", body)
 	}
 }

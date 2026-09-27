@@ -9,11 +9,13 @@ import {
   Mail,
   Settings as SettingsIcon,
   Share2,
+  Redo2,
+  Undo2,
   User,
   Users,
 } from "lucide-react";
 
-import type { Activity, View } from "@/types";
+import type { Activity, UndoState, View } from "@/types";
 import type { main, neonauth } from "../../wailsjs/go/models";
 import { cn } from "@/lib/utils";
 import { accountDisplayName, accountInitials } from "@/lib/account";
@@ -66,6 +68,9 @@ export function Masthead({
   projects,
   invites,
   hasShared,
+  undoState,
+  onUndo,
+  onRedo,
 }: {
   view: View;
   onView: (v: View) => void;
@@ -75,6 +80,9 @@ export function Masthead({
   projects: string[];
   invites: main.TeamView[];
   hasShared: boolean;
+  undoState: UndoState;
+  onUndo: () => void;
+  onRedo: () => void;
 }) {
   const date = new Date()
     .toLocaleDateString(undefined, {
@@ -384,6 +392,25 @@ export function Masthead({
                   <DropdownMenuSeparator />
                 </>
               )}
+              <DropdownMenuItem
+                disabled={!undoState.can_undo}
+                onSelect={onUndo}
+                title={undoState.undo_label}
+              >
+                <Undo2 className="size-4 opacity-70" />
+                {undoState.undo_label ? `Undo ${undoState.undo_label}` : "Undo"}
+                <span className="ml-auto pl-6 font-mono text-[11px] text-muted-foreground">⌘Z</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!undoState.can_redo}
+                onSelect={onRedo}
+                title={undoState.redo_label}
+              >
+                <Redo2 className="size-4 opacity-70" />
+                {undoState.redo_label ? `Redo ${undoState.redo_label}` : "Redo"}
+                <span className="ml-auto pl-6 font-mono text-[11px] text-muted-foreground">⇧⌘Z</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => onView("projects")}>
                 <FolderKanban className="size-4 opacity-70" />
                 Projects

@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"fyne.io/systray"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3" // register goqu sqlite3 dialect for the sqlite backend
 	_ "github.com/mattn/go-sqlite3"                    // register the sqlite3 database driver
 
@@ -44,7 +43,7 @@ func main() {
 	// The tray runs alongside Wails' Cocoa loop via RunWithExternalLoop: start()
 	// schedules the NSStatusItem setup onto the main thread, then wails.Run owns
 	// the loop until the user quits.
-	trayStart, trayEnd := systray.RunWithExternalLoop(app.trayOnReady, app.trayOnExit)
+	trayStart, trayEnd := trayExternalLoop(app)
 	trayStart()
 
 	// Create application with options
