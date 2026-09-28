@@ -7,6 +7,7 @@ import (
 	"embed"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3" // register goqu sqlite3 dialect for the sqlite backend
@@ -17,6 +18,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
+	"github.com/kriuchkov/tock/internal/app/cli"
 	"github.com/kriuchkov/tock/internal/app/mcpserver"
 )
 
@@ -24,6 +26,15 @@ import (
 var assets embed.FS
 
 func main() {
+	// Settings links this binary into PATH as `tokify`; run under that name it is
+	// the command-line tool, sharing the app's database, and never opens a window.
+	if filepath.Base(os.Args[0]) == cliName {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		code := cli.Run(ctx, os.Args[1:], cli.Options{Stdout: os.Stdout, Stderr: os.Stderr, Version: version})
+		stop()
+		os.Exit(code)
+	}
+
 	// `tock-desktop mcp` serves agents over stdio and must never start the UI:
 	// an MCP client spawns it as a headless child process.
 	if len(os.Args) > 1 && os.Args[1] == mcpArg {

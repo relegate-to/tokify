@@ -50,9 +50,13 @@ type Options struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Now    func() time.Time
+	// Version overrides the module build version, for hosts such as the
+	// desktop app whose builds carry their own release number.
+	Version string
 }
 
 type runner struct {
+	version string
 	stdout  io.Writer
 	stderr  io.Writer
 	now     func() time.Time
@@ -83,7 +87,10 @@ func newRunner(options Options) *runner {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	return &runner{stdout: options.Stdout, stderr: options.Stderr, now: options.Now}
+	if options.Version == "" {
+		options.Version = version()
+	}
+	return &runner{version: options.Version, stdout: options.Stdout, stderr: options.Stderr, now: options.Now}
 }
 
 func (r *runner) run(ctx context.Context, args []string) error {
@@ -111,7 +118,7 @@ func (r *runner) run(ctx context.Context, args []string) error {
 		return r.runHelp(commandArgs)
 	}
 	if command == "version" {
-		fmt.Fprintln(r.stdout, version())
+		fmt.Fprintln(r.stdout, r.version)
 		return nil
 	}
 

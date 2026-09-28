@@ -1,5 +1,21 @@
 export namespace main {
 	
+	export class CLIStatus {
+	    installed: boolean;
+	    path: string;
+	    conflict: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CLIStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.path = source["path"];
+	        this.conflict = source["conflict"];
+	    }
+	}
 	export class SharedActivity {
 	    activity: models.Activity;
 	    audience_id: string;

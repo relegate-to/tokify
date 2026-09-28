@@ -7,6 +7,7 @@ import {
     ExternalLink,
     MessageSquareWarning,
     RefreshCw,
+    Terminal,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -14,6 +15,9 @@ import {
     AgentSetup,
     AppVersion,
     CheckForUpdate,
+    CLIStatus,
+    InstallCLI,
+    UninstallCLI,
 } from '../../wailsjs/go/main/App';
 import {
     BrowserOpenURL,
@@ -137,6 +141,15 @@ export function SettingsView({
 
             <div className="flex flex-col gap-3">
                 <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Command line
+                </h3>
+                <div className="flex flex-col divide-y rounded-xl border bg-card shadow-sm">
+                    <CommandLineRow />
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+                <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     AI agents
                 </h3>
                 <AgentSetupCard />
@@ -220,6 +233,70 @@ function AgentSetupCard() {
 }
 
 const ISSUES_URL = 'https://github.com/relegate-to/tokify/issues';
+
+function CommandLineRow() {
+    const [status, setStatus] = useState<main.CLIStatus | null>(null);
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        CLIStatus()
+            .then(setStatus)
+            .catch(() => {});
+    }, []);
+
+    const run = (install: boolean) => {
+        setBusy(true);
+        (install ? InstallCLI() : UninstallCLI())
+            .then((next) => {
+                setStatus(next);
+                toast.success(
+                    install ? 'tokify command installed' : 'tokify command removed',
+                );
+            })
+            .catch((e) => {
+                // Dismissing the macOS password prompt isn't an error.
+                if (String(e) !== 'cancelled') toast.error(String(e));
+            })
+            .finally(() => setBusy(false));
+    };
+
+    let description =
+        'Start and stop timers from the terminal. macOS may ask for your password to add it.';
+    if (status?.installed) {
+        description = `Installed at ${status.path}. Run tokify help in a terminal to get started.`;
+    } else if (status?.conflict) {
+        description = `${status.conflict}, so Tokify can't add its own.`;
+    }
+
+    return (
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="flex min-w-0 flex-col">
+                <span className="flex items-center gap-1.5 text-sm">
+                    tokify command
+                    {status?.installed && (
+                        <CircleCheck className="size-3.5 text-emerald-500" />
+                    )}
+                </span>
+                <span className="text-xs text-muted-foreground">{description}</span>
+            </div>
+            {status?.installed ? (
+                <Button variant="outline" size="sm" onClick={() => run(false)} disabled={busy}>
+                    Remove
+                </Button>
+            ) : (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => run(true)}
+                    disabled={busy || !status || !!status.conflict}
+                >
+                    <Terminal className="size-3.5" />
+                    Install
+                </Button>
+            )}
+        </div>
+    );
+}
 
 function UpdateRow() {
     const [current, setCurrent] = useState('');

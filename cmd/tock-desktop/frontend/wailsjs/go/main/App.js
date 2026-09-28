@@ -54,6 +54,10 @@ export function AuthVerifyEmail(arg1, arg2, arg3) {
   return window['go']['main']['App']['AuthVerifyEmail'](arg1, arg2, arg3);
 }
 
+export function CLIStatus() {
+  return window['go']['main']['App']['CLIStatus']();
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
@@ -72,6 +76,10 @@ export function Export(arg1, arg2, arg3, arg4, arg5) {
 
 export function GetRunning() {
   return window['go']['main']['App']['GetRunning']();
+}
+
+export function InstallCLI() {
+  return window['go']['main']['App']['InstallCLI']();
 }
 
 export function ListPastYear() {
@@ -224,6 +232,10 @@ export function SyncStatus() {
 
 export function UndoLastActivityChange() {
   return window['go']['main']['App']['UndoLastActivityChange']();
+}
+
+export function UninstallCLI() {
+  return window['go']['main']['App']['UninstallCLI']();
 }
 
 export function UpdateActivity(arg1, arg2, arg3, arg4, arg5, arg6) {

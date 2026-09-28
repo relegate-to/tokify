@@ -33,6 +33,8 @@ export function AuthUpdateAvatar(arg1:string):Promise<neonauth.Status>;
 
 export function AuthVerifyEmail(arg1:string,arg2:string,arg3:string):Promise<neonauth.Status>;
 
+export function CLIStatus():Promise<main.CLIStatus>;
+
 export function CheckForUpdate():Promise<main.UpdateInfo>;
 
 export function CreateProject(arg1:string):Promise<projects.Project>;
@@ -42,6 +44,8 @@ export function DeleteProject(arg1:string):Promise<void>;
 export function Export(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<string>;
 
 export function GetRunning():Promise<models.Activity>;
+
+export function InstallCLI():Promise<main.CLIStatus>;
 
 export function ListPastYear():Promise<Array<models.Activity>>;
 
@@ -118,5 +122,7 @@ export function SyncSetEnabled(arg1:boolean):Promise<neonsync.SyncStatus>;
 export function SyncStatus():Promise<neonsync.SyncStatus>;
 
 export function UndoLastActivityChange():Promise<string>;
+
+export function UninstallCLI():Promise<main.CLIStatus>;
 
 export function UpdateActivity(arg1:models.Activity,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<models.Activity>;

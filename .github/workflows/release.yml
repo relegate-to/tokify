@@ -51,7 +51,7 @@ jobs:
         # Neon auth + sync are dead.
         run: |
           wails build -clean -platform darwin/universal \
-            -ldflags "-X github.com/kriuchkov/tock/internal/integrations/neonauth.DefaultAuthURL=${NEON_AUTH_URL} -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultDataURL=${NEON_DATA_URL}"
+            -ldflags "-X main.version=${GITHUB_REF_NAME#v} -X github.com/kriuchkov/tock/internal/integrations/neonauth.DefaultAuthURL=${NEON_AUTH_URL} -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultDataURL=${NEON_DATA_URL}"
 
       - name: Rename bundle to Tokify.app
         run: |

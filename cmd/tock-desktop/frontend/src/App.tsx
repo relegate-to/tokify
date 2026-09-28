@@ -81,6 +81,9 @@ const DAILY_GOAL_VALUES = [240, 360, 480];
 const ACTIVITY_VIEW_VALUES: ActivityView[] = ['all', 'today', 'none'];
 const LOG_VIEWS: View[] = ['history', 'reports', 'charts', 'stats'];
 const SWIPE_VIEWS: View[] = ['sketchpad', 'now', ...LOG_VIEWS];
+// How long after a wheel, touch, or pointer event a slide change still counts
+// as the user's swipe; trackpad momentum and scroll snapping settle within it.
+const SWIPE_INPUT_MS = 1000;
 
 const THEME_VALUES: Theme[] = ['auto', 'light', 'dark'];
 
@@ -787,6 +790,37 @@ function App() {
         [],
     );
 
+    // The view is the source of truth for the slider. Resizing the window
+    // (entering or leaving menu bar mode, the popover reappearing) can reset the
+    // slider's scroll before Swiper re-measures, which it reports as a move to
+    // the first slide. Only a swipe the user actually made may change the view;
+    // anything else snaps the slider back to the current view.
+    const lastSwipeInput = useRef(0);
+    const markSwipeInput = () => {
+        lastSwipeInput.current = performance.now();
+    };
+    const resyncSlider = useCallback(() => {
+        const swiper = logSwiperRef.current;
+        const index = SWIPE_VIEWS.indexOf(viewRef.current);
+        if (!swiper || swiper.destroyed || index === -1) return;
+        swiper.update();
+        if (swiper.activeIndex !== index) swiper.slideTo(index, 0);
+    }, []);
+    useEffect(() => {
+        let timer: number | null = null;
+        const settle = () => {
+            if (timer !== null) window.clearTimeout(timer);
+            timer = window.setTimeout(resyncSlider, 250);
+        };
+        window.addEventListener('resize', settle);
+        document.addEventListener('visibilitychange', settle);
+        return () => {
+            window.removeEventListener('resize', settle);
+            document.removeEventListener('visibilitychange', settle);
+            if (timer !== null) window.clearTimeout(timer);
+        };
+    }, [resyncSlider]);
+
     const isSwipeView = SWIPE_VIEWS.includes(view);
     const pagePadding = menuBar ? 'px-5 pb-8 pt-[64px]' : 'px-8 pb-12 pt-[70px]';
 
@@ -857,7 +891,12 @@ function App() {
             >
                 <div className="flex h-full w-full flex-col">
                     {isSwipeView && (
-                        <div className="h-full overflow-visible">
+                        <div
+                            className="h-full overflow-visible"
+                            onWheel={markSwipeInput}
+                            onPointerDown={markSwipeInput}
+                            onTouchStart={markSwipeInput}
+                        >
                             <Swiper
                                 className="tokify-log-swiper h-full w-full"
                                 style={{ overflow: 'visible' }}
@@ -879,7 +918,12 @@ function App() {
                                 onSlideChange={(swiper) => {
                                     if (programmaticSlide.current) return;
                                     const next = SWIPE_VIEWS[swiper.activeIndex];
-                                    if (next && next !== viewRef.current) setView(next);
+                                    if (!next || next === viewRef.current) return;
+                                    if (performance.now() - lastSwipeInput.current > SWIPE_INPUT_MS) {
+                                        requestAnimationFrame(resyncSlider);
+                                        return;
+                                    }
+                                    setView(next);
                                 }}
                         >
                             <SwiperSlide>

@@ -7,6 +7,7 @@ import {
   FolderKanban,
   List,
   Mail,
+  Power,
   Settings as SettingsIcon,
   Share2,
   Redo2,
@@ -34,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ExportDialog } from "@/components/ExportDialog";
+import { Quit } from "../../wailsjs/runtime/runtime";
 
 const dragStyle = {
   // Wails draggable hint and webkit equivalent
@@ -256,6 +258,7 @@ export function Masthead({
           >
             <button
               type="button"
+              tabIndex={-1}
               className={cn(
                 "tt-tab-btn shrink-0 hover:text-navigation-active-foreground [&_svg]:size-[13px]",
                 running &&
@@ -296,6 +299,7 @@ export function Masthead({
             >
               <button
                 type="button"
+                tabIndex={-1}
                 className="tt-tab-btn shrink-0 hover:text-navigation-active-foreground [&_svg]:size-[13px]"
                 style={tabStyle("history")}
                 onClick={() => onView("history")}
@@ -319,21 +323,18 @@ export function Masthead({
                   icon={FileText}
                   label="Reports"
                   active={view === "reports"}
-                  visible={showLogIcons}
                   onClick={() => onView("reports")}
                 />
                 <LogIconButton
                   icon={BarChart3}
                   label="Charts"
                   active={view === "charts"}
-                  visible={showLogIcons}
                   onClick={() => onView("charts")}
                 />
                 <LogIconButton
                   icon={ActivityIcon}
                   label="Stats"
                   active={view === "stats"}
-                  visible={showLogIcons}
                   onClick={() => onView("stats")}
                 />
               </div>
@@ -451,6 +452,15 @@ export function Masthead({
                   </DropdownMenuItem>
                 </>
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => Quit()}
+                className="text-destructive data-[highlighted]:text-destructive"
+              >
+                <Power className="size-4 text-destructive opacity-70" />
+                Quit Tokify
+                <span className="ml-auto pl-6 font-mono text-[11px] text-destructive/60">⌘Q</span>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -512,13 +522,11 @@ function LogIconButton({
   icon: Icon,
   label,
   active = false,
-  visible,
   onClick,
 }: {
   icon: typeof List;
   label: string;
   active?: boolean;
-  visible: boolean;
   onClick: () => void;
 }) {
   return (
@@ -526,7 +534,7 @@ function LogIconButton({
       type="button"
       aria-label={label}
       aria-pressed={active}
-      tabIndex={visible ? 0 : -1}
+      tabIndex={-1}
       title={label}
       className={cn(
         "flex size-6 shrink-0 items-center justify-center rounded-md border bg-transparent leading-none transition-[background-color,border-color,color] duration-150 [&_svg]:size-[13px]",
