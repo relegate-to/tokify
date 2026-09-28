@@ -40,7 +40,7 @@ export function StatsView({ activities }: { activities: Activity[] }) {
                     <div>
                         <Eyebrow className="mb-3">Current streak</Eyebrow>
                         <div className="flex items-baseline gap-2.5">
-                            <div className="font-mono text-[42px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
+                            <div className="font-mono text-[42px] compact:text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
                                 {stats.currentStreak}
                             </div>
                             <div className="text-[15px] text-muted-foreground">
@@ -80,11 +80,11 @@ export function StatsView({ activities }: { activities: Activity[] }) {
                 </div>
             </Band>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 compact:grid-cols-2">
                 {stats.cards.map((c, i) => (
                     <div
                         key={c.label}
-                        className="animate-in fade-in-0 slide-in-from-bottom-1 rounded-2xl bg-card p-5 ring-1 ring-foreground/10 transition-[transform,box-shadow] duration-500 hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(17,19,24,0.28)]"
+                        className="animate-in fade-in-0 slide-in-from-bottom-1 rounded-2xl bg-card p-5 compact:p-4 ring-1 ring-foreground/10 transition-[transform,box-shadow] duration-500 hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(17,19,24,0.28)]"
                         style={{ animationDelay: `${i * 40}ms` }}
                     >
                         <div className="mb-3 flex items-center gap-2">
@@ -96,7 +96,7 @@ export function StatsView({ activities }: { activities: Activity[] }) {
                             )}
                             <Eyebrow>{c.label}</Eyebrow>
                         </div>
-                        <div className="font-mono text-[27px] font-semibold leading-none tracking-[-0.01em] tabular-nums text-foreground">
+                        <div className="font-mono text-[27px] compact:text-[21px] font-semibold leading-none tracking-[-0.01em] tabular-nums text-foreground">
                             {c.value}
                         </div>
                         <div className="mt-2 text-[12.5px] text-muted-foreground/80">

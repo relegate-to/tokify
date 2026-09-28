@@ -49,9 +49,15 @@ type App struct {
 	// refresh runs in the background — see sharedCache and refreshSharedAsync.
 	sharedCache *sharedCache
 
-	mu       sync.Mutex
-	trayStop chan struct{}
-	syncKick chan struct{}
+	mu         sync.Mutex
+	trayStop   chan struct{}
+	tray       *trayMenu
+	trayLast   *models.Activity
+	trayRecent []models.Activity
+	syncKick   chan struct{}
+
+	// menuBar is set when the window lives in a popover under the status item.
+	menuBar atomic.Bool
 
 	syncing          atomic.Bool
 	sharedRefreshing atomic.Bool
@@ -225,24 +231,63 @@ func (a *App) autoSyncOnce() bool {
 	return true
 }
 
+// trayRecentSlots caps the "Start Recent" submenu. Menu items can't be
+// created and destroyed cheaply, so the slots exist up front and hide when
+// there is less history to fill them.
+const trayRecentSlots = 6
+
+type trayMenu struct {
+	status   *systray.MenuItem
+	today    *systray.MenuItem
+	stop     *systray.MenuItem
+	resume   *systray.MenuItem
+	recent   *systray.MenuItem
+	slots    [trayRecentSlots]*systray.MenuItem
+	open     *systray.MenuItem
+	settings *systray.MenuItem
+	menuBar  *systray.MenuItem
+	quit     *systray.MenuItem
+}
+
 // trayOnReady builds the status bar menu. Called by systray on the main
 // thread once the NSStatusItem exists. The window-hide path is handled by
-// Wails' HideWindowOnClose at the Cocoa layer, so the tray only needs to
-// surface "show" and "quit" — no toggle state to keep in sync.
+// Wails' HideWindowOnClose at the Cocoa layer. In menu bar mode a left click
+// opens the popover instead, and the menu moves to a right click.
 func (a *App) trayOnReady() {
 	systray.SetTitle(" ○")
 	systray.SetTooltip("Tokify")
 
-	show := systray.AddMenuItem("Show Tokify", "Bring the Tokify window to the front")
+	m := &trayMenu{}
+	m.status = systray.AddMenuItem("Not tracking", "")
+	m.status.Disable()
+	m.today = systray.AddMenuItem("", "")
+	m.today.Disable()
+	m.today.Hide()
 	systray.AddSeparator()
-	quit := systray.AddMenuItem("Quit Tokify", "Quit Tokify")
+	m.stop = systray.AddMenuItem("Stop", "Stop the running activity")
+	m.stop.Hide()
+	m.resume = systray.AddMenuItem("Resume", "Start the last activity again")
+	m.resume.Hide()
+	m.recent = systray.AddMenuItem("Start Recent", "Start one of your recent activities again")
+	for i := range m.slots {
+		m.slots[i] = m.recent.AddSubMenuItem("", "")
+		m.slots[i].Hide()
+	}
+	m.recent.Hide()
+	systray.AddSeparator()
+	m.open = systray.AddMenuItem("Open Tokify", "Bring Tokify to the front")
+	m.settings = systray.AddMenuItem("Settings…", "Open Tokify's settings")
+	m.menuBar = systray.AddMenuItemCheckbox("Menu Bar Mode", "Open Tokify as a panel under this icon instead of a window", a.menuBar.Load())
+	systray.AddSeparator()
+	m.quit = systray.AddMenuItem("Quit Tokify", "Quit Tokify")
 
 	a.mu.Lock()
+	a.tray = m
 	a.trayStop = make(chan struct{})
 	stop := a.trayStop
 	a.mu.Unlock()
 
-	go a.trayLoop(show.ClickedCh, quit.ClickedCh, stop)
+	go a.trayLoop(m, stop)
 }
 
 func (a *App) trayOnExit() {
@@ -260,13 +305,27 @@ func (a *App) trayOnExit() {
 // Mutations (Start/Stop/…) call refreshTrayTitle directly. The loop waits for
 // startup to populate a.ctx before issuing any Wails runtime calls — the tray
 // goroutine and Wails startup race otherwise.
-func (a *App) trayLoop(showCh, quitCh <-chan struct{}, stop <-chan struct{}) {
+func (a *App) trayLoop(m *trayMenu, stop <-chan struct{}) {
 	for a.ctx == nil {
 		select {
 		case <-stop:
 			return
 		case <-time.After(100 * time.Millisecond):
 		}
+	}
+
+	slotCh := make(chan int)
+	for i, item := range m.slots {
+		go func() {
+			for {
+				select {
+				case <-stop:
+					return
+				case <-item.ClickedCh:
+					slotCh <- i
+				}
+			}
+		}()
 	}
 
 	a.refreshTrayTitle()
@@ -283,22 +342,173 @@ func (a *App) trayLoop(showCh, quitCh <-chan struct{}, stop <-chan struct{}) {
 		case <-timer.C:
 			a.refreshTrayTitle()
 			timer.Reset(nextMinute())
-		case <-showCh:
-			wailsruntime.WindowShow(a.ctx)
-		case <-quitCh:
+		case <-systray.TrayOpenedCh:
+			a.refreshTrayTitle()
+		case <-m.stop.ClickedCh:
+			if _, err := a.Stop(); err == nil {
+				wailsruntime.EventsEmit(a.ctx, "activities:changed")
+			}
+		case <-m.resume.ClickedCh:
+			a.startFromTray(a.trayResume)
+		case i := <-slotCh:
+			a.startFromTray(func() *models.Activity {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				if i < len(a.trayRecent) {
+					act := a.trayRecent[i]
+					return &act
+				}
+				return nil
+			})
+		case <-m.open.ClickedCh:
+			a.showMain()
+		case <-m.settings.ClickedCh:
+			a.showMain()
+			wailsruntime.EventsEmit(a.ctx, "tray:navigate", "settings")
+		case <-m.menuBar.ClickedCh:
+			if err := a.SetMenuBarMode(!a.menuBar.Load()); err != nil {
+				wailsruntime.EventsEmit(a.ctx, "tray:error", err.Error())
+			}
+		case <-m.quit.ClickedCh:
 			wailsruntime.Quit(a.ctx)
 			return
 		}
 	}
 }
 
-func (a *App) refreshTrayTitle() {
-	act, err := a.GetRunning()
-	if err != nil || act == nil {
-		systray.SetTitle(" ○")
+func (a *App) trayResume() *models.Activity {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.trayLast
+}
+
+func (a *App) startFromTray(pick func() *models.Activity) {
+	act := pick()
+	if act == nil {
 		return
 	}
-	systray.SetTitle(" ● " + formatElapsed(time.Since(act.StartTime)))
+	if _, err := a.Start(act.Description, act.Project, act.Notes); err == nil {
+		wailsruntime.EventsEmit(a.ctx, "activities:changed")
+	}
+}
+
+// refreshTrayTitle re-renders the status item and its menu from the activity
+// log. Every mutation calls it, so the menu is never staler than the minute
+// tick.
+func (a *App) refreshTrayTitle() {
+	running, err := a.GetRunning()
+	if err != nil {
+		running = nil
+	}
+	if running == nil {
+		systray.SetTitle(" ○")
+	} else {
+		systray.SetTitle(" ● " + formatElapsed(time.Since(running.StartTime)))
+	}
+
+	a.mu.Lock()
+	m := a.tray
+	a.mu.Unlock()
+	if m == nil {
+		return
+	}
+	today, _ := a.ListToday()
+	history, _ := a.ListRecent(200)
+
+	now := time.Now()
+	var total time.Duration
+	for _, act := range today {
+		end := now
+		if act.EndTime != nil {
+			end = *act.EndTime
+		}
+		total += end.Sub(act.StartTime)
+	}
+
+	// The last finished activity is the one-click Resume; the submenu offers
+	// the next few distinct ones behind it.
+	var last *models.Activity
+	var recent []models.Activity
+	seen := map[string]bool{}
+	if running != nil {
+		seen[running.Description+"\x00"+running.Project] = true
+	}
+	for _, act := range history {
+		key := act.Description + "\x00" + act.Project
+		if act.EndTime == nil || seen[key] {
+			continue
+		}
+		seen[key] = true
+		if last == nil && running == nil {
+			last = &act
+			continue
+		}
+		recent = append(recent, act)
+		if len(recent) == trayRecentSlots {
+			break
+		}
+	}
+
+	a.mu.Lock()
+	a.trayLast = last
+	a.trayRecent = recent
+	a.mu.Unlock()
+
+	if running != nil {
+		m.status.SetTitle("● " + trayActivityLabel(*running) + "  " + formatElapsed(now.Sub(running.StartTime)))
+		m.stop.SetTitle("Stop “" + trayTruncate(running.Description) + "”")
+		m.stop.Show()
+	} else {
+		m.status.SetTitle("Not tracking")
+		m.stop.Hide()
+	}
+	if total > 0 {
+		m.today.SetTitle("Today " + formatElapsed(total))
+		m.today.Show()
+	} else {
+		m.today.Hide()
+	}
+	if last != nil {
+		m.resume.SetTitle("Resume “" + trayTruncate(last.Description) + "”")
+		m.resume.Show()
+	} else {
+		m.resume.Hide()
+	}
+	for i, slot := range m.slots {
+		if i < len(recent) {
+			slot.SetTitle(trayActivityLabel(recent[i]))
+			slot.Show()
+		} else {
+			slot.Hide()
+		}
+	}
+	if len(recent) > 0 {
+		m.recent.Show()
+	} else {
+		m.recent.Hide()
+	}
+	if a.menuBar.Load() {
+		m.menuBar.Check()
+	} else {
+		m.menuBar.Uncheck()
+	}
+}
+
+func trayActivityLabel(act models.Activity) string {
+	label := trayTruncate(act.Description)
+	if act.Project != "" {
+		label += " — " + trayTruncate(act.Project)
+	}
+	return label
+}
+
+func trayTruncate(s string) string {
+	const limit = 36
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= limit {
+		return string(r)
+	}
+	return strings.TrimSpace(string(r[:limit-1])) + "…"
 }
 
 func formatElapsed(d time.Duration) string {

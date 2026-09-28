@@ -124,8 +124,16 @@ Stack:
   left of Now; keep it out of the masthead navigation.
 - Closing the window leaves the app in the menu bar
   (`HideWindowOnClose: true`). The tray code lives in `cmd/tock-desktop/app.go`
-  — re-render its title via `refreshTrayTitle` after any mutation that
-  affects what's running.
+  — re-render its title and menu via `refreshTrayTitle` after any mutation
+  that affects what's running.
+- **Menu bar mode** (`cmd/tock-desktop/menubar_darwin.go`) turns the same
+  window into a borderless popover under the status item; the choice persists
+  in `desktop.json` in the app data dir because Go needs it before launch. The
+  page draws the panel and tail itself and sets `menubar` on `<html>`. Use the
+  Tailwind `compact:` variant (defined in `style.css`) for layouts that must
+  fit the ~400px popover rather than threading a prop through; when the
+  content itself differs (e.g. the shorter contribution graph range), read
+  `useCompact()` from `@/lib/compact`.
 
 ### Useful skills
 

@@ -30,7 +30,7 @@ export function ChartsView({ activities }: { activities: Activity[] }) {
     return (
         <div className="flex flex-col gap-4">
             <div className="flex items-baseline justify-between">
-                <div className="text-[17px] font-semibold tracking-tight text-foreground">
+                <div className="text-[17px] compact:text-[15px] font-semibold tracking-tight text-foreground">
                     Breakdown
                 </div>
                 <div className="text-[12.5px] text-muted-foreground/70">past year</div>
@@ -43,10 +43,10 @@ export function ChartsView({ activities }: { activities: Activity[] }) {
                         <EmptyPanel note="Nothing tracked yet." />
                     ) : (
                         <div className="flex items-center gap-5">
-                            <div className="relative size-[132px] shrink-0">
+                            <div className="relative size-[132px] shrink-0 compact:size-[108px]">
                                 <svg
                                     viewBox="0 0 42 42"
-                                    className="size-[132px] -rotate-90"
+                                    className="size-[132px] -rotate-90 compact:size-[108px]"
                                 >
                                     <circle
                                         cx="21"
@@ -75,7 +75,7 @@ export function ChartsView({ activities }: { activities: Activity[] }) {
                                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                                     <div
                                         title={formatTotal(donut.totalMs)}
-                                        className="font-mono text-[20px] font-semibold leading-none tabular-nums text-foreground"
+                                        className="font-mono text-[20px] compact:text-[17px] font-semibold leading-none tabular-nums text-foreground"
                                     >
                                         {donut.totalLabel}
                                     </div>

@@ -79,7 +79,7 @@ export function Starter({
     return (
         <section
             aria-label="Start a new activity"
-            className="flex min-h-[140px] items-center gap-[34px] rounded-[16px] bg-card px-[34px] py-[30px] shadow-[inset_0_0_0_1px_var(--border)] animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-400"
+            className="flex min-h-[140px] items-center gap-[34px] rounded-[16px] bg-card px-[34px] py-[30px] compact:min-h-0 compact:flex-col compact:items-stretch compact:gap-3.5 compact:px-[18px] compact:py-4 shadow-[inset_0_0_0_1px_var(--border)] animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-400"
             style={{ animationTimingFunction: EASE_THUNK }}
         >
             <div className="flex min-w-0 flex-1 flex-col gap-[7px]">
@@ -105,7 +105,7 @@ export function Starter({
                     aria-label="What are you working on?"
                     autoComplete="off"
                     spellCheck={false}
-                    className="w-full bg-transparent text-[30px] font-semibold leading-[1.15] tracking-[-0.02em] text-foreground outline-none placeholder:select-none placeholder:text-ink-faint"
+                    className="w-full bg-transparent text-[30px] compact:text-[20px] font-semibold leading-[1.15] tracking-[-0.02em] text-foreground outline-none placeholder:select-none placeholder:text-ink-faint"
                 />
 
                 <div className="flex h-6 min-w-0 items-center gap-3.5">
@@ -203,7 +203,7 @@ export function Starter({
                 type="button"
                 onClick={submit}
                 aria-disabled={!canStart}
-                className="flex shrink-0 items-center gap-[9px] rounded-[10px] bg-primary px-[22px] py-3 text-sm font-semibold text-primary-foreground transition-[background-color,opacity,transform] hover:bg-primary-hover active:scale-95"
+                className="flex shrink-0 items-center gap-[9px] rounded-[10px] bg-primary px-[22px] py-3 compact:justify-center compact:py-2 text-sm font-semibold text-primary-foreground transition-[background-color,opacity,transform] hover:bg-primary-hover active:scale-95"
             >
                 <span
                     aria-hidden

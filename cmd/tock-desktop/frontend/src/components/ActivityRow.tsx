@@ -19,14 +19,14 @@ import { ProjectTag } from '@/components/ProjectTag';
 import { SharedAuthorBadge } from '@/components/SharedAuthorBadge';
 import { EditActivityDialog } from '@/components/EditActivityDialog';
 
-const ROW_HEIGHT = 'h-11';
+const ROW_HEIGHT = 'h-11 compact:h-10';
 const ROW_GRID =
-    'grid grid-cols-[68px_136px_minmax(0,1fr)_68px_80px] items-center px-3';
+    'grid grid-cols-[68px_136px_minmax(0,1fr)_68px_80px] items-center px-3 compact:grid-cols-[48px_minmax(0,1fr)_56px_auto] compact:px-2';
 
 // The Log lists a day in columns you scan top-down; the tracker's recents ledger
 // is a denser hairline-ruled list whose whole row starts the task again. Same
 // row component either way, so editing, deleting, and resuming behave alike.
-const LEDGER_ROW_HEIGHT = 'h-[50px]';
+const LEDGER_ROW_HEIGHT = 'h-[50px] compact:h-10';
 
 // Memoised: a delete flips `isRemoving` on one row, but without this every row
 // in the log re-renders on that state change — each one rebuilding a Radix
@@ -114,7 +114,7 @@ export const ActivityRow = memo(function ActivityRow({
                 className="size-[7px] shrink-0 rounded-[2px]"
                 style={{ backgroundColor: projectColor(project) }}
             />
-            <span className="min-w-0 flex-1 truncate text-[15px] font-medium">
+            <span className="min-w-0 flex-1 truncate text-[15px] font-medium compact:text-sm">
                 {activity.description || 'No description'}
             </span>
             <span className="hidden max-w-[40%] shrink-0 truncate text-[13px] text-ink-faint sm:block">
@@ -185,7 +185,7 @@ export const ActivityRow = memo(function ActivityRow({
                 {formatClock(start)}
             </span>
 
-            <div className="min-w-0 pr-3">
+            <div className="min-w-0 pr-3 compact:hidden">
                 {activity.project && (
                     <ProjectTag
                         project={activity.project}

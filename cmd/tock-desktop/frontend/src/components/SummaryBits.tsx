@@ -20,7 +20,7 @@ export function Band({
         <div
             style={style}
             className={cn(
-                'rounded-2xl bg-subtle-surface p-6 ring-1 ring-subtle-surface-border',
+                'rounded-2xl bg-subtle-surface p-6 compact:p-4 ring-1 ring-subtle-surface-border',
                 className,
             )}
         >
@@ -42,7 +42,7 @@ export function Panel({
         <div
             style={style}
             className={cn(
-                'rounded-2xl bg-card p-5 ring-1 ring-foreground/10',
+                'rounded-2xl bg-card p-5 compact:p-4 ring-1 ring-foreground/10',
                 className,
             )}
         >
@@ -179,11 +179,11 @@ export function StackedBarChart({
                 return (
                     <div
                         key={`${b.label}-${i}`}
-                        className="group/bar flex h-full flex-1 flex-col items-center justify-end gap-2"
+                        className="group/bar flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
                     >
                         <div
                             className={cn(
-                                'font-mono text-[11px] tabular-nums text-muted-foreground transition-opacity duration-150',
+                                'h-4 whitespace-nowrap font-mono text-[11px] leading-4 tabular-nums text-muted-foreground transition-opacity duration-150',
                                 showValue
                                     ? 'opacity-100'
                                     : 'opacity-0 group-hover/bar:opacity-100',
@@ -192,35 +192,45 @@ export function StackedBarChart({
                             {b.total > 0 ? formatTotal(b.total) : '—'}
                         </div>
                         <div
-                            className="flex w-[64%] flex-1 flex-col-reverse justify-start gap-[2px]"
+                            className="flex w-[64%] flex-1 flex-col justify-end"
                             style={{ maxWidth: barMaxWidth }}
                         >
                             {b.segments.length === 0 ? (
                                 <div className="h-[3px] rounded-full bg-muted" />
                             ) : (
-                                b.segments.map((seg) => (
-                                    <div
-                                        key={seg.project}
-                                        title={`${seg.label} · ${formatTotal(seg.ms)}`}
-                                        className="w-full rounded-[3px] transition-[filter] duration-150 group-hover/bar:brightness-[1.06]"
-                                        style={{
-                                            height: `${(seg.ms / max) * 100}%`,
-                                            minHeight: 3,
-                                            background: seg.color,
-                                        }}
-                                    />
-                                ))
+                                // One rounded column split by hairlines, so a small
+                                // project reads as part of the bar, not a stray pill.
+                                <div
+                                    className="flex flex-col-reverse gap-px overflow-hidden rounded-[3px] transition-[filter] duration-150 group-hover/bar:brightness-[1.06]"
+                                    style={{
+                                        height: `${(b.total / max) * 100}%`,
+                                        minHeight: 3,
+                                    }}
+                                >
+                                    {b.segments.map((seg) => (
+                                        <div
+                                            key={seg.project}
+                                            title={`${seg.label} · ${formatTotal(seg.ms)}`}
+                                            className="w-full basis-0"
+                                            style={{
+                                                flexGrow: seg.ms,
+                                                minHeight: 3,
+                                                background: seg.color,
+                                            }}
+                                        />
+                                    ))}
+                                </div>
                             )}
                         </div>
                         <div
                             className={cn(
-                                'text-[11.5px]',
+                                'h-4 whitespace-nowrap text-[11.5px] leading-4',
                                 b.labelMuted
                                     ? 'text-muted-foreground/55'
                                     : 'text-muted-foreground',
                             )}
                         >
-                            {b.label || ' '}
+                            {b.label}
                         </div>
                     </div>
                 );

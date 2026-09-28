@@ -20,8 +20,10 @@ import {
     ListProjects,
     ListRecent,
     ListToday,
+    MenuBarMode,
     Projects,
     RemoveActivity,
+    SetMenuBarMode,
     SharingListTeams,
     SharingProjectShares,
     SharingSharedEntries,
@@ -40,6 +42,8 @@ import type { Activity, ActivityItem, ActivityView, Theme, UndoState, View } fro
 import { EASE_FLIP, REMOVE_ANIM_MS, REMOVE_FLIP_MS } from '@/lib/motion';
 import { captureFlip, playFlip, type FlipSnapshot } from '@/lib/flip';
 import { setProjectColorOverrides } from '@/lib/colors';
+import { cn } from '@/lib/utils';
+import { CompactContext } from '@/lib/compact';
 import {
     ProjectSharesContext,
     type ProjectSharesMap,
@@ -79,6 +83,31 @@ const LOG_VIEWS: View[] = ['history', 'reports', 'charts', 'stats'];
 const SWIPE_VIEWS: View[] = ['sketchpad', 'now', ...LOG_VIEWS];
 
 const THEME_VALUES: Theme[] = ['auto', 'light', 'dark'];
+
+// Menu bar mode hangs the window from the status item. The panel sits this far
+// below the window's top edge, and the tail fills the strip above it.
+const TAIL_HEIGHT = 10;
+const TAIL_WIDTH = 24;
+
+function MenuBarTail({ x }: { x: number }) {
+    return (
+        <svg
+            aria-hidden
+            width={TAIL_WIDTH}
+            height={TAIL_HEIGHT}
+            viewBox={`0 0 ${TAIL_WIDTH} ${TAIL_HEIGHT}`}
+            className="pointer-events-none fixed top-0 z-50 overflow-visible"
+            style={{ left: `clamp(16px, ${x - TAIL_WIDTH / 2}px, calc(100vw - ${TAIL_WIDTH + 16}px))` }}
+        >
+            <path
+                d="M0 10 C5 10 8.5 1.25 12 1.25 C15.5 1.25 19 10 24 10"
+                fill="var(--background)"
+                stroke="var(--border)"
+                strokeWidth="1"
+            />
+        </svg>
+    );
+}
 
 function parseUndoState(value: string): UndoState {
     return JSON.parse(value) as UndoState;
@@ -225,6 +254,8 @@ function App() {
     );
     const [dailyGoal, setDailyGoal] = useState<number>(() => readDailyGoal());
     const [theme, setTheme] = useState<Theme>(() => readTheme());
+    const [menuBar, setMenuBar] = useState(false);
+    const [tailX, setTailX] = useState<number | null>(null);
     const [authStatus, setAuthStatus] = useState<neonauth.Status | null>(null);
     // Activities deleted locally that a refresh already in flight may still be
     // carrying an answer for. Filtering them out of every refresh until the
@@ -567,6 +598,29 @@ function App() {
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [handleRedo, handleUndo]);
 
+    useEffect(() => {
+        MenuBarMode()
+            .then(setMenuBar)
+            .catch(() => {});
+        const offs = [
+            EventsOn('menubar:mode', (on: boolean) => setMenuBar(on)),
+            EventsOn('menubar:tail', (x: number) => setTailX(x)),
+            // The tray starts and stops activities behind the page's back.
+            EventsOn('activities:changed', () => afterMutation()),
+            EventsOn('tray:navigate', (next: View) => setView(next)),
+            EventsOn('tray:error', (message: string) => toast.error(message)),
+        ];
+        return () => offs.forEach((off) => off());
+    }, [afterMutation]);
+
+    useEffect(() => {
+        document.documentElement.classList.toggle('menubar', menuBar);
+    }, [menuBar]);
+
+    const handleMenuBarChange = (on: boolean) => {
+        SetMenuBarMode(on).catch((e) => toast.error(String(e)));
+    };
+
     // An activity started from a to-do has finished once it's no longer the
     // running one, however it was stopped: here, from the tray, or elsewhere.
     useEffect(() => {
@@ -734,6 +788,7 @@ function App() {
     );
 
     const isSwipeView = SWIPE_VIEWS.includes(view);
+    const pagePadding = menuBar ? 'px-5 pb-8 pt-[64px]' : 'px-8 pb-12 pt-[70px]';
 
     // Projects for filtering, autocomplete, and export come from the local log, but
     // a recipient's shared entries carry projects they don't track locally. Fold
@@ -767,7 +822,21 @@ function App() {
     return (
         <ProjectSharesContext.Provider value={projectShares}>
         <TeamsCacheContext.Provider value={teams}>
-        <div className="flex h-screen flex-col overflow-y-hidden bg-background text-foreground">
+        <CompactContext.Provider value={menuBar}>
+        {menuBar && <MenuBarTail x={tailX ?? window.innerWidth / 2} />}
+        <div
+            className={cn(
+                'flex flex-col overflow-y-hidden bg-background text-foreground',
+                menuBar
+                    ? 'relative overflow-hidden rounded-[14px] border'
+                    : 'h-screen',
+            )}
+            style={
+                menuBar
+                    ? { marginTop: TAIL_HEIGHT - 1, height: `calc(100vh - ${TAIL_HEIGHT - 1}px)` }
+                    : undefined
+            }
+        >
             <Masthead
                 view={view}
                 onView={handleView}
@@ -780,6 +849,7 @@ function App() {
                 undoState={undoState}
                 onUndo={handleUndo}
                 onRedo={handleRedo}
+                menuBar={menuBar}
             />
             <main
                 ref={flipRoot}
@@ -813,7 +883,7 @@ function App() {
                                 }}
                         >
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
+                                <div className={cn('h-full overflow-y-auto', pagePadding)}>
                                     <SketchpadView projects={mergedProjects} onStartTodo={(todo) =>
                                         Start(todo.description, todo.project, todo.notes)
                                             .then((activity) => {
@@ -829,7 +899,7 @@ function App() {
                                 </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
+                                <div className={cn('h-full overflow-y-auto', pagePadding)}>
                                     <NowView
                                             running={running}
                                             today={today}
@@ -852,7 +922,7 @@ function App() {
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
+                                <div className={cn('h-full overflow-y-auto', pagePadding)}>
                                         <HistoryView
                                             activities={recent}
                                             sharedActivities={shared}
@@ -871,17 +941,17 @@ function App() {
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
+                                <div className={cn('h-full overflow-y-auto', pagePadding)}>
                                     <ReportsView activities={summaryActivities} />
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
+                                <div className={cn('h-full overflow-y-auto', pagePadding)}>
                                     <ChartsView activities={summaryActivities} />
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
-                                <div className="h-full overflow-y-auto px-8 pb-12 pt-[70px]">
+                                <div className={cn('h-full overflow-y-auto', pagePadding)}>
                                     <StatsView activities={summaryActivities} />
                                     </div>
                                 </SwiperSlide>
@@ -889,7 +959,7 @@ function App() {
                         </div>
                     )}
                     {view === 'settings' && (
-                        <div className="px-8 pb-12 pt-[70px]">
+                        <div className={pagePadding}>
                             <SettingsView
                                 showAccount={showAccount}
                                 onShowAccountChange={setShowAccount}
@@ -903,12 +973,14 @@ function App() {
                                 onAutoCompleteTodosChange={setAutoCompleteTodos}
                                 theme={theme}
                                 onThemeChange={setTheme}
+                                menuBar={menuBar}
+                                onMenuBarChange={handleMenuBarChange}
                                 onBack={() => setView('now')}
                             />
                         </div>
                     )}
                     {view === 'projects' && (
-                        <div className="px-8 pb-12 pt-[70px]">
+                        <div className={pagePadding}>
                             <ProjectsView
                                 activities={summaryActivities}
                                 running={running}
@@ -918,7 +990,7 @@ function App() {
                         </div>
                     )}
                     {view === 'sharing' && (
-                        <div className="px-8 pb-12 pt-[70px]">
+                        <div className={pagePadding}>
                             <SharingView
                                 projects={projects}
                                 initialProject={sharingProject}
@@ -927,7 +999,7 @@ function App() {
                         </div>
                     )}
                     {view === 'teams' && (
-                        <div className="px-8 pb-12 pt-[70px]">
+                        <div className={pagePadding}>
                             <TeamsView
                                 projects={projects}
                                 selfUserID={authStatus?.user_id}
@@ -938,7 +1010,7 @@ function App() {
                         </div>
                     )}
                     {view === 'account' && (
-                        <div className="px-8 pb-12 pt-[70px]">
+                        <div className={pagePadding}>
                             <AccountView
                                 running={running}
                                 recent={recent}
@@ -956,6 +1028,7 @@ function App() {
             />
             <Toaster position="bottom-right" richColors closeButton />
         </div>
+        </CompactContext.Provider>
         </TeamsCacheContext.Provider>
         </ProjectSharesContext.Provider>
     );

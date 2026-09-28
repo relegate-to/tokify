@@ -90,6 +90,10 @@ export function ListToday() {
   return window['go']['main']['App']['ListToday']();
 }
 
+export function MenuBarMode() {
+  return window['go']['main']['App']['MenuBarMode']();
+}
+
 export function OpenActivityLog() {
   return window['go']['main']['App']['OpenActivityLog']();
 }
@@ -112,6 +116,10 @@ export function RemoveActivity(arg1) {
 
 export function RenameProject(arg1, arg2) {
   return window['go']['main']['App']['RenameProject'](arg1, arg2);
+}
+
+export function SetMenuBarMode(arg1) {
+  return window['go']['main']['App']['SetMenuBarMode'](arg1);
 }
 
 export function SetProjectColor(arg1, arg2) {

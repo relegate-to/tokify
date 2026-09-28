@@ -39,6 +39,8 @@ func main() {
 
 	// Create an instance of the app structure
 	app := NewApp()
+	menuBar := loadDesktopPrefs().MenuBarMode
+	app.menuBar.Store(menuBar)
 
 	// The tray runs alongside Wails' Cocoa loop via RunWithExternalLoop: start()
 	// schedules the NSStatusItem setup onto the main thread, then wails.Run owns
@@ -58,9 +60,14 @@ func main() {
 		},
 		BackgroundColour:  &options.RGBA{R: 247, G: 247, B: 247, A: 1}, // matches --background
 		OnStartup:         app.startup,
+		OnDomReady:        app.domReady,
+		StartHidden:       menuBar, // the popover waits for a click on the status item
 		HideWindowOnClose: true, // red traffic light hides; tray's Quit / Cmd+Q actually quit.
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarHiddenInset(), // inset traffic lights, no title text
+			// The page paints its own background; menu bar mode needs the corners
+			// and the tail's surroundings to show through.
+			WebviewIsTransparent: true,
 		},
 		Bind: []interface{}{
 			app,

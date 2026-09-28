@@ -42,7 +42,7 @@ export function TodayGoal({
     return (
         <section
             aria-label="Today's progress"
-            className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-3"
+            className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-3 compact:grid-cols-3"
         >
             <Cell label="Today" value={formatTotal(totalMs)} />
             <Cell
@@ -77,11 +77,11 @@ function Cell({
     children?: React.ReactNode;
 }) {
     return (
-        <div className={`flex flex-col bg-card px-[22px] py-5 ${gap}`}>
+        <div className={`flex flex-col bg-card px-[22px] py-5 compact:px-3.5 compact:py-3 ${gap}`}>
             <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-navigation-muted-foreground">
                 {label}
             </span>
-            <span className="text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground">
+            <span className="whitespace-nowrap text-2xl font-semibold tabular-nums tracking-[-0.02em] text-foreground compact:text-lg">
                 {value}
             </span>
             {children}

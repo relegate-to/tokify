@@ -3,6 +3,8 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+/* Narrow layouts for the menu bar popover (the `menubar` class on <html>). */
+@custom-variant compact (&:is(.menubar *));
 
 @layer components {
     .rich-editor-prose .note-project {
@@ -424,6 +426,12 @@
   html {
     @apply font-sans;
     }
+}
+
+/* Menu bar mode: the window is transparent and the app draws its own panel. */
+html.menubar,
+html.menubar body {
+  background: transparent;
 }
 
 /* Hide scrollbars by default; the `show-scrollbars` class on the root opts in. */

@@ -51,6 +51,8 @@ export function ListRecent(arg1:number):Promise<Array<models.Activity>>;
 
 export function ListToday():Promise<Array<models.Activity>>;
 
+export function MenuBarMode():Promise<boolean>;
+
 export function OpenActivityLog():Promise<void>;
 
 export function OpenApplicationDataDirectory():Promise<void>;
@@ -62,6 +64,8 @@ export function RedoLastActivityChange():Promise<string>;
 export function RemoveActivity(arg1:models.Activity):Promise<void>;
 
 export function RenameProject(arg1:string,arg2:string):Promise<projects.Project>;
+
+export function SetMenuBarMode(arg1:boolean):Promise<void>;
 
 export function SetProjectColor(arg1:string,arg2:string):Promise<projects.Project>;
 

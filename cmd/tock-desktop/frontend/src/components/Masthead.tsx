@@ -71,6 +71,7 @@ export function Masthead({
   undoState,
   onUndo,
   onRedo,
+  menuBar,
 }: {
   view: View;
   onView: (v: View) => void;
@@ -83,6 +84,7 @@ export function Masthead({
   undoState: UndoState;
   onUndo: () => void;
   onRedo: () => void;
+  menuBar: boolean;
 }) {
   const date = new Date()
     .toLocaleDateString(undefined, {
@@ -238,8 +240,11 @@ export function Masthead({
   return (
     <>
       <header
-        className="absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-background/75 pb-4 pl-28 pr-4 pt-3 backdrop-blur-md"
-        style={dragStyle}
+        className={cn(
+          "absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-background/75 pb-4 pr-4 pt-3 backdrop-blur-md",
+          menuBar ? "pl-4" : "pl-28",
+        )}
+        style={menuBar ? noDragStyle : dragStyle}
       >
         <div className="flex items-center gap-4" style={noDragStyle}>
           <div
@@ -343,7 +348,7 @@ export function Masthead({
                 <button
                   ref={triggerRef}
                   type="button"
-                  className="flex select-none items-center gap-2 rounded-[9px] border border-transparent py-1.5 pl-[7px] pr-3 outline-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-0 data-[state=open]:bg-muted"
+                  className="flex select-none items-center gap-2 rounded-[9px] border border-transparent py-1.5 pl-[7px] pr-3 outline-none compact:pr-[7px] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-0 data-[state=open]:bg-muted"
                 >
                   <span
                     aria-hidden
@@ -367,7 +372,7 @@ export function Masthead({
                       />
                     )}
                   </span>
-                  <span className="max-w-40 truncate text-sm text-foreground/90">
+                  <span className="max-w-40 truncate text-sm text-foreground/90 compact:hidden">
                     {account?.signed_in
                       ? accountDisplayName(account.name, account.email)
                       : "Account"}

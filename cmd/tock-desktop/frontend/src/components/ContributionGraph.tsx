@@ -14,6 +14,7 @@ import {
 import type { Activity } from '@/types';
 import { projectColor } from '@/lib/colors';
 import { formatTotal, localDayKey } from '@/lib/time';
+import { useCompact } from '@/lib/compact';
 import {
     Card,
     CardAction,
@@ -23,6 +24,9 @@ import {
 } from '@/components/ui/card';
 
 const GRAPH_DAYS = 365;
+// The popover is too narrow for a year of 10px squares; this many weeks of
+// larger ones fill its width instead.
+const COMPACT_WEEKS = 20;
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const CONTRIBUTION_COLORS = [
@@ -43,10 +47,11 @@ function contributionLevel(ms: number) {
 }
 
 export function ContributionGraph({ activities }: { activities: Activity[] }) {
+    const compact = useCompact();
     const todayKey = localDayKey(new Date());
     const { data, dominantProjects, totalMs, activityCount } = useMemo(() => {
         const end = startOfDay(new Date());
-        const start = subDays(end, GRAPH_DAYS - 1);
+        const start = subDays(end, (compact ? COMPACT_WEEKS * 7 : GRAPH_DAYS) - 1);
         const startKey = localDayKey(start);
         const durations = new Map<string, number>();
         const projectDurations = new Map<string, Map<string, number>>();
@@ -111,7 +116,7 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
             totalMs: total,
             activityCount: count,
         };
-    }, [activities, todayKey]);
+    }, [activities, todayKey, compact]);
 
     return (
         <Card
@@ -124,7 +129,9 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
                     id="contribution-graph-title"
                     className="text-sm font-semibold"
                 >
-                    Activity, past year
+                    {compact
+                        ? `Activity, past ${COMPACT_WEEKS} weeks`
+                        : 'Activity, past year'}
                 </CardTitle>
                 <CardAction className="text-xs tabular-nums text-muted-foreground">
                     {activityCount.toLocaleString()}{' '}
@@ -137,9 +144,9 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
                 <ActivityCalendar
                     className="tokify-contribution-calendar"
                     data={data}
-                    blockMargin={2.25}
-                    blockRadius={2}
-                    blockSize={10}
+                    blockMargin={compact ? 3 : 2.25}
+                    blockRadius={compact ? 3 : 2}
+                    blockSize={compact ? 15 : 10}
                     fontSize={12}
                     labels={{
                         legend: { less: 'Less', more: 'More' },
@@ -172,3 +179,4 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
         </Card>
     );
 }
+

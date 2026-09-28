@@ -131,7 +131,7 @@ export function NowView({
     const showJumpBack = activityView === 'all' && quickStarts.length > 0;
 
     return (
-        <div className="relative mx-auto flex min-h-full w-full max-w-[1020px] flex-1 flex-col gap-[34px]">
+        <div className="relative mx-auto flex min-h-full w-full max-w-[1020px] flex-1 flex-col gap-[34px] compact:gap-6">
             {running ? (
                 <NowRunning
                     activity={running}

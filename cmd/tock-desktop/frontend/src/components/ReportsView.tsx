@@ -41,7 +41,7 @@ export function ReportsView({ activities }: { activities: Activity[] }) {
                     >
                         <ChevronLeft className="size-4" />
                     </StepButton>
-                    <div className="min-w-[176px] text-center text-[17px] font-semibold tracking-tight text-foreground">
+                    <div className="min-w-[176px] text-center text-[17px] compact:min-w-[124px] compact:text-[15px] font-semibold tracking-tight text-foreground">
                         {rep.periodLabel}
                     </div>
                     <StepButton
@@ -63,15 +63,15 @@ export function ReportsView({ activities }: { activities: Activity[] }) {
             </div>
 
             <Band className="animate-in fade-in-0 slide-in-from-bottom-1 duration-500">
-                <div className="mb-3 flex items-start justify-between gap-6">
+                <div className="mb-3 flex items-start justify-between gap-6 compact:flex-col compact:gap-4">
                     <div className="min-w-0">
                         <Eyebrow className="mb-2">{rep.eyebrow}</Eyebrow>
                         <div className="flex items-baseline gap-3">
-                            <div className="font-mono text-[42px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
+                            <div className="font-mono text-[42px] compact:text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
                                 {formatTotal(rep.totalMs)}
                             </div>
                             {rep.hasPrev && (
-                                <div className="flex items-center gap-1 text-[13px] font-medium tabular-nums text-day-total-foreground">
+                                <div className="flex items-center gap-1 whitespace-nowrap text-[13px] font-medium tabular-nums text-day-total-foreground">
                                     <DeltaIcon className="size-3.5 text-muted-foreground" />
                                     {rep.up ? '+' : '−'}
                                     {formatTotal(Math.abs(rep.deltaMs))}
@@ -229,7 +229,7 @@ function StepButton({
 
 function SummaryStat({ value, label }: { value: string; label: string }) {
     return (
-        <div className="text-right">
+        <div className="text-right compact:text-left">
             <div className="font-mono text-lg font-semibold leading-none tabular-nums text-day-total-foreground">
                 {value}
             </div>

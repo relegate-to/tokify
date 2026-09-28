@@ -47,7 +47,7 @@ export function NowRunning({
         <section
             aria-label="Currently running"
             className={cn(
-                'flex min-h-[140px] items-center gap-[34px] rounded-[16px] bg-running-card px-[34px] py-[30px] text-running-card-foreground',
+                'flex min-h-[140px] flex-wrap items-center gap-x-[34px] gap-y-5 rounded-[16px] bg-running-card px-[34px] py-[30px] text-running-card-foreground compact:min-h-0 compact:flex-col compact:flex-nowrap compact:items-stretch compact:gap-y-3.5 compact:px-[18px] compact:py-4',
                 stopping
                     ? 'animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-2 fill-mode-forwards'
                     : 'animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-6',
@@ -59,7 +59,7 @@ export function NowRunning({
                 } as CSSProperties
             }
         >
-            <div className="flex min-w-0 flex-1 flex-col gap-[7px]">
+            <div className="flex min-w-0 flex-1 basis-[240px] flex-col gap-[7px] compact:basis-auto">
                 <div className="flex items-center gap-[9px]">
                     <span
                         aria-hidden
@@ -69,7 +69,7 @@ export function NowRunning({
                         Running since {formatClock(since)}
                     </span>
                 </div>
-                <p className="truncate text-[30px] font-semibold leading-[1.15] tracking-[-0.02em]">
+                <p className="truncate text-[30px] font-semibold leading-[1.15] tracking-[-0.02em] compact:text-[20px]">
                     {activity.description || 'No description'}
                 </p>
                 <div className="flex h-6 min-w-0 items-center gap-2">
@@ -84,9 +84,9 @@ export function NowRunning({
                 </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-[22px]">
+            <div className="flex shrink-0 items-center gap-[22px] compact:gap-1.5 compact:border-t compact:border-running-card-faint/20 compact:pt-3.5">
                 <div
-                    className="font-mono text-[28px] font-medium leading-none tabular-nums tracking-[-0.02em]"
+                    className="font-mono text-[28px] font-medium leading-none tabular-nums tracking-[-0.02em] compact:mr-auto compact:text-[22px]"
                     aria-live="polite"
                 >
                     {formatStopwatch(ms)}
@@ -94,7 +94,7 @@ export function NowRunning({
                 <button
                     type="button"
                     onClick={() => setEditOpen(true)}
-                    className="flex size-10 shrink-0 items-center justify-center rounded-[10px] text-running-card-muted transition-colors hover:bg-running-card-control-hover hover:text-running-card-foreground"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-[10px] text-running-card-muted compact:size-8 transition-colors hover:bg-running-card-control-hover hover:text-running-card-foreground"
                     title="Edit activity and notes"
                     aria-label="Edit running activity and notes"
                 >
@@ -104,7 +104,7 @@ export function NowRunning({
                     type="button"
                     onClick={handleStop}
                     disabled={stopping}
-                    className="flex shrink-0 items-center gap-[9px] rounded-[10px] bg-running-stop px-5 py-3 text-sm font-semibold text-running-stop-foreground transition-[background-color,transform] hover:bg-running-stop-hover active:scale-95 disabled:opacity-70"
+                    className="flex shrink-0 items-center gap-[9px] rounded-[10px] bg-running-stop px-5 py-3 text-sm compact:px-4 compact:py-2 font-semibold text-running-stop-foreground transition-[background-color,transform] hover:bg-running-stop-hover active:scale-95 disabled:opacity-70"
                 >
                     <span
                         aria-hidden

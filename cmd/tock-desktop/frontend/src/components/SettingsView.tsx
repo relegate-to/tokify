@@ -38,6 +38,8 @@ export function SettingsView({
     onAutoCompleteTodosChange,
     theme,
     onThemeChange,
+    menuBar,
+    onMenuBarChange,
     onBack,
 }: {
     showAccount: boolean;
@@ -52,6 +54,8 @@ export function SettingsView({
     onAutoCompleteTodosChange: (v: boolean) => void;
     theme: Theme;
     onThemeChange: (v: Theme) => void;
+    menuBar: boolean;
+    onMenuBarChange: (v: boolean) => void;
     onBack: () => void;
 }) {
     return (
@@ -104,6 +108,12 @@ export function SettingsView({
                         { value: '360', label: '6h' },
                         { value: '480', label: '8h' },
                     ]}
+                />
+                <SettingRow
+                    title="Menu bar mode"
+                    description="Hide the Dock icon and open Tokify as a panel under its menu bar icon. Right-click the icon for the menu."
+                    value={menuBar}
+                    onChange={onMenuBarChange}
                 />
                 <SettingRow
                     title="Show scrollbars"
@@ -320,7 +330,7 @@ function SettingSegmentedRow<T extends string>({
     options: { value: T; label: string }[];
 }) {
     return (
-        <div className="flex items-center justify-between gap-4 px-4 py-3">
+        <div className="flex items-center justify-between gap-4 px-4 py-3 compact:flex-col compact:items-start compact:gap-2.5">
             <div className="flex min-w-0 flex-col">
                 <span className="text-sm">{title}</span>
                 {description && (

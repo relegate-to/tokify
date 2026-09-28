@@ -31,7 +31,7 @@ export function JumpBackIn({
     return (
         <section aria-label="Jump back in">
             <div className="mb-3.5 flex items-baseline justify-between gap-4 px-1">
-                <h3 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
+                <h3 className="text-[15px] compact:text-sm font-semibold tracking-[-0.01em] text-foreground">
                     Jump back in
                 </h3>
                 {contextLabel && (
