@@ -76,6 +76,7 @@
     .rich-editor-prose {
         @apply text-foreground outline-none;
         overflow-wrap: anywhere;
+        tab-size: 1.5rem;
         caret-color: transparent;
     }
     .rich-editor-prose > * + * {

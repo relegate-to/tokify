@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Placeholder } from '@tiptap/extensions';
 import { DOMSerializer, type Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { ViewMutationRecord } from '@tiptap/pm/view';
 import {
     Bold,
     Heading2,
@@ -16,6 +17,7 @@ import {
     Undo2,
 } from 'lucide-react';
 
+import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { cn } from '@/lib/utils';
 import { NoteProject, projectPicker } from '@/components/NoteProjects';
 import { TextCaret } from '@/components/TextCaret';
@@ -199,6 +201,13 @@ function todoText(item: ProseMirrorNode) {
     return { description: first.map((child) => child.textContent).join('').trim(), notes };
 }
 
+// TipTap's task item rewrites its checkbox label on every update without
+// ignoring the mutation. ProseMirror then re-reads the selection from the DOM,
+// which drops pending marks, so Cmd+B mid-line inside a to-do did nothing.
+function outsideContent(contentDOM: HTMLElement | null | undefined) {
+    return (mutation: ViewMutationRecord) => mutation.type !== 'selection' && !contentDOM?.contains(mutation.target);
+}
+
 export const RichTextEditor = memo(function RichTextEditor({
     value,
     onValueChange,
@@ -283,7 +292,8 @@ export const RichTextEditor = memo(function RichTextEditor({
                     if (!parent) return null;
                     return (props) => {
                         const view = parent(props);
-                        if (!onStartTodoRef.current) return view;
+                        const ignoreMutation = outsideContent(view.contentDOM);
+                        if (!onStartTodoRef.current) return { ...view, ignoreMutation };
                         let node = props.node;
                         const button = document.createElement('button');
                         button.type = 'button';
@@ -333,7 +343,7 @@ export const RichTextEditor = memo(function RichTextEditor({
                                 return true;
                             },
                             stopEvent: (event) => button.contains(event.target as Node) || view.stopEvent?.(event) || false,
-                            ignoreMutation: (mutation) => button.contains(mutation.target) || view.ignoreMutation?.(mutation) || false,
+                            ignoreMutation,
                         };
                     };
                 },
@@ -364,15 +374,32 @@ export const RichTextEditor = memo(function RichTextEditor({
                 'aria-label': ariaLabel,
                 spellcheck: 'true',
             },
-            handleKeyDown: (_view, event) => {
-                if (event.key !== 'Tab') return false;
+            handleKeyDown: (view, event) => {
+                if (event.key !== 'Tab' || event.metaKey || event.ctrlKey || event.altKey) return false;
                 const current = editor;
-                const item = current?.isActive('taskItem') ? 'taskItem'
-                    : current?.isActive('listItem') ? 'listItem' : null;
-                if (!current || !item) return false;
-                if (event.shiftKey) current.commands.liftListItem(item);
-                else current.commands.sinkListItem(item);
+                if (!current) return false;
+                const item = current.isActive('taskItem') ? 'taskItem'
+                    : current.isActive('listItem') ? 'listItem' : null;
+                if (item) {
+                    if (event.shiftKey) current.commands.liftListItem(item);
+                    else current.commands.sinkListItem(item);
+                    return true;
+                }
+                const { $from } = view.state.selection;
+                if (!event.shiftKey) view.dispatch(view.state.tr.insertText('\t'));
+                else if ($from.parent.textContent.startsWith('\t')) {
+                    view.dispatch(view.state.tr.delete($from.start(), $from.start() + 1));
+                }
                 return true;
+            },
+            handleDOMEvents: {
+                click: (_view, event) => {
+                    const link = (event.target as HTMLElement | null)?.closest('a[href]');
+                    if (!link || event.button !== 0 || !window.getSelection()?.isCollapsed) return false;
+                    event.preventDefault();
+                    BrowserOpenURL(link.getAttribute('href') ?? '');
+                    return true;
+                },
             },
         },
         onUpdate: ({ editor: nextEditor }) => {
