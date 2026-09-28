@@ -103,7 +103,6 @@ export function Masthead({
 
   const [exportOpen, setExportOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
   const runningStart = running ? new Date(running.start_time as any) : null;
   const runningMs = runningStart ? now - runningStart.getTime() : 0;
   const runningDuration = formatDuration(runningMs);
@@ -188,7 +187,15 @@ export function Masthead({
       const target = event.target as Node | null;
       if (!target) return;
       if (triggerRef.current?.contains(target)) return;
-      if (contentRef.current?.contains(target)) return;
+      // The menu renders in a portal, and the shadcn content component can't
+      // take a ref under React 18, so find it by its slot instead. Treating a
+      // press on an item as outside closed the menu before the item's click.
+      if (
+        target instanceof Element &&
+        target.closest('[data-slot="dropdown-menu-content"]')
+      ) {
+        return;
+      }
       handleOpenChange(false);
     };
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -389,7 +396,7 @@ export function Masthead({
                 </button>
               )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent ref={contentRef}>
+            <DropdownMenuContent>
               {showAccount && (
                 <>
                   <div className="px-2 pb-1 pt-0.5 text-[12.5px] text-muted-foreground">
