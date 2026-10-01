@@ -300,6 +300,51 @@ SELECT expect_fail('bob',
        VALUES ('audC','bob','admin')$q$,
     'non-creator bob cannot bootstrap-self-admin alice''s audience');
 
+-- ---- INVITE CONSENT ------------------------------------------------------
+-- An admin can only plant an 'invited' row, and only the invitee can accept.
+-- Otherwise an admin could make carol an accepted member unasked, and carol's
+-- client would reconcile grants into the audience.
+SELECT expect_fail('alice',
+    $q$INSERT INTO public.audience_members (audience_id, member_id, role)
+       VALUES ('audA','carol','member')$q$,
+    'admin alice cannot add carol with the default active status');
+SELECT expect_fail('alice',
+    $q$INSERT INTO public.audience_members (audience_id, member_id, role, status)
+       VALUES ('audA','carol','member','active')$q$,
+    'admin alice cannot add carol as active');
+SELECT expect_ok('alice',
+    $q$INSERT INTO public.audience_members (audience_id, member_id, role, status)
+       VALUES ('audA','carol','member','invited')$q$,
+    'admin alice can invite carol');
+SELECT expect_fail('alice',
+    $q$UPDATE public.audience_members SET status='active'
+       WHERE audience_id='audA' AND member_id='carol'$q$,
+    'admin alice cannot accept carol''s invitation for her');
+SELECT expect_ok('alice',
+    $q$UPDATE public.audience_members SET role='admin'
+       WHERE audience_id='audA' AND member_id='carol'$q$,
+    'admin alice can still re-role a pending invitee');
+SELECT expect_ok('carol',
+    $q$UPDATE public.audience_members SET status='active'
+       WHERE audience_id='audA' AND member_id='carol'$q$,
+    'invitee carol accepts her own invitation');
+RESET role;
+DO $$
+BEGIN
+    IF (SELECT status FROM public.audience_members
+         WHERE audience_id='audA' AND member_id='carol') <> 'active' THEN
+        RAISE EXCEPTION 'FAIL: carol''s accept did not land';
+    END IF;
+    RAISE NOTICE 'PASS: carol''s accept landed';
+END $$;
+DELETE FROM public.audience_members WHERE audience_id='audA' AND member_id='carol';
+
+-- An author who is also a grant admin passes entries_update either way, so the
+-- guard must stop them handing an entry to another user.
+SELECT expect_fail('alice',
+    $q$UPDATE public.entries SET user_id='bob' WHERE id='e_appr'$q$,
+    'author alice cannot reassign her entry to bob');
+
 -- ---- GRANT REVOKE + column guard -----------------------------------------
 -- Seed a bob-authored grant (bob is member, epoch 2 current). Need a share on
 -- audA (exists) and a bob entry granted to audA at current epoch.

@@ -599,6 +599,9 @@ func (s *Service) AcceptInvite(ctx context.Context, audienceID string) error {
 	if uerr := updateMemberStatus(ctx, s.http, sess.base, sess.token, audienceID, sess.userID, "active"); uerr != nil {
 		return gerrors.Wrap(uerr, "accept invite")
 	}
+	if jerr := s.pins.MarkJoined(audienceID); jerr != nil {
+		return jerr
+	}
 	s.pinRoster(ctx, sess, audienceID)
 	s.pushPins(ctx, sess)
 	return nil
