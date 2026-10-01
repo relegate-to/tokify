@@ -118,6 +118,10 @@ export function RedoLastActivityChange() {
   return window['go']['main']['App']['RedoLastActivityChange']();
 }
 
+export function RefreshRunningTimer() {
+  return window['go']['main']['App']['RefreshRunningTimer']();
+}
+
 export function RemoveActivity(arg1) {
   return window['go']['main']['App']['RemoveActivity'](arg1);
 }

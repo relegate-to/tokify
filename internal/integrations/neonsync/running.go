@@ -22,7 +22,8 @@ var ErrTimerConflict = errors.New("neonsync: running timer changed on another de
 // RunningTimer is the per-user timer every device converges on. End is nil
 // while it runs; once stopped the record keeps it with End set, so a device
 // still showing it as running can close its copy at the same instant and the
-// two completed entries hash to the same id.
+// two completed entries hash to the same id. Discarded marks a running timer
+// that was deleted rather than stopped.
 type RunningTimer struct {
 	Description string     `json:"d"`
 	Project     string     `json:"p"`
@@ -30,6 +31,7 @@ type RunningTimer struct {
 	Tags        []string   `json:"t,omitempty"`
 	Start       time.Time  `json:"s"`
 	End         *time.Time `json:"e,omitempty"`
+	Discarded   bool       `json:"x,omitempty"`
 	DeviceID    string     `json:"dev"`
 }
 

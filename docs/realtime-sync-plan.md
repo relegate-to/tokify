@@ -4,7 +4,7 @@
 
 Draft. Phase 1 is implemented in the repository; its migration still has to be
 applied to the live Neon project. The Phase 2a spike is done and dropped the
-live connection (see 2a). Phase 2b is implemented (`internal/integrations/neonsync/running.go`); 2c–4 are not started.
+live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`); 2d–4 are not started.
 
 **Problem:** the running timer never leaves the device it started on.
 `SyncNow` pushes only completed activities, every 5 minutes
@@ -123,6 +123,14 @@ Conclusion: no live connection. Desktops poll; phones get push (see Delivery).
   launch, on the existing shared-entries poll and 5-minute sync, and when the
   tray menu opens; a change updates local state and calls `refreshTrayTitle`.
   Offline, fall back to local-only and reconcile on reconnect.
+- `timersync` compares the record, the local running activity and the last
+  state this device agreed with (`timersync.json`). That also publishes
+  timers started from the CLI or MCP server, and stops made while offline.
+  The timer reconciles before each entry sync, so a peer's stop closes the
+  local copy before the pull could add a minute-rounded duplicate.
+- Known edge: if one device stops a timer while another starts a new one
+  inside the same poll window, the stopped timer can end up with two slightly
+  different end times on the two devices.
 
 ### 2d. Windows and Linux desktop
 
