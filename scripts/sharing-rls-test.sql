@@ -732,6 +732,56 @@ BEGIN
     RAISE NOTICE 'PASS: creator deletes a team and the cascade reaps its tracking rows';
 END $$;
 
+-- ==========================================================================
+-- running_timers (schema.sql): owner-only rows and a strictly sequential
+-- compare-and-swap version.
+-- ==========================================================================
+RESET role;
+SELECT expect_fail('alice',
+    $q$INSERT INTO public.running_timers (user_id, version, ciphertext, nonce) VALUES ('alice', 2, 'ct', 'n')$q$,
+    'running_timers: first insert must be version 1');
+RESET role;
+SELECT expect_ok('alice',
+    $q$INSERT INTO public.running_timers (user_id, version, ciphertext, nonce) VALUES ('alice', 1, 'ct1', 'n1')$q$,
+    'running_timers: alice creates her row at version 1');
+RESET role;
+SELECT expect_fail('bob',
+    $q$INSERT INTO public.running_timers (user_id, version, ciphertext, nonce) VALUES ('alice', 1, 'x', 'x')$q$,
+    'running_timers: bob cannot insert a row for alice');
+RESET role;
+SELECT assert_count('bob', $q$SELECT count(*) FROM public.running_timers$q$, 0,
+    'running_timers: bob cannot see alice''s row');
+SELECT test_as('bob', $q$UPDATE public.running_timers SET version = 2, ciphertext = 'x' WHERE user_id = 'alice'$q$);
+RESET role;
+SELECT assert_count('alice', $q$SELECT count(*) FROM public.running_timers WHERE ciphertext = 'ct1'$q$, 1,
+    'running_timers: bob''s update reaches no rows');
+
+-- A stale compare-and-swap matches nothing; the current one advances by one.
+SELECT test_as('alice', $q$UPDATE public.running_timers SET version = 1, ciphertext = 'stale' WHERE version = 0$q$);
+RESET role;
+SELECT assert_count('alice', $q$SELECT count(*) FROM public.running_timers WHERE version = 1 AND ciphertext = 'ct1'$q$, 1,
+    'running_timers: a CAS on a stale version changes nothing');
+SELECT expect_ok('alice',
+    $q$UPDATE public.running_timers SET version = 2, ciphertext = 'ct2', nonce = 'n2' WHERE version = 1$q$,
+    'running_timers: CAS on the current version advances to 2');
+RESET role;
+SELECT expect_fail('alice',
+    $q$UPDATE public.running_timers SET version = 5, ciphertext = 'x' WHERE version = 2$q$,
+    'running_timers: version cannot skip ahead');
+RESET role;
+SELECT expect_fail('alice',
+    $q$UPDATE public.running_timers SET version = 1, ciphertext = 'x' WHERE version = 2$q$,
+    'running_timers: version cannot rewind');
+RESET role;
+SELECT expect_fail('alice',
+    $q$UPDATE public.running_timers SET user_id = 'bob', version = 3 WHERE version = 2$q$,
+    'running_timers: user_id cannot be reassigned');
+RESET role;
+SELECT expect_fail('alice',
+    $q$DELETE FROM public.running_timers WHERE user_id = 'alice'$q$,
+    'running_timers: rows cannot be deleted');
+RESET role;
+
 \echo '==================================================================='
 \echo 'ALL RLS ASSERTIONS PASSED'
 \echo '==================================================================='

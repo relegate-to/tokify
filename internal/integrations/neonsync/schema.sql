@@ -102,3 +102,61 @@ CREATE POLICY entries_own_rows ON public.entries
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_keys TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.entries   TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- running_timers: one row per user holding the timer state every device
+-- converges on — running, or the timer that was last stopped, so peers can
+-- close their copy with the same end time. Like entries, the whole timer
+-- (times included) is ciphertext; the AAD binds it to user_id and version so
+-- the server cannot relabel an old ciphertext as current.
+--
+-- version is a compare-and-swap counter. Writers PATCH with
+-- `version=eq.<seen>` and send seen+1; a write that matches no row lost a race
+-- and re-reads. The trigger makes the counter strictly sequential so no client
+-- can skip ahead or rewind it.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.running_timers (
+    user_id    text        PRIMARY KEY,
+    version    bigint      NOT NULL,
+    ciphertext text        NOT NULL,                     -- base64 XChaCha20-Poly1305 ciphertext of the timer JSON
+    nonce      text        NOT NULL,                     -- base64 24-byte nonce
+    updated_at timestamptz NOT NULL DEFAULT now()        -- bookkeeping only
+);
+
+CREATE OR REPLACE FUNCTION public.running_timers_guard()
+RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.version <> 1 THEN
+            RAISE EXCEPTION 'running_timers: first version must be 1';
+        END IF;
+    ELSE
+        IF NEW.user_id <> OLD.user_id THEN
+            RAISE EXCEPTION 'running_timers: user_id is immutable';
+        END IF;
+        IF NEW.version <> OLD.version + 1 THEN
+            RAISE EXCEPTION 'running_timers: version must advance by one';
+        END IF;
+    END IF;
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS running_timers_guard ON public.running_timers;
+CREATE TRIGGER running_timers_guard
+    BEFORE INSERT OR UPDATE ON public.running_timers
+    FOR EACH ROW EXECUTE FUNCTION public.running_timers_guard();
+
+ALTER TABLE public.running_timers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.running_timers FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS running_timers_own_rows ON public.running_timers;
+CREATE POLICY running_timers_own_rows ON public.running_timers
+    FOR ALL
+    TO authenticated
+    USING (user_id = auth.user_id())
+    WITH CHECK (user_id = auth.user_id());
+
+-- No DELETE: the row is the version counter, so it lives as long as the user.
+GRANT SELECT, INSERT, UPDATE ON public.running_timers TO authenticated;
