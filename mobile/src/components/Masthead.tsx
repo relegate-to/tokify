@@ -37,18 +37,24 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
     const { account, signOut } = useSession();
     const { state } = useRunningTimer();
     const running = isRunning(state.timer) ? state.timer : null;
+    // As on the desktop: the tab names the running timer whenever one runs, and
+    // takes the running card's colours only off the Activity page.
     const showRunning = running !== null && onLog;
     const date = new Date().toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short' }).toLowerCase();
 
-    const tabs = useSharedValue({ x0: 0, w0: 0, x1: 0, w1: 0 });
-    const measure = (i: 0 | 1) => (e: LayoutChangeEvent) => {
-        const { x, width } = e.nativeEvent.layout;
-        tabs.value = i === 0 ? { ...tabs.value, x0: x, w0: width } : { ...tabs.value, x1: x, w1: width };
+    // One value per measurement: both tabs report layout in the same frame, so
+    // a shared object would let one tab's write clobber the other's.
+    const x0 = useSharedValue(0);
+    const w0 = useSharedValue(0);
+    const x1 = useSharedValue(0);
+    const w1 = useSharedValue(0);
+    const measure = (x: SharedValue<number>, w: SharedValue<number>) => (e: LayoutChangeEvent) => {
+        x.value = e.nativeEvent.layout.x;
+        w.value = e.nativeEvent.layout.width;
     };
     const highlight = useAnimatedStyle(() => {
-        const t = tabs.value;
         const p = Math.min(1, Math.max(0, progress.value));
-        return { transform: [{ translateX: interpolate(p, [0, 1], [t.x0, t.x1]) }], width: interpolate(p, [0, 1], [t.w0, t.w1]) };
+        return { transform: [{ translateX: interpolate(p, [0, 1], [x0.value, x1.value]) }], width: interpolate(p, [0, 1], [w0.value, w1.value]) };
     });
 
     const tabText = (active: boolean) =>
@@ -60,28 +66,29 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
                 <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 3, bottom: 3, left: 0 }, highlight]}>
                     <View className="flex-1 rounded-[9px] bg-navigation-active shadow-sm shadow-black/10" />
                 </Animated.View>
-                <Animated.View layout={resize} onLayout={measure(0)}>
+                <Animated.View layout={resize} onLayout={measure(x0, w0)}>
                     <Pressable
                         onPress={() => onPage('now')}
                         accessibilityRole="tab"
                         accessibilityState={{ selected: !onLog }}
                         className={cn(
                             'h-9 flex-row items-center gap-2 rounded-[9px] pl-3.5 pr-3',
-                            showRunning && 'max-w-[220px] bg-running-card shadow-sm shadow-black/10',
+                            running && 'max-w-[220px]',
+                            showRunning && 'bg-running-card shadow-sm shadow-black/10',
                         )}
                     >
                         <Icon
                             as={ActivityIcon}
                             className={cn('size-[15px]', showRunning ? 'text-running-card-foreground' : onLog ? 'text-navigation-muted-foreground' : 'text-navigation-active-foreground')}
                         />
-                        {showRunning ? (
-                            <RunningLabel title={running.d || running.p || 'Activity'} project={running.p} start={running.s} />
+                        {running ? (
+                            <RunningLabel title={running.d || running.p || 'Activity'} project={running.p} start={running.s} inverted={showRunning} />
                         ) : (
                             <Text className={tabText(!onLog)}>Activity</Text>
                         )}
                     </Pressable>
                 </Animated.View>
-                <Animated.View layout={resize} onLayout={measure(1)}>
+                <Animated.View layout={resize} onLayout={measure(x1, w1)}>
                     <Pressable
                         onPress={() => onPage('log')}
                         accessibilityRole="tab"
@@ -117,16 +124,17 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
     );
 }
 
-function RunningLabel({ title, project, start }: { title: string; project: string; start: string }) {
+function RunningLabel({ title, project, start, inverted }: { title: string; project: string; start: string; inverted: boolean }) {
     const now = useNow();
+    const ink = inverted ? 'text-running-card-foreground' : 'text-navigation-active-foreground';
     return (
         <>
-            <Text numberOfLines={1} className="shrink font-sans-semibold text-[15px] text-running-card-foreground">
+            <Text numberOfLines={1} className={cn('shrink font-sans-semibold text-[15px]', ink)}>
                 {title}
             </Text>
             <View className="ml-0.5 flex-row items-center gap-1">
                 <View className={cn('size-[5px] rounded-full', project ? projectColorClass(project) : 'bg-[#f5c451]')} />
-                <Text className="font-mono-medium text-[13px] text-running-card-foreground" style={{ fontVariant: ['tabular-nums'] }}>
+                <Text className={cn('font-mono-medium text-[13px]', ink)} style={{ fontVariant: ['tabular-nums'] }}>
                     {formatDuration(now - parseInstant(start).getTime())}
                 </Text>
             </View>

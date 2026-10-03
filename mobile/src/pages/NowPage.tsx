@@ -2,7 +2,8 @@ import * as Haptics from 'expo-haptics';
 import { Play } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Keyboard, ScrollView, View } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeAreaView } from '@/components/safe-area-view';
 
 import { JumpBackIn } from '@/components/JumpBackIn';
@@ -26,6 +27,7 @@ const quickStartKey = (description: string, project: string) => JSON.stringify([
 
 // Now: start a timer, or see and stop the one that is running on any device.
 export function NowPage() {
+    const insets = useSafeAreaInsets();
     const [draft, setDraft] = useState('');
     const [picked, setPicked] = useState<string | null>(null);
     const { state, localOnly, error, start: startTimer, stop, edit } = useRunningTimer();
@@ -80,7 +82,7 @@ export function NowPage() {
 
     return (
         <SafeAreaView className="flex-1" edges={['bottom']}>
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+            <View style={{ flex: 1 }}>
                 <ScrollView className="flex-1" contentContainerClassName="gap-6 px-5 pb-6 pt-4" keyboardShouldPersistTaps="handled">
                     {running ? (
                         <NowRunning description={running.d} project={running.p} start={parseInstant(running.s)} projects={projects} onStop={stop} onEdit={edit} />
@@ -97,22 +99,27 @@ export function NowPage() {
                     ) : null}
                 </ScrollView>
                 {!running && (
-                    <View className="px-5 pb-3 pt-2">
-                        <Button
-                            size="lg"
-                            variant={canStart ? 'default' : 'secondary'}
-                            className="h-14 rounded-xl opacity-100"
-                            disabled={!canStart}
-                            onPress={start}
-                        >
-                            <Icon as={Play} className={canStart ? 'size-4 text-primary-foreground' : 'size-4 text-muted-foreground'} />
-                            <Text className={canStart ? 'font-sans-semibold text-base' : 'font-sans-semibold text-base text-muted-foreground'}>
-                                Start
-                            </Text>
-                        </Button>
-                    </View>
+                    // Inside the pager KeyboardAvoidingView misjudges the page's position, so
+                    // the bar rides the keyboard directly. It already sits above the bottom
+                    // inset, which the keyboard also covers, hence the offset.
+                    <KeyboardStickyView offset={{ opened: insets.bottom }}>
+                        <View className="px-5 pb-3 pt-2">
+                            <Button
+                                size="lg"
+                                variant={canStart ? 'default' : 'secondary'}
+                                className="h-14 rounded-xl opacity-100"
+                                disabled={!canStart}
+                                onPress={start}
+                            >
+                                <Icon as={Play} className={canStart ? 'size-4 text-primary-foreground' : 'size-4 text-muted-foreground'} />
+                                <Text className={canStart ? 'font-sans-semibold text-base' : 'font-sans-semibold text-base text-muted-foreground'}>
+                                    Start
+                                </Text>
+                            </Button>
+                        </View>
+                    </KeyboardStickyView>
                 )}
-            </KeyboardAvoidingView>
+            </View>
         </SafeAreaView>
     );
 }
