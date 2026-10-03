@@ -37,7 +37,6 @@ function Routes() {
         <Stack screenOptions={{ headerShown: false }}>
             <Stack.Protected guard={account !== null}>
                 <Stack.Screen name="index" />
-                <Stack.Screen name="log" />
             </Stack.Protected>
             <Stack.Protected guard={account === null}>
                 <Stack.Screen name="sign-in" />

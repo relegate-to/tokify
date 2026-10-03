@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { randomBytes } from '@noble/hashes/utils.js';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
 import { bytesToHex } from '@/crypto/bytes';
@@ -29,7 +29,7 @@ async function deviceId() {
 // The account's running timer, kept in step with the other devices: refreshed
 // on foreground and every 15s while open. Until the server has the
 // running_timers table the timer works on this phone alone (localOnly).
-export function useRunningTimer() {
+function useTimerState() {
     const { account } = useSession();
     const [state, setState] = useState<TimerState>({ version: 0, timer: null });
     const [localOnly, setLocalOnly] = useState(false);
@@ -121,4 +121,19 @@ export function useRunningTimer() {
     }, [account, run, flush]);
 
     return { state, localOnly, error, start, stop, refresh };
+}
+
+type RunningTimerState = ReturnType<typeof useTimerState>;
+
+const RunningTimerContext = createContext<RunningTimerState | null>(null);
+
+// One poll for every screen and the masthead.
+export function RunningTimerProvider({ children }: { children: ReactNode }) {
+    return <RunningTimerContext.Provider value={useTimerState()}>{children}</RunningTimerContext.Provider>;
+}
+
+export function useRunningTimer() {
+    const ctx = useContext(RunningTimerContext);
+    if (!ctx) throw new Error('useRunningTimer outside RunningTimerProvider');
+    return ctx;
 }

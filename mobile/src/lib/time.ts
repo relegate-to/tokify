@@ -48,3 +48,9 @@ export function parseSyncTime(s: string): Date {
     const [h, mi] = time.split(':').map(Number);
     return new Date(y, mo - 1, d, h, mi);
 }
+
+// The masthead's HH:MM readout of a running timer.
+export function formatDuration(ms: number) {
+    const total = Math.max(0, Math.floor(ms / 60_000));
+    return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}

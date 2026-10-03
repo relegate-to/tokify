@@ -57,6 +57,10 @@
             --color-live-dot: oklch(0.62 0.16 145);
             --color-live-dot-hero: oklch(0.72 0.18 145);
             --color-idle-dot: #cfcfcf;
+            --color-navigation: #ececec;
+            --color-navigation-active: #ffffff;
+            --color-navigation-active-foreground: #171717;
+            --color-navigation-muted-foreground: #9a9a9a;
             --color-project-0: #e35648;
             --color-project-1: #1fa877;
             --color-project-2: #dca017;
@@ -97,6 +101,10 @@
             --color-live-dot: oklch(0.72 0.18 145);
             --color-live-dot-hero: oklch(0.58 0.16 145);
             --color-idle-dot: #4a4a4a;
+            --color-navigation: #262626;
+            --color-navigation-active: #3b3b3b;
+            --color-navigation-active-foreground: #fafafa;
+            --color-navigation-muted-foreground: #8a8a8a;
             --color-project-0: #f26a5b;
             --color-project-1: #2ec08a;
             --color-project-2: #ecb43e;
