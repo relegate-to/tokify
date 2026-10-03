@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["TokifyArgon2Module"]
+  },
+  "android": {
+    "modules": ["io.github.finchett.tokify.argon2.TokifyArgon2Module"]
+  }
+}

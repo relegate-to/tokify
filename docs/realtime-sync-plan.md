@@ -157,11 +157,26 @@ uploaded to Firebase.
 
 ## Phase 4 — Mobile apps
 
-- Stack: **React Native** (decided October 2026), to share the desktop's
-  look, TypeScript types and React logic. The desktop's shadcn components are
-  DOM-only, so the look carries over through its design tokens (NativeWind or
-  an RN shadcn port), not by reusing components. Live Activities and widgets
-  still need native Swift alongside.
+- Stack: **React Native on Expo** in `mobile/` (decided October 2026), to
+  share the desktop's look, TypeScript types and React logic. The look carries
+  over through react-native-reusables (shadcn for React Native, on NativeWind)
+  fed the desktop's design tokens. Live Activities and widgets still need
+  native Swift alongside. Native folders are generated (`expo prebuild`), not
+  committed.
+- Order of work:
+  - **4a. Crypto parity** (done): `mobile/src/crypto` ports the sync crypto
+    and checks itself against `internal/integrations/neonsync/testdata/
+    crypto-vectors.json`, which the Go tests generate and verify. Argon2id is
+    native (`react-native-argon2`) because the desktop uses four lanes, which
+    libsodium cannot reproduce.
+  - **4b. App shell**: Expo Router, NativeWind, reusables, desktop tokens.
+  - **4c. Sign-in and unlock**: Neon Auth with the derived auth hash, DEK
+    unwrapped and kept in the secure store.
+  - **4d. Running timer**: read, start and stop through `running_timers`,
+    keeping the exact start string so desktops still recognise the timer.
+  - **4e. History**: read own entries; push completed ones so a timer started
+    and stopped on the phone reaches the cloud without a desktop.
+  - **4f.** Push (Phase 3), the iOS Live Activity and reminders.
 - Sign-in with email/password or OTP against Neon Auth, matching desktop.
   Neon Auth has no Sign in with Apple; App Store rule 4.8 does not require it
   without third-party login. If social login becomes required, self-hosting
