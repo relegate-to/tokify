@@ -141,7 +141,7 @@ export function EditActivityDialog({
 function Field({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
     return (
         <View className={cn('gap-1.5', className)}>
-            <Text className="text-xs text-muted-foreground">{label}</Text>
+            <Text className="text-[13px] text-muted-foreground">{label}</Text>
             {children}
         </View>
     );

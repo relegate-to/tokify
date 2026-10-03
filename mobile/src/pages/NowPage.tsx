@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import { Play } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Keyboard, ScrollView, View } from 'react-native';
@@ -71,6 +72,7 @@ export function NowPage() {
     const start = () => {
         if (!canStart) return;
         Keyboard.dismiss();
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         startTimer(draft.trim(), project);
         setDraft('');
         setPicked(null);

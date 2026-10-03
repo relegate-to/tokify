@@ -41,9 +41,9 @@ const tabular = { fontVariant: ['tabular-nums' as const] };
 
 const DayHeader = memo(function DayHeader({ title, total }: { title: string; total: number }) {
     return (
-        <View className="flex-row items-baseline justify-between border-b border-border bg-background px-5 pb-2 pt-6">
-            <Text className="font-sans-semibold text-sm">{title}</Text>
-            <Text className="font-mono text-[13px] text-muted-foreground" style={tabular}>
+        <View className="flex-row items-baseline justify-between border-b border-border bg-background px-5 pb-2.5 pt-7">
+            <Text className="font-sans-semibold text-[15px]">{title}</Text>
+            <Text className="font-mono text-sm text-muted-foreground" style={tabular}>
                 {formatTotal(total)}
             </Text>
         </View>
@@ -53,17 +53,17 @@ const DayHeader = memo(function DayHeader({ title, total }: { title: string; tot
 const Row = memo(function Row({ entry, from, to, onPress }: { entry: Entry; from: Date; to: Date; onPress: (e: Entry) => void }) {
     const tap = useTap(() => onPress(entry));
     return (
-        <Pressable {...tap} accessibilityRole="button" className="mx-5 gap-1 border-b border-border/60 py-3 active:bg-accent">
+        <Pressable {...tap} accessibilityRole="button" className="mx-5 gap-1 border-b border-border/60 py-3.5 active:bg-accent">
             <View className="flex-row items-center gap-2.5">
-                <View className={cn('size-[7px] rounded-[2px]', projectColorClass(entry.project))} />
-                <Text numberOfLines={1} className="flex-1 font-sans-medium text-[15px]">
+                <View className={cn('size-2 rounded-[2px]', projectColorClass(entry.project))} />
+                <Text numberOfLines={1} className="flex-1 font-sans-medium text-base">
                     {entry.description}
                 </Text>
-                <Text className="font-mono text-[13px] text-secondary-foreground" style={tabular}>
+                <Text className="font-mono text-sm text-secondary-foreground" style={tabular}>
                     {formatTotal(to.getTime() - from.getTime())}
                 </Text>
             </View>
-            <Text numberOfLines={1} className="pl-[17px] text-[13px] text-ink-faint">
+            <Text numberOfLines={1} className="pl-[18px] text-sm text-ink-faint">
                 {[entry.project, `${formatClock(from)}–${formatClock(to)}`].filter(Boolean).join('   ')}
             </Text>
         </Pressable>
