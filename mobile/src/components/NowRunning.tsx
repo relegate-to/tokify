@@ -1,4 +1,9 @@
+import { Pencil } from 'lucide-react-native';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
+
+import { EditActivityDialog } from '@/components/EditActivityDialog';
+import { Icon } from '@/components/ui/icon';
 
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
@@ -12,14 +17,19 @@ export function NowRunning({
     description,
     project,
     start,
+    projects,
     onStop,
+    onEdit,
 }: {
     description: string;
     project: string;
     start: Date;
+    projects: string[];
     onStop: () => void;
+    onEdit: (description: string, project: string) => Promise<void> | void;
 }) {
     const now = useNow();
+    const [editing, setEditing] = useState(false);
     return (
         <View accessibilityLabel="Currently running" className="gap-4 rounded-2xl bg-running-card px-5 py-5">
             <View className="gap-2">
@@ -48,6 +58,14 @@ export function NowRunning({
                     {formatStopwatch(now - start.getTime())}
                 </Text>
                 <Pressable
+                    onPress={() => setEditing(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit running activity"
+                    className="mr-1.5 size-10 items-center justify-center rounded-[10px] active:bg-running-card-foreground/10"
+                >
+                    <Icon as={Pencil} className="size-4 text-running-card-muted" />
+                </Pressable>
+                <Pressable
                     onPress={onStop}
                     accessibilityRole="button"
                     className="flex-row items-center gap-2.5 rounded-[10px] bg-running-stop px-5 py-3 active:scale-95"
@@ -56,6 +74,14 @@ export function NowRunning({
                     <Text className="font-sans-semibold text-sm text-running-stop-foreground">Stop</Text>
                 </Pressable>
             </View>
+            <EditActivityDialog
+                open={editing}
+                onOpenChange={setEditing}
+                subtitle={`Started ${start.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} — still running.`}
+                initial={{ description, project }}
+                projects={projects}
+                onSave={(e) => onEdit(e.description, e.project)}
+            />
         </View>
     );
 }

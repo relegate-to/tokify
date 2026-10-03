@@ -17,20 +17,20 @@ export default function MainScreen() {
     const [page, setPage] = useState<Page>('now');
     return (
         <EntriesProvider>
-        <RunningTimerProvider>
-            <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-                <Masthead page={page} onPage={(p) => pager.current?.setPage(PAGES.indexOf(p))} />
-                <PagerView
-                    ref={pager}
-                    style={{ flex: 1 }}
-                    initialPage={0}
-                    onPageSelected={(e) => setPage(PAGES[e.nativeEvent.position])}
-                >
-                    <NowPage key="now" />
-                    <LogPage key="log" />
-                </PagerView>
-            </SafeAreaView>
-        </RunningTimerProvider>
+            <RunningTimerProvider>
+                <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+                    <Masthead page={page} onPage={(p) => pager.current?.setPage(PAGES.indexOf(p))} />
+                    <PagerView
+                        ref={pager}
+                        style={{ flex: 1 }}
+                        initialPage={0}
+                        onPageSelected={(e) => setPage(PAGES[e.nativeEvent.position])}
+                    >
+                        <NowPage key="now" />
+                        <LogPage key="log" />
+                    </PagerView>
+                </SafeAreaView>
+            </RunningTimerProvider>
         </EntriesProvider>
     );
 }

@@ -77,3 +77,24 @@ export async function listEntries(token: string, dek: Uint8Array, owner: string)
     }
     return out.sort((a, b) => b.start.localeCompare(a.start));
 }
+
+// Deletes by tombstone, as the desktop does: the row stays with deleted=true so
+// other devices remove their copy instead of re-uploading it.
+export async function deleteEntries(token: string, ids: string[]) {
+    if (ids.length === 0) return;
+    await dataFetch(token, `/entries?id=in.(${ids.join(',')})`, {
+        method: 'PATCH',
+        body: JSON.stringify({ deleted: true }),
+        prefer: 'return=minimal',
+    });
+}
+
+// An edit changes the content, and so the id: write the new entry, then
+// tombstone the old one. The order means a failure part-way leaves a
+// duplicate rather than a loss.
+export async function editEntry(token: string, dek: Uint8Array, owner: string, old: Entry, next: CanonicalEntry) {
+    const nextId = entryId(dek, canonicalize(next));
+    if (nextId === old.id) return;
+    await pushEntries(token, dek, owner, [next]);
+    await deleteEntries(token, [old.id]);
+}

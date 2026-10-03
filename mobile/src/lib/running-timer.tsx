@@ -9,7 +9,7 @@ import { useEntries } from '@/lib/entries';
 import { useSession } from '@/lib/session';
 import { dataToken } from '@/sync/account';
 import { entryFromTimer, flushPending, queueEntry } from '@/sync/entries';
-import { isRunning, readTimer, startTimer, stopTimer, type TimerState } from '@/sync/timer';
+import { isRunning, readTimer, startTimer, stopTimer, TimerConflict, writeTimer, type TimerState } from '@/sync/timer';
 import { dataApi, isMissingTable } from '@/sync/timer-api';
 
 const REFRESH_MS = 15_000;
@@ -126,7 +126,26 @@ function useTimerState() {
         flush();
     }, [account, run, flush]);
 
-    return { state, localOnly, error, start, stop, refresh };
+    // Renames the running timer; its start stays, so desktops still recognise
+    // it as the same timer. An edit that lost a race leaves the fresh state.
+    const edit = useCallback(
+        async (description: string, project: string) => {
+            const current = stateRef.current;
+            if (!account || !isRunning(current.timer)) return;
+            const timer = { ...current.timer, d: description, p: project };
+            await run({ version: current.version, timer }, async () => {
+                try {
+                    return await writeTimer(api, account.dek, account.user.id, current.version, timer);
+                } catch (e) {
+                    if (e instanceof TimerConflict) return e.fresh;
+                    throw e;
+                }
+            });
+        },
+        [account, run],
+    );
+
+    return { state, localOnly, error, start, stop, edit, refresh };
 }
 
 type RunningTimerState = ReturnType<typeof useTimerState>;

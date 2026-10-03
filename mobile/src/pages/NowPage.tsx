@@ -27,7 +27,7 @@ const quickStartKey = (description: string, project: string) => JSON.stringify([
 export function NowPage() {
     const [draft, setDraft] = useState('');
     const [picked, setPicked] = useState<string | null>(null);
-    const { state, localOnly, error, start: startTimer, stop } = useRunningTimer();
+    const { state, localOnly, error, start: startTimer, stop, edit } = useRunningTimer();
     const { entries } = useEntries();
     const running = isRunning(state.timer) ? state.timer : null;
     const now = useNow();
@@ -81,7 +81,7 @@ export function NowPage() {
             <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
                 <ScrollView className="flex-1" contentContainerClassName="gap-6 px-5 pb-6 pt-4" keyboardShouldPersistTaps="handled">
                     {running ? (
-                        <NowRunning description={running.d} project={running.p} start={parseInstant(running.s)} onStop={stop} />
+                        <NowRunning description={running.d} project={running.p} start={parseInstant(running.s)} projects={projects} onStop={stop} onEdit={edit} />
                     ) : (
                         <Starter description={draft} project={project} projects={projects} onChange={setDraft} onProject={setPicked} onSubmit={start} />
                     )}

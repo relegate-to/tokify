@@ -5,6 +5,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
 import { formatClock, parseSyncTime } from '@/lib/time';
+import { useTap } from '@/lib/use-tap';
 import { cn } from '@/lib/utils';
 import type { Entry } from '@/sync/entries';
 
@@ -20,27 +21,33 @@ export function JumpBackIn({ items, contextLabel, onResume }: { items: Entry[]; 
                 ) : null}
             </View>
             {items.map((e) => (
-                <Pressable
-                    key={e.id}
-                    onPress={() => onResume(e)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Start ${e.description} again`}
-                    className="flex-row items-center gap-2.5 border-t border-border px-1 py-3 active:bg-accent"
-                >
-                    <View className={cn('size-[7px] rounded-[2px]', projectColorClass(e.project))} />
-                    <View className="flex-1">
-                        <Text numberOfLines={1} className="font-sans-medium text-[15px]">
-                            {e.description}
-                        </Text>
-                        <Text numberOfLines={1} className="text-[13px] text-ink-faint">
-                            {[e.project, formatClock(parseSyncTime(e.start))].filter(Boolean).join('   ')}
-                        </Text>
-                    </View>
-                    <View className="size-8 items-center justify-center rounded-lg bg-muted">
-                        <Icon as={Play} className="size-3.5 text-foreground" />
-                    </View>
-                </Pressable>
+                <QuickStart key={e.id} entry={e} onResume={onResume} />
             ))}
         </View>
+    );
+}
+
+function QuickStart({ entry: e, onResume }: { entry: Entry; onResume: (e: Entry) => void }) {
+    const tap = useTap(() => onResume(e));
+    return (
+        <Pressable
+            {...tap}
+            accessibilityRole="button"
+            accessibilityLabel={`Start ${e.description} again`}
+            className="flex-row items-center gap-2.5 border-t border-border px-1 py-3 active:bg-accent"
+        >
+            <View className={cn('size-[7px] rounded-[2px]', projectColorClass(e.project))} />
+            <View className="flex-1">
+                <Text numberOfLines={1} className="font-sans-medium text-[15px]">
+                    {e.description}
+                </Text>
+                <Text numberOfLines={1} className="text-[13px] text-ink-faint">
+                    {[e.project, formatClock(parseSyncTime(e.start))].filter(Boolean).join('   ')}
+                </Text>
+            </View>
+            <View className="size-8 items-center justify-center rounded-lg bg-muted">
+                <Icon as={Play} className="size-3.5 text-foreground" />
+            </View>
+        </Pressable>
     );
 }
