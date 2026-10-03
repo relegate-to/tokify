@@ -4,8 +4,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { randomBytes } from '@noble/hashes/utils.js';
 
-import * as Notifications from 'expo-notifications';
-
 import { argon2id } from '@/crypto/argon2';
 import { fromBase64, toBase64 } from '@/crypto/bytes';
 import { deriveAuthHash, deriveKEK, seal, unwrapDEK } from '@/crypto/sync';
@@ -116,6 +114,5 @@ async function saveSession(s: Session) {
 
 async function clear() {
     cached = null;
-    await Notifications.cancelAllScheduledNotificationsAsync().catch(() => undefined);
     await Promise.all(Object.values(KEYS).map((k) => SecureStore.deleteItemAsync(k)));
 }
