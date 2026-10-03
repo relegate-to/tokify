@@ -10,21 +10,22 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useSession } from '@/lib/session';
+import { parseInstant } from '@/lib/time';
+import { useRunningTimer } from '@/lib/use-running-timer';
+import { isRunning } from '@/sync/timer';
 
-type Running = { description: string; project: string; start: Date };
-
-// Now: start a timer, or see and stop the one that is running. Local state for
-// the moment; 4d moves it onto the synced running-timer record.
+// Now: start a timer, or see and stop the one that is running on any device.
 export default function NowScreen() {
     const { signOut } = useSession();
     const [draft, setDraft] = useState('');
-    const [running, setRunning] = useState<Running | null>(null);
+    const { state, localOnly, error, start: startTimer, stop } = useRunningTimer();
+    const running = isRunning(state.timer) ? state.timer : null;
 
     const canStart = draft.trim().length > 0;
     const start = () => {
         if (!canStart) return;
         Keyboard.dismiss();
-        setRunning({ description: draft.trim(), project: '', start: new Date() });
+        startTimer(draft.trim(), '');
         setDraft('');
     };
 
@@ -39,10 +40,14 @@ export default function NowScreen() {
                         </Pressable>
                     </View>
                     {running ? (
-                        <NowRunning {...running} onStop={() => setRunning(null)} />
+                        <NowRunning description={running.d} project={running.p} start={parseInstant(running.s)} onStop={stop} />
                     ) : (
                         <Starter description={draft} project="" onChange={setDraft} onSubmit={start} />
                     )}
+                    {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
+                    {localOnly ? (
+                        <Text className="text-sm text-muted-foreground">This timer stays on this phone until the server is updated for timer sync.</Text>
+                    ) : null}
                 </ScrollView>
                 {!running && (
                     <View className="px-5 pb-3 pt-2">

@@ -13,3 +13,10 @@ export function formatStopwatch(ms: number) {
     if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
     return `${pad(m)}:${pad(s)}`;
 }
+
+// Parses an RFC 3339 instant for display. Desktop timestamps carry nanoseconds,
+// which not every JS engine's Date accepts, so the fraction is cut to
+// milliseconds here; the original string is what gets written back.
+export function parseInstant(s: string): Date {
+    return new Date(s.replace(/(\.\d{3})\d+/, '$1'));
+}

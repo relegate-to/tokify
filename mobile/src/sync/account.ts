@@ -12,7 +12,7 @@ import { isEmailNotVerified, jwtExpiry, mintJWT, sendVerificationOTP, signInEmai
 import { getUserKeys, insertUserKeys } from './data';
 
 // Separate slots: some platforms warn on secure-store values over 2 KB.
-const KEYS = { token: 'session.token', cookie: 'session.cookie', user: 'session.user', dek: 'sync.dek' } as const;
+const KEYS = { token: 'session.token', cookie: 'session.cookie', user: 'session.user', dek: 'sync.dek', timer: 'timer.state' } as const;
 
 export type Account = { user: User; dek: Uint8Array };
 
