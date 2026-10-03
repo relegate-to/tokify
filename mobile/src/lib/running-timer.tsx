@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 
 import { bytesToHex } from '@/crypto/bytes';
 import type { RunningTimer } from '@/crypto/sync';
+import { syncReminders } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { dataToken } from '@/sync/account';
 import { entryFromTimer, flushPending, queueEntry } from '@/sync/entries';
@@ -39,6 +40,7 @@ function useTimerState() {
     const adopt = useCallback((next: TimerState) => {
         stateRef.current = next;
         setState(next);
+        syncReminders(isRunning(next.timer) ? next.timer : null).catch(() => undefined);
         SecureStore.setItemAsync(STATE_KEY, JSON.stringify(next)).catch(() => undefined);
     }, []);
 
