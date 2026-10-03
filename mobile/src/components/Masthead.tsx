@@ -1,6 +1,6 @@
-import { Activity as ActivityIcon, List, LogOut } from 'lucide-react-native';
+import { Activity as ActivityIcon, BarChart3, FileText, List, LogOut } from 'lucide-react-native';
 import { Pressable, View, type LayoutChangeEvent } from 'react-native';
-import Animated, { interpolate, LinearTransition, useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, interpolate, LinearTransition, useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import {
     DropdownMenu,
@@ -21,7 +21,13 @@ import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { isRunning } from '@/sync/timer';
 
-export type Page = 'now' | 'log';
+export type Page = 'now' | 'log' | 'reports' | 'charts' | 'stats';
+
+const LOG_VIEWS: { page: Page; label: string; icon: typeof FileText }[] = [
+    { page: 'reports', label: 'Reports', icon: FileText },
+    { page: 'charts', label: 'Charts', icon: BarChart3 },
+    { page: 'stats', label: 'Stats', icon: ActivityIcon },
+];
 
 // The desktop's SIZE_TRANSITION, for the Activity tab growing into the
 // running pill.
@@ -33,7 +39,8 @@ const resize = LinearTransition.duration(300).easing(EASE_SIZE);
 // continuously. Off the Activity page a running timer turns its tab into the
 // running pill.
 export function Masthead({ page, progress, onPage }: { page: Page; progress: SharedValue<number>; onPage: (page: Page) => void }) {
-    const onLog = page === 'log';
+    // Every page after Activity belongs to Log, as the desktop's LOG_VIEWS do.
+    const onLog = page !== 'now';
     const { account, signOut } = useSession();
     const { state } = useRunningTimer();
     const running = isRunning(state.timer) ? state.timer : null;
@@ -73,7 +80,7 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
                         accessibilityState={{ selected: !onLog }}
                         className={cn(
                             'h-9 flex-row items-center gap-2 rounded-[9px] pl-3.5 pr-3',
-                            running && 'max-w-[220px]',
+                            running && (onLog ? 'max-w-[132px]' : 'max-w-[220px]'),
                             showRunning && 'bg-running-card shadow-sm shadow-black/10',
                         )}
                     >
@@ -99,6 +106,27 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
                         <Text className={tabText(onLog)}>Log</Text>
                     </Pressable>
                 </Animated.View>
+                {onLog ? (
+                    <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} layout={resize}>
+                        <View className="flex-row items-center gap-0.5 pr-1">
+                            {LOG_VIEWS.map((v) => (
+                                <Pressable
+                                    key={v.page}
+                                    onPress={() => onPage(v.page)}
+                                    accessibilityRole="tab"
+                                    accessibilityLabel={v.label}
+                                    accessibilityState={{ selected: page === v.page }}
+                                    className={cn('size-8 items-center justify-center rounded-lg', page === v.page && 'bg-navigation-active shadow-sm shadow-black/10')}
+                                >
+                                    <Icon
+                                        as={v.icon}
+                                        className={cn('size-[15px]', page === v.page ? 'text-navigation-active-foreground' : 'text-navigation-muted-foreground')}
+                                    />
+                                </Pressable>
+                            ))}
+                        </View>
+                    </Animated.View>
+                ) : null}
             </View>
             <DropdownMenu>
                 <DropdownMenuTrigger className="rounded-[10px] p-2 active:bg-muted" accessibilityLabel="Account">

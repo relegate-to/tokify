@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { View } from 'react-native';
 import PagerView, { type PagerViewOnPageScrollEventData } from 'react-native-pager-view';
 import Animated, { useEvent, useSharedValue } from 'react-native-reanimated';
 
@@ -6,10 +7,14 @@ import { Masthead, type Page } from '@/components/Masthead';
 import { SafeAreaView } from '@/components/safe-area-view';
 import { EntriesProvider } from '@/lib/entries';
 import { RunningTimerProvider } from '@/lib/running-timer';
+import { ChartsPage } from '@/pages/ChartsPage';
 import { LogPage } from '@/pages/LogPage';
 import { NowPage } from '@/pages/NowPage';
+import { ReportsPage } from '@/pages/ReportsPage';
+import { StatsPage } from '@/pages/StatsPage';
 
-const PAGES: Page[] = ['now', 'log'];
+// The desktop's SWIPE_VIEWS, less the sketchpad.
+const PAGES: Page[] = ['now', 'log', 'reports', 'charts', 'stats'];
 
 const AnimatedPager = Animated.createAnimatedComponent(PagerView);
 
@@ -49,6 +54,15 @@ export default function MainScreen() {
                     >
                         <NowPage key="now" />
                         <LogPage key="log" />
+                        <View key="reports" style={{ flex: 1 }}>
+                            <ReportsPage />
+                        </View>
+                        <View key="charts" style={{ flex: 1 }}>
+                            <ChartsPage />
+                        </View>
+                        <View key="stats" style={{ flex: 1 }}>
+                            <StatsPage />
+                        </View>
                     </AnimatedPager>
                 </SafeAreaView>
             </RunningTimerProvider>

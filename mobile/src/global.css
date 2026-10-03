@@ -65,6 +65,7 @@
             --color-contribution-3: #cbab5f;
             --color-contribution-4: #b8932e;
             --color-subtle-surface: #f1f1f1;
+            --color-day-total-foreground: #3d3d3d;
             --color-subtle-surface-border: #e4e4e4;
             --color-navigation-active: #ffffff;
             --color-navigation-active-foreground: #171717;
@@ -117,6 +118,7 @@
             --color-contribution-3: #78652e;
             --color-contribution-4: #a18f45;
             --color-subtle-surface: #1a1a1a;
+            --color-day-total-foreground: #d4d4d4;
             --color-subtle-surface-border: #303030;
             --color-navigation-active: #3b3b3b;
             --color-navigation-active-foreground: #fafafa;

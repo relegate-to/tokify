@@ -9,6 +9,7 @@ import Animated, {
     useSharedValue,
     withRepeat,
     withSequence,
+    withDelay,
     withTiming,
     type EntryExitAnimationFunction,
 } from 'react-native-reanimated';
@@ -21,13 +22,14 @@ export const EASE_SIZE = Easing.bezier(0.16, 1, 0.3, 1);
 
 // animate-in fade-in-0 zoom-in-{scale} slide-in-from-{dy}: dy > 0 rises from
 // below, dy < 0 drops from above.
-export function enter({ dy = 0, scale = 1, duration = 300, easing = EASE_THUNK } = {}): EntryExitAnimationFunction {
+export function enter({ dy = 0, scale = 1, duration = 300, delay = 0, easing = EASE_THUNK } = {}): EntryExitAnimationFunction {
     return () => {
         'worklet';
         const t = { duration, easing };
+        const to = (v: number) => withDelay(delay, withTiming(v, t));
         return {
             initialValues: { opacity: 0, transform: [{ translateY: dy }, { scale }] },
-            animations: { opacity: withTiming(1, t), transform: [{ translateY: withTiming(0, t) }, { scale: withTiming(1, t) }] },
+            animations: { opacity: to(1), transform: [{ translateY: to(0) }, { scale: to(1) }] },
         };
     };
 }

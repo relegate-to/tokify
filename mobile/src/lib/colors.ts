@@ -12,11 +12,21 @@ const PROJECT_CLASSES = [
     'bg-project-7',
 ] as const;
 
-export function projectColorClass(project: string): string {
-    if (!project) return PROJECT_CLASSES[0];
+function projectIndex(project: string): number {
+    if (!project) return 0;
     let h = 2166136261;
     for (let i = 0; i < project.length; i++) {
         h = Math.imul(h ^ project.charCodeAt(i), 16777619);
     }
-    return PROJECT_CLASSES[(h >>> 0) % PROJECT_CLASSES.length];
+    return (h >>> 0) % PROJECT_CLASSES.length;
+}
+
+export function projectColorClass(project: string): string {
+    return PROJECT_CLASSES[projectIndex(project)];
+}
+
+// The same colour as a theme variable name, for drawing (SVG, charts) where a
+// class does not apply; resolve it with useCSSVariable.
+export function projectColorVar(project: string): string {
+    return `--color-project-${projectIndex(project)}`;
 }
