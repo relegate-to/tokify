@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { Play } from 'lucide-react-native';
 import { useState } from 'react';
 import { Keyboard, Pressable, ScrollView, View } from 'react-native';
@@ -35,9 +36,16 @@ export default function NowScreen() {
                 <ScrollView className="flex-1" contentContainerClassName="gap-6 px-5 pt-6" keyboardShouldPersistTaps="handled">
                     <View className="flex-row items-center justify-between">
                         <Text className="font-sans-semibold text-lg tracking-[-0.2px]">Tokify</Text>
-                        <Pressable onPress={signOut} accessibilityRole="button" hitSlop={8}>
-                            <Text className="text-sm text-muted-foreground">Sign out</Text>
-                        </Pressable>
+                        <View className="flex-row items-center gap-5">
+                            <Link href="/log" asChild>
+                                <Pressable accessibilityRole="button" hitSlop={8}>
+                                    <Text className="text-sm text-muted-foreground">Log</Text>
+                                </Pressable>
+                            </Link>
+                            <Pressable onPress={signOut} accessibilityRole="button" hitSlop={8}>
+                                <Text className="text-sm text-muted-foreground">Sign out</Text>
+                            </Pressable>
+                        </View>
                     </View>
                     {running ? (
                         <NowRunning description={running.d} project={running.p} start={parseInstant(running.s)} onStop={stop} />

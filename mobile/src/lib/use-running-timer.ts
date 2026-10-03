@@ -7,7 +7,8 @@ import { bytesToHex } from '@/crypto/bytes';
 import type { RunningTimer } from '@/crypto/sync';
 import { useSession } from '@/lib/session';
 import { dataToken } from '@/sync/account';
-import { readTimer, startTimer, stopTimer, type TimerState } from '@/sync/timer';
+import { entryFromTimer, flushPending, queueEntry } from '@/sync/entries';
+import { isRunning, readTimer, startTimer, stopTimer, type TimerState } from '@/sync/timer';
 import { dataApi, isMissingTable } from '@/sync/timer-api';
 
 const REFRESH_MS = 15_000;
@@ -41,7 +42,15 @@ export function useRunningTimer() {
         SecureStore.setItemAsync(STATE_KEY, JSON.stringify(next)).catch(() => undefined);
     }, []);
 
+    // Completed activities the phone ended go to the entries table, which
+    // works even before the server has running_timers.
+    const flush = useCallback(async () => {
+        if (!account) return;
+        await flushPending(await dataToken(), account.dek, account.user.id).catch(() => undefined);
+    }, [account]);
+
     const refresh = useCallback(async () => {
+        flush();
         if (!account || localOnly) return;
         try {
             const fresh = await readTimer(api, account.dek);
@@ -51,7 +60,7 @@ export function useRunningTimer() {
             if (isMissingTable(e)) setLocalOnly(true);
             else setError(e instanceof Error ? e.message : String(e));
         }
-    }, [account, localOnly, adopt]);
+    }, [account, localOnly, adopt, flush]);
 
     useEffect(() => {
         SecureStore.getItemAsync(STATE_KEY)
@@ -92,20 +101,24 @@ export function useRunningTimer() {
         async (description: string, project: string) => {
             if (!account) return;
             const timer: RunningTimer = { d: description, p: project, s: new Date().toISOString(), dev: await deviceId() };
-            const seen = stateRef.current.version;
+            const { version: seen, timer: previous } = stateRef.current;
+            // A start ends whatever was running at its start time.
+            if (isRunning(previous)) await queueEntry(entryFromTimer({ ...previous, e: timer.s }));
             await run({ version: seen, timer }, () => startTimer(api, account.dek, account.user.id, seen, timer));
+            flush();
         },
-        [account, run],
+        [account, run, flush],
     );
 
     const stop = useCallback(async () => {
         const current = stateRef.current;
         if (!account || !current.timer) return;
         const end = new Date();
-        await run({ version: current.version, timer: { ...current.timer, e: end.toISOString() } }, () =>
-            stopTimer(api, account.dek, account.user.id, current, end),
-        );
-    }, [account, run]);
+        const stopped = { ...current.timer, e: end.toISOString() };
+        await queueEntry(entryFromTimer(stopped));
+        await run({ version: current.version, timer: stopped }, () => stopTimer(api, account.dek, account.user.id, current, end));
+        flush();
+    }, [account, run, flush]);
 
     return { state, localOnly, error, start, stop, refresh };
 }
