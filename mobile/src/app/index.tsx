@@ -3,6 +3,7 @@ import PagerView from 'react-native-pager-view';
 
 import { Masthead, type Page } from '@/components/Masthead';
 import { SafeAreaView } from '@/components/safe-area-view';
+import { EntriesProvider } from '@/lib/entries';
 import { RunningTimerProvider } from '@/lib/running-timer';
 import { LogPage } from '@/pages/LogPage';
 import { NowPage } from '@/pages/NowPage';
@@ -15,6 +16,7 @@ export default function MainScreen() {
     const pager = useRef<PagerView>(null);
     const [page, setPage] = useState<Page>('now');
     return (
+        <EntriesProvider>
         <RunningTimerProvider>
             <SafeAreaView className="flex-1 bg-background" edges={['top']}>
                 <Masthead page={page} onPage={(p) => pager.current?.setPage(PAGES.indexOf(p))} />
@@ -29,5 +31,6 @@ export default function MainScreen() {
                 </PagerView>
             </SafeAreaView>
         </RunningTimerProvider>
+        </EntriesProvider>
     );
 }

@@ -1,14 +1,13 @@
 import { FlashList } from '@shopify/flash-list';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { RefreshControl, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
-import { useSession } from '@/lib/session';
+import { useEntries } from '@/lib/entries';
 import { dayLabel, formatClock, formatTotal, parseSyncTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { dataToken } from '@/sync/account';
-import { listEntries, type Entry } from '@/sync/entries';
+import type { Entry } from '@/sync/entries';
 
 type DayItem = { kind: 'day'; key: string; title: string; total: number };
 type Item = DayItem | { kind: 'row'; key: string; entry: Entry; from: Date; to: Date };
@@ -67,24 +66,8 @@ const Row = memo(function Row({ entry, from, to }: { entry: Entry; from: Date; t
 
 // The synced history, newest first, grouped by day as on the desktop's Log.
 export function LogPage() {
-    const { account } = useSession();
-    const [entries, setEntries] = useState<Entry[] | null>(null);
-    const [error, setError] = useState('');
+    const { entries, error, reload: load } = useEntries();
     const [refreshing, setRefreshing] = useState(false);
-
-    const load = useCallback(async () => {
-        if (!account) return;
-        try {
-            setEntries(await listEntries(await dataToken(), account.dek, account.user.id));
-            setError('');
-        } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-        }
-    }, [account]);
-
-    useEffect(() => {
-        load();
-    }, [load]);
 
     const { items, headers } = useMemo(() => flatten(entries ?? []), [entries]);
 

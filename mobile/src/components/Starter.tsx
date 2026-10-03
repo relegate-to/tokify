@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TextInput, View } from 'react-native';
 
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
 import { cn } from '@/lib/utils';
@@ -11,12 +12,16 @@ import { cn } from '@/lib/utils';
 export function Starter({
     description,
     project,
+    projects,
     onChange,
+    onProject,
     onSubmit,
 }: {
     description: string;
     project: string;
+    projects: string[];
     onChange: (description: string) => void;
+    onProject: (project: string) => void;
     onSubmit: () => void;
 }) {
     const [focused, setFocused] = useState(false);
@@ -42,10 +47,20 @@ export function Starter({
                     focused && 'placeholder:text-muted-foreground/45',
                 )}
             />
-            <View className="flex-row items-center gap-2">
-                <View className={cn('size-[7px] rounded-[2px]', project ? projectColorClass(project) : 'bg-idle-dot')} />
-                <Text className="font-sans-medium text-sm text-muted-foreground">{project || 'No project'}</Text>
-            </View>
+            <DropdownMenu>
+                <DropdownMenuTrigger className="flex-row items-center gap-2 self-start rounded-md py-1 pr-2 active:bg-muted">
+                    <View className={cn('size-[7px] rounded-[2px]', project ? projectColorClass(project) : 'bg-idle-dot')} />
+                    <Text className="font-sans-medium text-sm text-muted-foreground">{project || 'No project'}</Text>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-56">
+                    {['', ...projects].map((p) => (
+                        <DropdownMenuItem key={p || '\0none'} onPress={() => onProject(p)}>
+                            <View className={cn('size-[7px] rounded-[2px]', p ? projectColorClass(p) : 'bg-idle-dot')} />
+                            <Text className={cn(p === project && 'font-sans-semibold')}>{p || 'No project'}</Text>
+                        </DropdownMenuItem>
+                    ))}
+                </DropdownMenuContent>
+            </DropdownMenu>
         </View>
     );
 }

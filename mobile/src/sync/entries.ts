@@ -43,11 +43,13 @@ export async function queueEntry(entry: CanonicalEntry) {
     await SecureStore.setItemAsync(PENDING_KEY, JSON.stringify(pending));
 }
 
+// Reports whether anything was pushed.
 export async function flushPending(token: string, dek: Uint8Array, owner: string) {
     const pending = await readPending();
-    if (pending.length === 0) return;
+    if (pending.length === 0) return false;
     await pushEntries(token, dek, owner, pending);
     await SecureStore.deleteItemAsync(PENDING_KEY);
+    return true;
 }
 
 async function readPending(): Promise<CanonicalEntry[]> {

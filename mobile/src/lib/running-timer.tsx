@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 
 import { bytesToHex } from '@/crypto/bytes';
 import type { RunningTimer } from '@/crypto/sync';
+import { useEntries } from '@/lib/entries';
 import { useSession } from '@/lib/session';
 import { dataToken } from '@/sync/account';
 import { entryFromTimer, flushPending, queueEntry } from '@/sync/entries';
@@ -44,10 +45,15 @@ function useTimerState() {
 
     // Completed activities the phone ended go to the entries table, which
     // works even before the server has running_timers.
+    const { reload } = useEntries();
     const flush = useCallback(async () => {
         if (!account) return;
-        await flushPending(await dataToken(), account.dek, account.user.id).catch(() => undefined);
-    }, [account]);
+        try {
+            if (await flushPending(await dataToken(), account.dek, account.user.id)) await reload();
+        } catch {
+            // Stays queued for the next refresh.
+        }
+    }, [account, reload]);
 
     const refresh = useCallback(async () => {
         flush();
