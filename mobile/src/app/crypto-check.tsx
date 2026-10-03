@@ -1,14 +1,15 @@
-import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import vectors from '../internal/integrations/neonsync/testdata/crypto-vectors.json';
-import { argon2id } from './src/crypto/argon2';
-import { bytesToHex, hexToBytes, toBase64 } from './src/crypto/bytes';
-import { decryptOwnEntry, deriveAuthHash, deriveKEK, openTimer, sealTimer } from './src/crypto/sync';
+import vectors from '../../../internal/integrations/neonsync/testdata/crypto-vectors.json';
+import { argon2id } from '@/crypto/argon2';
+import { bytesToHex, hexToBytes, toBase64 } from '@/crypto/bytes';
+import { decryptOwnEntry, deriveAuthHash, deriveKEK, openTimer, sealTimer } from '@/crypto/sync';
 
-// Temporary: checks the native Argon2id and the rest of the crypto port
-// against the desktop's vectors on a real device, before any UI is built on it.
+// Checks the native Argon2id and the rest of the crypto port against the
+// desktop's vectors on a device. Not linked from the app; open
+// tokify://crypto-check on a new platform or after touching the crypto.
 type Result = { name: string; ok: boolean; ms: number; detail?: string };
 
 async function run(name: string, fn: () => Promise<boolean> | boolean): Promise<Result> {
@@ -43,7 +44,7 @@ async function selfTest(push: (r: Result) => void) {
     }));
 }
 
-export default function App() {
+export default function CryptoCheck() {
     const [results, setResults] = useState<Result[]>([]);
     const [done, setDone] = useState(false);
     useEffect(() => {
@@ -60,7 +61,6 @@ export default function App() {
                 ))}
                 <Text style={styles.row}>{done ? (results.every((r) => r.ok) ? 'All passed.' : 'Some checks failed.') : 'Running…'}</Text>
             </ScrollView>
-            <StatusBar style="auto" />
         </SafeAreaView>
     );
 }

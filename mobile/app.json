@@ -23,6 +23,25 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "tokify"
+    "scheme": "tokify",
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/instrument-sans/400Regular/InstrumentSans_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/instrument-sans/500Medium/InstrumentSans_500Medium.ttf",
+            "./node_modules/@expo-google-fonts/instrument-sans/600SemiBold/InstrumentSans_600SemiBold.ttf",
+            "./node_modules/@expo-google-fonts/ibm-plex-mono/400Regular/IBMPlexMono_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/ibm-plex-mono/500Medium/IBMPlexMono_500Medium.ttf"
+          ]
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }
