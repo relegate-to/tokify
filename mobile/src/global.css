@@ -59,6 +59,13 @@
             --color-idle-dot: #cfcfcf;
             --color-navigation: #ececec;
             --color-goal-accent: oklch(0.62 0.19 285);
+            --color-contribution-0: #e4e4e4;
+            --color-contribution-1: #f0e6cf;
+            --color-contribution-2: #e3cd97;
+            --color-contribution-3: #cbab5f;
+            --color-contribution-4: #b8932e;
+            --color-subtle-surface: #f1f1f1;
+            --color-subtle-surface-border: #e4e4e4;
             --color-navigation-active: #ffffff;
             --color-navigation-active-foreground: #171717;
             --color-navigation-muted-foreground: #9a9a9a;
@@ -104,6 +111,13 @@
             --color-idle-dot: #4a4a4a;
             --color-navigation: #262626;
             --color-goal-accent: oklch(0.7 0.17 285);
+            --color-contribution-0: #1f1f1f;
+            --color-contribution-1: #302d1d;
+            --color-contribution-2: #554b22;
+            --color-contribution-3: #78652e;
+            --color-contribution-4: #a18f45;
+            --color-subtle-surface: #1a1a1a;
+            --color-subtle-surface-border: #303030;
             --color-navigation-active: #3b3b3b;
             --color-navigation-active-foreground: #fafafa;
             --color-navigation-muted-foreground: #8a8a8a;

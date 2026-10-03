@@ -8,7 +8,7 @@ import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
-export type ActivityEdit = { description: string; project: string; start?: string; end?: string };
+export type ActivityEdit = { description: string; project: string; date?: string; start?: string; end?: string };
 
 const HHMM = /^\s*(\d{1,2})\s*:\s*(\d{2})\s*$/;
 
@@ -23,6 +23,8 @@ export function normalizeClock(t: string) {
 export function EditActivityDialog({
     open,
     onOpenChange,
+    title = 'Edit activity',
+    saveLabel = 'Save changes',
     subtitle,
     initial,
     projects,
@@ -31,6 +33,8 @@ export function EditActivityDialog({
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    title?: string;
+    saveLabel?: string;
     subtitle: string;
     initial: ActivityEdit;
     projects: string[];
@@ -67,6 +71,7 @@ export function EditActivityDialog({
     const save = () =>
         act(async () => {
             if (!edit.description.trim()) throw new Error('Describe what you were working on.');
+            if (edit.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(edit.date.trim())) throw new Error('Date must be YYYY-MM-DD.');
             for (const t of [edit.start, edit.end]) {
                 const m = t === undefined ? null : HHMM.exec(t);
                 if (t !== undefined && (!m || Number(m[1]) > 23 || Number(m[2]) > 59)) throw new Error('Times must be HH:MM.');
@@ -77,6 +82,7 @@ export function EditActivityDialog({
             await onSave({
                 description: edit.description.trim(),
                 project: edit.project.trim(),
+                date: edit.date?.trim(),
                 start: edit.start === undefined ? undefined : normalizeClock(edit.start),
                 end: edit.end === undefined ? undefined : normalizeClock(edit.end),
             });
@@ -86,7 +92,7 @@ export function EditActivityDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="w-[92vw] max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Edit activity</DialogTitle>
+                    <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>{subtitle}</DialogDescription>
                 </DialogHeader>
                 <View className="gap-3">
@@ -106,6 +112,11 @@ export function EditActivityDialog({
                             </ScrollView>
                         ) : null}
                     </Field>
+                    {edit.date !== undefined ? (
+                        <Field label="Date">
+                            <Input value={edit.date} onChangeText={(date) => set({ date })} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+                        </Field>
+                    ) : null}
                     {edit.start !== undefined ? (
                         <View className="flex-row gap-2">
                             <Field label="Start" className="flex-1">
@@ -130,7 +141,7 @@ export function EditActivityDialog({
                         <Text>Cancel</Text>
                     </Button>
                     <Button disabled={busy} onPress={save}>
-                        <Text>Save changes</Text>
+                        <Text>{saveLabel}</Text>
                     </Button>
                 </DialogFooter>
             </DialogContent>

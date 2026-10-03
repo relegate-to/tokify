@@ -2,7 +2,13 @@ import { FlashList } from '@shopify/flash-list';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
 
+import { Plus, Search } from 'lucide-react-native';
+
+import { ContributionGraph } from '@/components/ContributionGraph';
 import { EditActivityDialog, type ActivityEdit } from '@/components/EditActivityDialog';
+import { Button } from '@/components/ui/button';
+import { Icon } from '@/components/ui/icon';
+import { Input } from '@/components/ui/input';
 
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
@@ -12,7 +18,7 @@ import { dayLabel, formatClock, formatTotal, parseSyncTime } from '@/lib/time';
 import { useTap } from '@/lib/use-tap';
 import { cn } from '@/lib/utils';
 import { dataToken } from '@/sync/account';
-import { deleteEntries, editEntry, type Entry } from '@/sync/entries';
+import { deleteEntries, editEntry, pushEntries, syncTime, type Entry } from '@/sync/entries';
 
 type DayItem = { kind: 'day'; key: string; title: string; total: number };
 type Item = DayItem | { kind: 'row'; key: string; entry: Entry; from: Date; to: Date };
@@ -78,6 +84,8 @@ export function LogPage() {
     const { entries, error, reload: load } = useEntries();
     const [refreshing, setRefreshing] = useState(false);
     const [editing, setEditing] = useState<Entry | null>(null);
+    const [adding, setAdding] = useState(false);
+    const [query, setQuery] = useState('');
     const projects = useMemo(() => [...new Set((entries ?? []).map((e) => e.project).filter(Boolean))], [entries]);
     const onPress = useCallback((e: Entry) => setEditing(e), []);
 
@@ -92,13 +100,28 @@ export function LogPage() {
         await load();
     };
 
+    const add = async (edit: ActivityEdit) => {
+        if (!account) return;
+        await pushEntries(await dataToken(), account.dek, account.user.id, [
+            { description: edit.description, project: edit.project, start: `${edit.date} ${edit.start}`, end: `${edit.date} ${edit.end}` },
+        ]);
+        await load();
+    };
+
     const remove = async () => {
         if (!editing) return;
         await deleteEntries(await dataToken(), [editing.id]);
         await load();
     };
 
-    const { items, headers } = useMemo(() => flatten(entries ?? []), [entries]);
+    // As the desktop's Log search: description or project, case-insensitive.
+    const shown = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        const all = entries ?? [];
+        return q ? all.filter((e) => e.description.toLowerCase().includes(q) || e.project.toLowerCase().includes(q)) : all;
+    }, [entries, query]);
+    const { items, headers } = useMemo(() => flatten(shown), [shown]);
+    const now = new Date();
 
     return (
         <View style={{ flex: 1 }}>
@@ -107,6 +130,28 @@ export function LogPage() {
                 keyExtractor={(item) => item.key}
                 getItemType={(item) => item.kind}
                 stickyHeaderIndices={headers}
+                ListHeaderComponent={
+                    <View className="gap-3 px-5 pt-2">
+                        {entries ? <ContributionGraph entries={entries} /> : null}
+                        <View className="flex-row items-center gap-2">
+                            <View className="h-11 flex-1 flex-row items-center gap-2 rounded-xl border border-subtle-surface-border bg-subtle-surface px-3">
+                                <Icon as={Search} className="size-4 text-muted-foreground opacity-60" />
+                                <Input
+                                    value={query}
+                                    onChangeText={setQuery}
+                                    placeholder="Search description or project"
+                                    returnKeyType="search"
+                                    autoCorrect={false}
+                                    className="h-10 flex-1 border-0 bg-transparent px-0"
+                                />
+                            </View>
+                            <Button variant="outline" className="h-11 rounded-xl px-3" onPress={() => setAdding(true)} accessibilityLabel="Add past activity">
+                                <Icon as={Plus} className="size-4 text-foreground" />
+                                <Text>Add past</Text>
+                            </Button>
+                        </View>
+                    </View>
+                }
                 contentContainerStyle={{ paddingBottom: 40 }}
                 refreshControl={
                     <RefreshControl
@@ -126,6 +171,16 @@ export function LogPage() {
                         {error || (entries === null ? 'Loading your history…' : 'Nothing tracked yet. Stopped timers show up here.')}
                     </Text>
                 }
+            />
+            <EditActivityDialog
+                open={adding}
+                onOpenChange={setAdding}
+                title="Add past activity"
+                saveLabel="Add activity"
+                subtitle="For time you tracked without the timer."
+                initial={{ description: '', project: projects[0] ?? '', date: syncTime(now).slice(0, 10), start: '', end: '' }}
+                projects={projects}
+                onSave={add}
             />
             {editing ? (
                 <EditActivityDialog
