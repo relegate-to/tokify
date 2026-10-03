@@ -41,19 +41,21 @@ function QuickStart({ entry: e, onResume }: { entry: Entry; onResume: (e: Entry)
                 {...tap}
                 accessibilityRole="button"
                 accessibilityLabel={`Start ${e.description} again`}
-                className="flex-row items-center gap-3 border-t border-border px-1 py-3.5 active:bg-accent"
+                className="-mx-5 px-5 active:bg-accent"
             >
-                <View className={cn('size-2 rounded-[2px]', projectColorClass(e.project))} />
-                <View className="flex-1 gap-0.5">
-                    <Text numberOfLines={1} className="font-sans-medium text-base">
-                        {e.description}
-                    </Text>
-                    <Text numberOfLines={1} className="text-sm text-ink-faint">
-                        {[e.project, formatClock(parseSyncTime(e.start))].filter(Boolean).join('   ')}
-                    </Text>
-                </View>
-                <View className="size-10 items-center justify-center rounded-xl bg-muted">
-                    <Icon as={Play} className="size-4 text-foreground" />
+                <View className="flex-row items-center gap-3 border-t border-border px-1 py-3.5">
+                    <View className={cn('size-2 rounded-[2px]', projectColorClass(e.project))} />
+                    <View className="flex-1 gap-0.5">
+                        <Text numberOfLines={1} className="font-sans-medium text-base">
+                            {e.description}
+                        </Text>
+                        <Text numberOfLines={1} className="text-sm text-ink-faint">
+                            {[e.project, formatClock(parseSyncTime(e.start))].filter(Boolean).join('   ')}
+                        </Text>
+                    </View>
+                    <View className="size-10 items-center justify-center rounded-xl bg-muted">
+                        <Icon as={Play} className="size-4 text-foreground" />
+                    </View>
                 </View>
             </Pressable>
         </Animated.View>

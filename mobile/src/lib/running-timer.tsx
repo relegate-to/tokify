@@ -104,9 +104,10 @@ function useTimerState() {
     );
 
     const start = useCallback(
-        async (description: string, project: string) => {
+        async (description: string, project: string, opts: { notes?: string; at?: Date } = {}) => {
             if (!account) return;
-            const timer: RunningTimer = { d: description, p: project, s: new Date().toISOString(), dev: await deviceId() };
+            const timer: RunningTimer = { d: description, p: project, s: (opts.at ?? new Date()).toISOString(), dev: await deviceId() };
+            if (opts.notes) timer.n = opts.notes;
             const { version: seen, timer: previous } = stateRef.current;
             // A start ends whatever was running at its start time.
             if (isRunning(previous)) await queueEntry(entryFromTimer({ ...previous, e: timer.s }));

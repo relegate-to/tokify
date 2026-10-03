@@ -8,7 +8,7 @@ import { SafeAreaView } from '@/components/safe-area-view';
 
 import { JumpBackIn } from '@/components/JumpBackIn';
 import { NowRunning } from '@/components/NowRunning';
-import { Starter } from '@/components/Starter';
+import { Starter, type StarterDraft } from '@/components/Starter';
 import { TodayGoal } from '@/components/TodayGoal';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -28,8 +28,9 @@ const quickStartKey = (description: string, project: string) => JSON.stringify([
 // Now: start a timer, or see and stop the one that is running on any device.
 export function NowPage() {
     const insets = useSafeAreaInsets();
-    const [draft, setDraft] = useState('');
+    const [draft, setDraft] = useState<Omit<StarterDraft, 'project'>>({ description: '', notes: '', startAt: null });
     const [picked, setPicked] = useState<string | null>(null);
+    const [startError, setStartError] = useState('');
     const { state, localOnly, error, start: startTimer, stop, edit } = useRunningTimer();
     const { entries } = useEntries();
     const running = isRunning(state.timer) ? state.timer : null;
@@ -70,13 +71,23 @@ export function NowPage() {
     const runningMs = running ? Math.max(0, now - Math.max(parseInstant(running.s).getTime(), new Date(new Date(now).setHours(0, 0, 0, 0)).getTime())) : 0;
     const project = picked ?? defaultProject;
 
-    const canStart = draft.trim().length > 0;
+    const canStart = draft.description.trim().length > 0;
     const start = () => {
         if (!canStart) return;
+        let at: Date | undefined;
+        if (draft.startAt !== null && draft.startAt.trim() !== '') {
+            // As the desktop's buildClockISO: HH:MM today, and in the past.
+            const m = /^\s*(\d{1,2})\s*:\s*(\d{2})\s*$/.exec(draft.startAt);
+            if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return setStartError('Start time must be HH:MM');
+            at = new Date();
+            at.setHours(Number(m[1]), Number(m[2]), 0, 0);
+            if (at.getTime() > Date.now()) return setStartError('Start time must be in the past');
+        }
+        setStartError('');
         Keyboard.dismiss();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        startTimer(draft.trim(), project);
-        setDraft('');
+        startTimer(draft.description.trim(), project, { notes: draft.notes.trim() || undefined, at });
+        setDraft({ description: '', notes: '', startAt: null });
         setPicked(null);
     };
 
@@ -87,13 +98,21 @@ export function NowPage() {
                     {running ? (
                         <NowRunning description={running.d} project={running.p} start={parseInstant(running.s)} projects={projects} onStop={stop} onEdit={edit} />
                     ) : (
-                        <Starter description={draft} project={project} projects={projects} onChange={setDraft} onProject={setPicked} onSubmit={start} />
+                        <Starter
+                            draft={{ ...draft, project }}
+                            projects={projects}
+                            onChange={({ project: p, ...rest }) => {
+                                if (p !== undefined) setPicked(p);
+                                setDraft((d) => ({ ...d, ...rest }));
+                            }}
+                            onSubmit={start}
+                        />
                     )}
                     {entries !== null ? <TodayGoal totalMs={todayMs + runningMs} goalMinutes={DAILY_GOAL_MINUTES} /> : null}
                     {quickStarts.length > 0 ? (
                         <JumpBackIn items={quickStarts} contextLabel={contextLabel} onResume={(e) => startTimer(e.description, e.project)} />
                     ) : null}
-                    {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
+                    {error || startError ? <Text className="text-sm text-destructive">{startError || error}</Text> : null}
                     {localOnly ? (
                         <Text className="text-sm text-muted-foreground">This timer stays on this phone until the server is updated for timer sync.</Text>
                     ) : null}

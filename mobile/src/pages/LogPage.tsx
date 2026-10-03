@@ -53,19 +53,21 @@ const DayHeader = memo(function DayHeader({ title, total }: { title: string; tot
 const Row = memo(function Row({ entry, from, to, onPress }: { entry: Entry; from: Date; to: Date; onPress: (e: Entry) => void }) {
     const tap = useTap(() => onPress(entry));
     return (
-        <Pressable {...tap} accessibilityRole="button" className="mx-5 gap-1 border-b border-border/60 py-3.5 active:bg-accent">
-            <View className="flex-row items-center gap-2.5">
-                <View className={cn('size-2 rounded-[2px]', projectColorClass(entry.project))} />
-                <Text numberOfLines={1} className="flex-1 font-sans-medium text-base">
-                    {entry.description}
-                </Text>
-                <Text className="font-mono text-sm text-secondary-foreground" style={tabular}>
-                    {formatTotal(to.getTime() - from.getTime())}
+        <Pressable {...tap} accessibilityRole="button" className="px-5 active:bg-accent">
+            <View className="gap-1 border-b border-border/60 py-3.5">
+                <View className="flex-row items-center gap-2.5">
+                    <View className={cn('size-2 rounded-[2px]', projectColorClass(entry.project))} />
+                    <Text numberOfLines={1} className="flex-1 font-sans-medium text-base">
+                        {entry.description}
+                    </Text>
+                    <Text className="font-mono text-sm text-secondary-foreground" style={tabular}>
+                        {formatTotal(to.getTime() - from.getTime())}
+                    </Text>
+                </View>
+                <Text numberOfLines={1} className="pl-[18px] text-sm text-ink-faint">
+                    {[entry.project, `${formatClock(from)}–${formatClock(to)}`].filter(Boolean).join('   ')}
                 </Text>
             </View>
-            <Text numberOfLines={1} className="pl-[18px] text-sm text-ink-faint">
-                {[entry.project, `${formatClock(from)}–${formatClock(to)}`].filter(Boolean).join('   ')}
-            </Text>
         </Pressable>
     );
 });
