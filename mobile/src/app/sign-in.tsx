@@ -40,7 +40,7 @@ export default function SignInScreen() {
     return (
         <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-                <ScrollView className="flex-1" contentContainerClassName="gap-6 px-5 pt-16" keyboardShouldPersistTaps="handled">
+                <ScrollView showsVerticalScrollIndicator={false} className="flex-1" contentContainerClassName="gap-6 px-5 pt-16" keyboardShouldPersistTaps="handled">
                     <View className="gap-2">
                         <Text className="font-sans-semibold text-[28px] leading-[34px] tracking-[-0.5px]">
                             {verifying ? 'Check your email' : 'Sign in to Tokify'}

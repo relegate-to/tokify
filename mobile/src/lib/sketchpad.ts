@@ -4,7 +4,6 @@ import * as SecureStore from 'expo-secure-store';
 // The sketchpad stays on the device, as the desktop's stays in localStorage.
 const pad = new File(Paths.document, 'sketchpad.html');
 const RUNS_KEY = 'todos.runs';
-const AUTO_COMPLETE_KEY = 'todos.autoComplete';
 
 export function readSketchpad() {
     try {
@@ -47,12 +46,4 @@ export async function readTodoRuns(): Promise<TodoRun[]> {
 
 export async function writeTodoRuns(runs: TodoRun[]) {
     await SecureStore.setItemAsync(RUNS_KEY, JSON.stringify(runs)).catch(() => undefined);
-}
-
-export async function readAutoComplete() {
-    return (await SecureStore.getItemAsync(AUTO_COMPLETE_KEY).catch(() => null)) === '1';
-}
-
-export async function writeAutoComplete(on: boolean) {
-    await SecureStore.setItemAsync(AUTO_COMPLETE_KEY, on ? '1' : '0').catch(() => undefined);
 }

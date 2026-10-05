@@ -30,7 +30,7 @@ export function ReportsPage() {
     if (entries === null) return <SummarySkeleton />;
     return (
         <Animated.View entering={FadeIn.duration(300)} style={{ flex: 1 }}>
-            <ScrollView contentContainerClassName="gap-4 px-5 pb-10 pt-2">
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="gap-4 px-5 pb-10 pt-2">
                 <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center gap-1">
                         <StepButton onPress={() => setOffset((o) => o - 1)} label="Previous period" icon={ChevronLeft} />

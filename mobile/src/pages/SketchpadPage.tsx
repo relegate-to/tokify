@@ -15,14 +15,13 @@ import { Text } from '@/components/ui/text';
 import SketchpadEditor, { type EditorCommand, type EditorState, type SketchpadHandle, type StartTodo } from '@/dom/SketchpadEditor';
 import { projectColorClass } from '@/lib/colors';
 import { useEntries } from '@/lib/entries';
+import { usePrefs } from '@/lib/prefs';
 import { useResume } from '@/lib/resume';
 import { useRunningTimer } from '@/lib/running-timer';
 import {
     completeTodo,
-    readAutoComplete,
     readSketchpad,
     readTodoRuns,
-    writeAutoComplete,
     writeSketchpad,
     writeTodoRuns,
     type TodoRun,
@@ -44,6 +43,9 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
     const [finishing, setFinishing] = useState<TodoRun | null>(null);
     const { state, loaded } = useRunningTimer();
     const resume = useResume();
+    const { autoCompleteTodos, set: setPref } = usePrefs();
+    const autoComplete = useRef(autoCompleteTodos);
+    autoComplete.current = autoCompleteTodos;
     const { entries } = useEntries();
     const insets = useSafeAreaInsets();
     const keyboard = useReanimatedKeyboardAnimation();
@@ -100,7 +102,7 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
             const runs = await readTodoRuns();
             const finished = runs.filter((run) => run.start !== runningStart);
             if (cancelled || finished.length === 0) return;
-            if (!(await readAutoComplete())) return setFinishing(finished[0]);
+            if (!autoComplete.current) return setFinishing(finished[0]);
             await writeTodoRuns(runs.filter((run) => run.start === runningStart));
             tick(finished.map((run) => run.id));
         })();
@@ -114,7 +116,7 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
         if (!todo) return;
         await writeTodoRuns((await readTodoRuns()).filter((run) => run.start !== todo.start));
         if (done) tick([todo.id]);
-        if (always) await writeAutoComplete(true);
+        if (always) setPref('autoCompleteTodos', true);
         setFinishing(null);
     };
 
@@ -134,7 +136,7 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
                 onChange={save}
                 onStartTodo={startTodo}
                 onState={async (s) => setEditing(s)}
-                dom={{ style: { flex: 1, backgroundColor: 'transparent' }, containerStyle: { flex: 1 }, overScrollMode: 'never', nestedScrollEnabled: false }}
+                dom={{ style: { flex: 1, backgroundColor: 'transparent' }, containerStyle: { flex: 1 }, overScrollMode: 'never', nestedScrollEnabled: false, showsVerticalScrollIndicator: false, showsHorizontalScrollIndicator: false }}
             />
             {editing.focused ? (
                 <View className="flex-row items-center gap-0.5 border-t border-border bg-background px-2 py-1.5">

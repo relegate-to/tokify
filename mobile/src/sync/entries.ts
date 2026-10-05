@@ -3,10 +3,12 @@
 import * as SecureStore from 'expo-secure-store';
 
 import { toBase64 } from '@/crypto/bytes';
-import { canonicalize, decryptOwnEntry, entryId, seal, type CanonicalEntry, type RunningTimer } from '@/crypto/sync';
+import { entryAADBytes, signEntry, type Identity } from '@/crypto/sharing';
+import { canonicalize, decryptOwnEntry, deriveEntryDEK, entryId, seal, type CanonicalEntry, type RunningTimer } from '@/crypto/sync';
 import { parseInstant } from '@/lib/time';
 
 import { dataFetch } from './data';
+import { loadIdentity } from './identity';
 
 const PENDING_KEY = 'entries.pending';
 
@@ -22,17 +24,42 @@ export function entryFromTimer(t: RunningTimer & { e: string }): CanonicalEntry 
     return { description: t.d, project: t.p, start: syncTime(parseInstant(t.s)), end: syncTime(parseInstant(t.e)) };
 }
 
-// Uploads entries in the legacy account-DEK format, which desktops read and
-// re-push in the signed v2 format under the same content id. `deleted` is
-// left out so an upsert never clears a tombstone set elsewhere.
+// Uploads entries in the signed v2 format (per-entry DEK, AAD-bound,
+// author-signed) once this phone holds a sharing identity, and in the legacy
+// account-DEK format until then; desktops re-push those signed under the same
+// content id. `deleted` and `contribution_status` are left out so an upsert
+// never clears a tombstone or fails the status check.
 export async function pushEntries(token: string, dek: Uint8Array, owner: string, entries: CanonicalEntry[]) {
     if (entries.length === 0) return;
+    const identity = await loadIdentity();
     const rows = entries.map((e) => {
         const canon = canonicalize(e);
+        const id = entryId(dek, canon);
+        if (identity) return signedRow(identity, dek, owner, id, canon);
         const { ciphertext, nonce } = seal(dek, canon);
-        return { id: entryId(dek, canon), user_id: owner, ciphertext: toBase64(ciphertext), nonce: toBase64(nonce) };
+        return { id, user_id: owner, ciphertext: toBase64(ciphertext), nonce: toBase64(nonce) };
     });
     await dataFetch(token, '/entries', { method: 'POST', body: JSON.stringify(rows), prefer: 'resolution=merge-duplicates,return=minimal' });
+}
+
+function signedRow(identity: Identity, dek: Uint8Array, owner: string, id: string, canon: Uint8Array) {
+    const aad = { entryId: id, version: 1, authorId: owner };
+    const { ciphertext, nonce } = seal(deriveEntryDEK(dek, id), canon, entryAADBytes(aad));
+    return {
+        id,
+        user_id: owner,
+        ciphertext: toBase64(ciphertext),
+        nonce: toBase64(nonce),
+        version: 1,
+        author_sig: toBase64(signEntry(identity, aad, ciphertext)),
+    };
+}
+
+// Re-pushes the caller's own entries in the signed format, for sharing.
+export async function pushSignedEntries(s: { token: string; dek: Uint8Array; userId: string; id: Identity }, entries: Entry[]) {
+    if (entries.length === 0) return;
+    const rows = entries.map((e) => signedRow(s.id, s.dek, s.userId, e.id, canonicalize(e)));
+    await dataFetch(s.token, '/entries', { method: 'POST', body: JSON.stringify(rows), prefer: 'resolution=merge-duplicates,return=minimal' });
 }
 
 // Entries waiting to be pushed survive restarts, so a stop made offline still
@@ -57,20 +84,23 @@ async function readPending(): Promise<CanonicalEntry[]> {
     return raw ? (JSON.parse(raw) as CanonicalEntry[]) : [];
 }
 
-export type Entry = CanonicalEntry & { id: string };
+// signed: the row carries an author signature (the v2 format), so teammates
+// can verify it when it's shared.
+export type Entry = CanonicalEntry & { id: string; signed?: boolean };
 
 // The caller's live entries, newest first. Rows that fail to decrypt are
 // skipped rather than failing the list.
 export async function listEntries(token: string, dek: Uint8Array, owner: string): Promise<Entry[]> {
-    const rows = (await dataFetch(token, `/entries?select=id,ciphertext,nonce&user_id=eq.${encodeURIComponent(owner)}&deleted=eq.false`)) as {
+    const rows = (await dataFetch(token, `/entries?select=id,ciphertext,nonce,author_sig&user_id=eq.${encodeURIComponent(owner)}&deleted=eq.false`)) as {
         id: string;
         ciphertext: string;
         nonce: string;
+        author_sig?: string | null;
     }[];
     const out: Entry[] = [];
     for (const row of rows) {
         try {
-            out.push({ id: row.id, ...decryptOwnEntry(dek, owner, row) });
+            out.push({ id: row.id, ...decryptOwnEntry(dek, owner, row), signed: Boolean(row.author_sig) });
         } catch {
             // Not decryptable with this account's key; nothing to show.
         }

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useEntries } from '@/lib/entries';
+import { usePrefs } from '@/lib/prefs';
 import { dayLabel, parseInstant, parseSyncTime } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
 import { useRunningTimer } from '@/lib/running-timer';
@@ -24,7 +25,6 @@ import type { Entry } from '@/sync/entries';
 import { isRunning } from '@/sync/timer';
 
 const QUICK_START_COUNT = 4;
-const DAILY_GOAL_MINUTES = 360;
 
 const quickStartKey = (description: string, project: string) => JSON.stringify([description, project]);
 
@@ -37,6 +37,7 @@ export function NowPage() {
     const [editing, setEditing] = useState<Entry | null>(null);
     const { state, localOnly, error, start: startTimer, stop, edit } = useRunningTimer();
     const { entries } = useEntries();
+    const { activityView, dailyGoal } = usePrefs();
     const running = isRunning(state.timer) ? state.timer : null;
     const now = useNow();
 
@@ -98,7 +99,7 @@ export function NowPage() {
     return (
         <SafeAreaView className="flex-1" edges={['bottom']}>
             <View style={{ flex: 1 }}>
-                <ScrollView className="flex-1" contentContainerClassName="gap-6 px-5 pb-6 pt-4" keyboardShouldPersistTaps="handled">
+                <ScrollView showsVerticalScrollIndicator={false} className="flex-1" contentContainerClassName="gap-6 px-5 pb-6 pt-4" keyboardShouldPersistTaps="handled">
                     {running ? (
                         <NowRunning description={running.d} project={running.p} start={parseInstant(running.s)} projects={projects} onStop={stop} onEdit={edit} />
                     ) : (
@@ -112,17 +113,18 @@ export function NowPage() {
                             onSubmit={start}
                         />
                     )}
-                    {entries === null ? (
+                    {/* As the desktop's activityView: goal and recents, the goal alone, or neither. */}
+                    {activityView === 'none' ? null : entries === null ? (
                         <>
                             <TodayGoalSkeleton />
-                            <JumpBackInSkeleton />
+                            {activityView === 'all' ? <JumpBackInSkeleton /> : null}
                         </>
                     ) : (
                         <Animated.View entering={FadeIn.duration(300)}>
-                            <TodayGoal totalMs={todayMs + runningMs} goalMinutes={DAILY_GOAL_MINUTES} />
+                            <TodayGoal totalMs={todayMs + runningMs} goalMinutes={dailyGoal} />
                         </Animated.View>
                     )}
-                    {quickStarts.length > 0 ? (
+                    {activityView === 'all' && quickStarts.length > 0 ? (
                         <JumpBackIn items={quickStarts} contextLabel={contextLabel} onEdit={setEditing} />
                     ) : null}
                     {error || startError ? <Text className="text-sm text-destructive">{startError || error}</Text> : null}

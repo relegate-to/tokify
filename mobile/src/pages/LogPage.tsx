@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
-import { Check as CheckIcon, Plus, Search, Trash2, X } from 'lucide-react-native';
+import { Check as CheckIcon, Plus, Search, Trash2, Users, X } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, Pressable, RefreshControl, View } from 'react-native';
 import Animated, { FadeOut } from 'react-native-reanimated';
@@ -10,14 +10,17 @@ import { ContributionGraph } from '@/components/ContributionGraph';
 import { ContributionGraphSkeleton, LogRowsSkeleton } from '@/components/Skeletons';
 import { EditActivityDialog, type ActivityEdit } from '@/components/EditActivityDialog';
 import { EntryEditor, EntryMenu } from '@/components/EntryActions';
+import { MemberAvatar } from '@/components/MemberAvatar';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
 import { useEntries } from '@/lib/entries';
+import { useShared } from '@/lib/shared';
 import { EASE_SIZE, enter } from '@/lib/motion';
 import { useSession } from '@/lib/session';
 import { dayLabel, formatClock, formatTotal, parseSyncTime } from '@/lib/time';
@@ -25,12 +28,21 @@ import { useTap } from '@/lib/use-tap';
 import { cn } from '@/lib/utils';
 import { dataToken } from '@/sync/account';
 import { deleteEntries, pushEntries, syncTime, type Entry } from '@/sync/entries';
+import type { SharedActivity } from '@/sync/sharing';
+
+// The people filter's value for the caller's own entries.
+const SELF = '\u0000self';
 
 type DayItem = { kind: 'day'; key: string; title: string; total: number; ids: string[] };
-type Item = DayItem | { kind: 'row'; key: string; entry: Entry; from: Date; to: Date };
+type Item = DayItem | { kind: 'row'; key: string; entry: Entry; from: Date; to: Date } | { kind: 'shared'; key: string; entry: SharedActivity; from: Date; to: Date };
+type LogEntry = Entry | SharedActivity;
 
-// Day headers and rows flattened into one recycled list; headers stick.
-function flatten(entries: Entry[]) {
+const isShared = (e: LogEntry): e is SharedActivity => 'authorId' in e;
+
+// Day headers and rows flattened into one recycled list; headers stick. Shared
+// rows group and count with the caller's own, as on the desktop, but only the
+// caller's own can be selected.
+function flatten(entries: LogEntry[]) {
     const items: Item[] = [];
     const headers: number[] = [];
     let day = null as DayItem | null;
@@ -44,8 +56,12 @@ function flatten(entries: Entry[]) {
             items.push(day);
         }
         day.total += to.getTime() - from.getTime();
-        day.ids.push(entry.id);
-        items.push({ kind: 'row', key: entry.id, entry, from, to });
+        if (isShared(entry)) {
+            items.push({ kind: 'shared', key: `s:${entry.authorId}:${entry.id}`, entry, from, to });
+        } else {
+            day.ids.push(entry.id);
+            items.push({ kind: 'row', key: entry.id, entry, from, to });
+        }
     }
     return { items, headers };
 }
@@ -113,6 +129,39 @@ const DayHeader = memo(function DayHeader({
                 {formatTotal(total)}
             </Text>
         </Pressable>
+    );
+});
+
+// A menu tick that keeps its width when off, so the labels stay aligned. The
+// Icon wrapper maps only size and colour from classes, so opacity can't hide it.
+function Tick({ on }: { on: boolean }) {
+    return <View className="size-4">{on ? <Icon as={CheckIcon} className="size-4 text-foreground" /> : null}</View>;
+}
+
+// Someone else's entry, shared with one of the caller's teams: read-only, and
+// marked with its author.
+const SharedRow = memo(function SharedRow({ entry, from, to }: { entry: SharedActivity; from: Date; to: Date }) {
+    const name = entry.authorName.trim() || 'Someone';
+    return (
+        <View className="px-5" accessibilityLabel={`${entry.description}, shared by ${name}`}>
+            <View className="gap-1 border-b border-border/60 py-3.5">
+                <View className="flex-row items-center gap-2.5">
+                    <View className={cn('size-2 rounded-[2px]', projectColorClass(entry.project))} />
+                    <Text numberOfLines={1} className="flex-1 font-sans-medium text-base">
+                        {entry.description}
+                    </Text>
+                    <Text className="font-mono text-sm text-secondary-foreground" style={tabular}>
+                        {formatTotal(to.getTime() - from.getTime())}
+                    </Text>
+                </View>
+                <View className="flex-row items-center gap-1.5 pl-[18px]">
+                    <MemberAvatar seed={entry.authorId} label={name} image={entry.authorImage} size={18} />
+                    <Text numberOfLines={1} className="flex-1 text-sm text-ink-faint">
+                        {[name, entry.project, `${formatClock(from)}–${formatClock(to)}`].filter(Boolean).join('   ')}
+                    </Text>
+                </View>
+            </View>
+        </View>
     );
 });
 
@@ -243,24 +292,43 @@ export function LogPage() {
     };
 
     // As the desktop's Log search: description or project, case-insensitive.
+    // Teammates' shared entries alongside the caller's own, filtered the same
+    // way, plus the desktop's people filter: everyone, you, or one author.
+    const { shared } = useShared();
+    const [who, setWho] = useState<string>('');
+    const authors = useMemo(() => {
+        const byId = new Map<string, SharedActivity>();
+        for (const e of shared) if (!byId.has(e.authorId)) byId.set(e.authorId, e);
+        return [...byId.values()].sort((a, b) => (a.authorName || 'Someone').localeCompare(b.authorName || 'Someone'));
+    }, [shared]);
+    useEffect(() => {
+        if (who && who !== SELF && !authors.some((a) => a.authorId === who)) setWho('');
+    }, [authors, who]);
     const shown = useMemo(() => {
         const q = query.trim().toLowerCase();
-        const all = entries ?? [];
-        return q ? all.filter((e) => e.description.toLowerCase().includes(q) || e.project.toLowerCase().includes(q)) : all;
-    }, [entries, query]);
+        const seen = new Set<string>();
+        const theirs = shared.filter((e) => !seen.has(e.id) && seen.add(e.id));
+        const all: LogEntry[] = entries ? [...entries, ...theirs].sort((a, b) => b.start.localeCompare(a.start)) : [];
+        return all.filter((e) => {
+            if (who && (who === SELF ? isShared(e) : !isShared(e) || e.authorId !== who)) return false;
+            if (!q) return true;
+            return e.description.toLowerCase().includes(q) || e.project.toLowerCase().includes(q) || (isShared(e) && e.authorName.toLowerCase().includes(q));
+        });
+    }, [entries, shared, query, who]);
     const { items, headers } = useMemo(() => flatten(shown), [shown]);
     const now = new Date();
 
     return (
         <View style={{ flex: 1 }}>
             <FlashList
+                showsVerticalScrollIndicator={false}
                 data={items}
                 keyExtractor={(item) => item.key}
                 getItemType={(item) => item.kind}
                 stickyHeaderIndices={headers}
                 ListHeaderComponent={
                     <View className="gap-3 px-5 pt-2">
-                        {entries ? <ContributionGraph entries={entries} /> : <ContributionGraphSkeleton />}
+                        {entries ? <ContributionGraph entries={who || query.trim() ? shown : [...entries, ...shared]} /> : <ContributionGraphSkeleton />}
                         <View className="flex-row items-center gap-2">
                             <View className="h-11 flex-1 flex-row items-center gap-2 rounded-xl border border-subtle-surface-border bg-subtle-surface px-3">
                                 <Icon as={Search} className="size-4 text-muted-foreground opacity-60" />
@@ -273,6 +341,32 @@ export function LogPage() {
                                     className="h-10 flex-1 border-0 bg-transparent px-0"
                                 />
                             </View>
+                            {authors.length > 0 ? (
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger
+                                        accessibilityLabel="Filter by person"
+                                        className={cn('size-11 items-center justify-center rounded-xl border', who ? 'border-transparent bg-primary' : 'border-border')}
+                                    >
+                                        <Icon as={Users} className={cn('size-4', who ? 'text-primary-foreground' : 'text-foreground')} />
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="min-w-52">
+                                        {[{ id: '', label: 'Everyone' }, { id: SELF, label: 'You' }].map((o) => (
+                                            <DropdownMenuItem key={o.id || 'everyone'} onPress={() => setWho(o.id)}>
+                                                <Tick on={who === o.id} />
+                                                <Text>{o.label}</Text>
+                                            </DropdownMenuItem>
+                                        ))}
+                                        <DropdownMenuSeparator />
+                                        {authors.map((a) => (
+                                            <DropdownMenuItem key={a.authorId} onPress={() => setWho(a.authorId)}>
+                                                <Tick on={who === a.authorId} />
+                                                <MemberAvatar seed={a.authorId} label={a.authorName || 'Someone'} image={a.authorImage} size={20} />
+                                                <Text>{a.authorName.trim() || 'Someone'}</Text>
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            ) : null}
                             <Button variant="outline" className="h-11 rounded-xl px-3" onPress={() => setAdding(true)} accessibilityLabel="Add past activity">
                                 <Icon as={Plus} className="size-4 text-foreground" />
                                 <Text>Add past</Text>
@@ -300,6 +394,8 @@ export function LogPage() {
                             selected={selection ? item.ids.filter((id) => selection.has(id)).length : 0}
                             onToggleDay={onToggleDay}
                         />
+                    ) : item.kind === 'shared' ? (
+                        <SharedRow entry={item.entry} from={item.from} to={item.to} />
                     ) : (
                         <Row
                             entry={item.entry}

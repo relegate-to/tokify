@@ -52,7 +52,7 @@ export default function CryptoCheck() {
     }, []);
     return (
         <SafeAreaView style={styles.root}>
-            <ScrollView contentContainerStyle={styles.body}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
                 <Text style={styles.title}>Tokify crypto self-test</Text>
                 {results.map((r) => (
                     <Text key={r.name} style={[styles.row, { color: r.ok ? '#15803d' : '#b91c1c' }]}>

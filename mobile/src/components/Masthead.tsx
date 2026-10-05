@@ -1,4 +1,5 @@
-import { Activity as ActivityIcon, BarChart3, FileText, List, LogOut } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { Activity as ActivityIcon, BarChart3, FileText, List, LogOut, Settings as SettingsIcon, Users } from 'lucide-react-native';
 import { useEffect, type ComponentProps } from 'react';
 import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
@@ -219,6 +220,15 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
                     <Text numberOfLines={1} className="px-2 pb-1 text-[13px] text-muted-foreground">
                         {account?.user.email}
                     </Text>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onPress={() => router.push('/teams')}>
+                        <Icon as={Users} className="size-4 text-foreground opacity-70" />
+                        <Text>Teams</Text>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onPress={() => router.push('/settings')}>
+                        <Icon as={SettingsIcon} className="size-4 text-foreground opacity-70" />
+                        <Text>Settings</Text>
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onPress={signOut}>
                         <Icon as={LogOut} className="size-4 text-foreground opacity-70" />

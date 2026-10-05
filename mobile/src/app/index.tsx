@@ -6,7 +6,6 @@ import Animated, { useDerivedValue, useEvent, useSharedValue } from 'react-nativ
 import { Masthead, type Page } from '@/components/Masthead';
 import { SafeAreaView } from '@/components/safe-area-view';
 import { pagerState } from '@/lib/use-tap';
-import { EntriesProvider } from '@/lib/entries';
 import { ResumeProvider } from '@/lib/resume';
 import { RunningTimerProvider } from '@/lib/running-timer';
 import { ChartsPage } from '@/pages/ChartsPage';
@@ -48,37 +47,35 @@ export default function MainScreen() {
     const tabProgress = useDerivedValue(() => progress.value - NOW);
     const goTo = (p: Page) => pager.current?.setPage(PAGES.indexOf(p));
     return (
-        <EntriesProvider>
-            <RunningTimerProvider>
-                <ResumeProvider>
-                    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-                        <Masthead page={page} progress={tabProgress} onPage={goTo} />
-                        <AnimatedPager
-                            ref={pager}
-                            style={{ flex: 1 }}
-                            initialPage={NOW}
-                            onPageScroll={onPageScroll}
-                            onPageScrollStateChanged={(e) => pagerState(e.nativeEvent.pageScrollState)}
-                            onPageSelected={(e) => setPage(PAGES[e.nativeEvent.position])}
-                        >
-                            <View key="sketchpad" style={{ flex: 1 }}>
-                                <SketchpadPage onStarted={() => goTo('now')} />
-                            </View>
-                            <NowPage key="now" />
-                            <LogPage key="log" />
-                            <View key="reports" style={{ flex: 1 }}>
-                                <ReportsPage />
-                            </View>
-                            <View key="charts" style={{ flex: 1 }}>
-                                <ChartsPage />
-                            </View>
-                            <View key="stats" style={{ flex: 1 }}>
-                                <StatsPage />
-                            </View>
-                        </AnimatedPager>
-                    </SafeAreaView>
-                </ResumeProvider>
-            </RunningTimerProvider>
-        </EntriesProvider>
+        <RunningTimerProvider>
+            <ResumeProvider>
+                <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+                    <Masthead page={page} progress={tabProgress} onPage={goTo} />
+                    <AnimatedPager
+                        ref={pager}
+                        style={{ flex: 1 }}
+                        initialPage={NOW}
+                        onPageScroll={onPageScroll}
+                        onPageScrollStateChanged={(e) => pagerState(e.nativeEvent.pageScrollState)}
+                        onPageSelected={(e) => setPage(PAGES[e.nativeEvent.position])}
+                    >
+                        <View key="sketchpad" style={{ flex: 1 }}>
+                            <SketchpadPage onStarted={() => goTo('now')} />
+                        </View>
+                        <NowPage key="now" />
+                        <LogPage key="log" />
+                        <View key="reports" style={{ flex: 1 }}>
+                            <ReportsPage />
+                        </View>
+                        <View key="charts" style={{ flex: 1 }}>
+                            <ChartsPage />
+                        </View>
+                        <View key="stats" style={{ flex: 1 }}>
+                            <StatsPage />
+                        </View>
+                    </AnimatedPager>
+                </SafeAreaView>
+            </ResumeProvider>
+        </RunningTimerProvider>
     );
 }

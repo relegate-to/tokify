@@ -40,7 +40,7 @@ export function StatsPage() {
     if (entries === null) return <SummarySkeleton />;
     return (
         <Animated.View entering={FadeIn.duration(300)} style={{ flex: 1 }}>
-            <ScrollView contentContainerClassName="gap-3 px-5 pb-10 pt-2">
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="gap-3 px-5 pb-10 pt-2">
                 <Animated.View entering={rise()}>
                     <Band>
                         <View className="mb-5 flex-row items-start justify-between gap-6">

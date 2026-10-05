@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
+import { reconcileSoon } from '@/lib/share-sync';
 import { useSession } from '@/lib/session';
 import { dataToken } from '@/sync/account';
 import { listEntries, type Entry } from '@/sync/entries';
@@ -16,15 +17,20 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     const reload = useCallback(async () => {
         if (!account) return;
         try {
-            setEntries(await listEntries(await dataToken(), account.dek, account.user.id));
+            const list = await listEntries(await dataToken(), account.dek, account.user.id);
+            setEntries(list);
             setError('');
+            reconcileSoon(account, list);
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         }
     }, [account]);
     useEffect(() => {
+        // Now above the signed-in screens, so a sign-out mustn't leave the last
+        // account's history behind.
+        if (!account) setEntries(null);
         reload();
-    }, [reload]);
+    }, [reload, account]);
     return <EntriesContext.Provider value={{ entries, error, reload }}>{children}</EntriesContext.Provider>;
 }
 

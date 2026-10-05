@@ -1,4 +1,4 @@
-import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useEffect } from 'react';
 import { Platform, Pressable } from 'react-native';
 
@@ -41,17 +41,15 @@ function PickerField({
     className?: string;
 }) {
     const max = mode === 'date' ? new Date() : undefined;
-    const onChange = (event: DateTimePickerEvent, picked?: Date) => {
-        if (event.type === 'set' && picked) onPick(picked);
-    };
-    const open = () => DateTimePickerAndroid.open({ mode, value: date, is24Hour: true, maximumDate: max, onChange });
+    const onValueChange = (_event: unknown, picked: Date) => onPick(picked);
+    const open = () => DateTimePickerAndroid.open({ mode, value: date, is24Hour: true, maximumDate: max, onValueChange });
     useEffect(() => {
         if (openOnMount && Platform.OS === 'android') open();
         // Only as the field first appears.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     if (Platform.OS === 'ios') {
-        return <DateTimePicker mode={mode} display="compact" value={date} maximumDate={max} onChange={onChange} accessibilityLabel={label} />;
+        return <DateTimePicker mode={mode} display="compact" value={date} maximumDate={max} onValueChange={onValueChange} accessibilityLabel={label} />;
     }
     return (
         <Pressable

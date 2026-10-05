@@ -21,6 +21,10 @@ const StyledIcon = withUniwind(IconImpl, {
     fromClassName: 'className',
     styleProperty: 'color',
   },
+  opacity: {
+    fromClassName: 'className',
+    styleProperty: 'opacity',
+  },
 });
 
 /**

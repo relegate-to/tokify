@@ -50,7 +50,7 @@ export function ChartsPage() {
     if (entries === null) return <SummarySkeleton />;
     return (
         <Animated.View entering={FadeIn.duration(300)} style={{ flex: 1 }}>
-            <ScrollView contentContainerClassName="gap-4 px-5 pb-10 pt-2">
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="gap-4 px-5 pb-10 pt-2">
                 <View className="flex-row items-baseline justify-between">
                     <Text className="font-sans-semibold text-[17px] tracking-[-0.3px]">Breakdown</Text>
                     <Text className="text-[13px] text-muted-foreground/70">past year</Text>
