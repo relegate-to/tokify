@@ -17,8 +17,10 @@ import (
 // TypeScript port, which checks itself against the same file. Canonical bytes
 // and Ed25519 signatures are deterministic and must match exactly; sealed boxes
 // carry a random ephemeral key, so they are recorded once and the other side
-// proves it can open them. Regenerate with:
-// go test ./internal/integrations/neonsync/sharing -run Vectors -update
+// proves it can open them. Regenerate with
+// `go test ./internal/integrations/neonsync/sharing -run Vectors -update`.
+//
+//nolint:gochecknoglobals // a test flag must be registered at package level.
 var updateVectors = flag.Bool("update", false, "rewrite testdata/sharing-vectors.json")
 
 type sharingVectors struct {

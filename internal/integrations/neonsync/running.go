@@ -152,29 +152,39 @@ func writeTimer(
 		return TimerState{}, err
 	}
 
-	if seen == 0 {
-		_, err = doJSON(ctx, hc, http.MethodPost, endpoint(base, "/running_timers"), token, body, "return=minimal")
-		if isUniqueViolation(err) {
-			return conflict(ctx, hc, base, token, dek)
-		}
-		if err != nil {
-			return TimerState{}, gerrors.Wrap(err, "create running timer")
-		}
-	} else {
-		path := "/running_timers?version=eq." + strconv.FormatInt(seen, 10)
-		data, perr := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=representation")
-		if perr != nil {
-			return TimerState{}, gerrors.Wrap(perr, "update running timer")
-		}
-		var written []runningTimerRow
-		if uerr := json.Unmarshal(data, &written); uerr != nil {
-			return TimerState{}, gerrors.Wrap(uerr, "decode running timer")
-		}
-		if len(written) == 0 {
-			return conflict(ctx, hc, base, token, dek)
-		}
+	won, err := putTimerRow(ctx, hc, base, token, seen, body)
+	if err != nil {
+		return TimerState{}, err
+	}
+	if !won {
+		return conflict(ctx, hc, base, token, dek)
 	}
 	return TimerState{Version: row.Version, Timer: &timer}, nil
+}
+
+// putTimerRow creates the record (seen 0) or advances it from version seen,
+// reporting false when another device got there first.
+func putTimerRow(ctx context.Context, hc *http.Client, base, token string, seen int64, body []byte) (bool, error) {
+	if seen == 0 {
+		_, err := doJSON(ctx, hc, http.MethodPost, endpoint(base, "/running_timers"), token, body, "return=minimal")
+		if isUniqueViolation(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, gerrors.Wrap(err, "create running timer")
+		}
+		return true, nil
+	}
+	path := "/running_timers?version=eq." + strconv.FormatInt(seen, 10)
+	data, err := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=representation")
+	if err != nil {
+		return false, gerrors.Wrap(err, "update running timer")
+	}
+	var written []runningTimerRow
+	if uerr := json.Unmarshal(data, &written); uerr != nil {
+		return false, gerrors.Wrap(uerr, "decode running timer")
+	}
+	return len(written) > 0, nil
 }
 
 func conflict(ctx context.Context, hc *http.Client, base, token string, dek []byte) (TimerState, error) {

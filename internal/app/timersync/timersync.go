@@ -160,8 +160,8 @@ func (s *Syncer) apply(ctx context.Context, t *neonsync.RunningTimer) (bool, err
 			return false, err
 		}
 	default:
-		taken, aerr := s.activityAt(ctx, t.Start)
-		if aerr != nil || taken != nil {
+		_, taken, aerr := s.activityAt(ctx, t.Start)
+		if aerr != nil || taken {
 			return false, aerr
 		}
 	}
@@ -198,16 +198,16 @@ func (s *Syncer) localView(ctx context.Context, last agreed) (*neonsync.RunningT
 	if last.Timer == nil || last.Timer.End != nil || last.Timer.Discarded {
 		return last.Timer, nil
 	}
-	act, err := s.activityAt(ctx, last.Timer.Start)
+	act, found, err := s.activityAt(ctx, last.Timer.Start)
 	if err != nil {
 		return nil, err
 	}
-	if act == nil {
+	if !found {
 		t := *last.Timer
 		t.Discarded = true
 		return &t, nil
 	}
-	t := timerFrom(*act, last.Timer.DeviceID)
+	t := timerFrom(act, last.Timer.DeviceID)
 	return &t, nil
 }
 
@@ -226,18 +226,19 @@ func (s *Syncer) running(ctx context.Context) (*models.Activity, error) {
 	return latest, nil
 }
 
-func (s *Syncer) activityAt(ctx context.Context, start time.Time) (*models.Activity, error) {
+// activityAt finds the local activity that started at start, if any.
+func (s *Syncer) activityAt(ctx context.Context, start time.Time) (models.Activity, bool, error) {
 	from, to := start.Add(-time.Second), start.Add(time.Second)
 	acts, err := s.local.List(ctx, models.ActivityFilter{FromDate: &from, ToDate: &to})
 	if err != nil {
-		return nil, err
+		return models.Activity{}, false, err
 	}
-	for i := range acts {
-		if acts[i].StartTime.Equal(start) {
-			return &acts[i], nil
+	for _, a := range acts {
+		if a.StartTime.Equal(start) {
+			return a, true, nil
 		}
 	}
-	return nil, nil
+	return models.Activity{}, false, nil
 }
 
 func timerFrom(a models.Activity, device string) neonsync.RunningTimer {

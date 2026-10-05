@@ -18,7 +18,9 @@ import (
 // testdata/crypto-vectors.json pins the sync crypto to fixed inputs and
 // outputs. The mobile app's TypeScript port checks itself against the same
 // file, so a change on either side that alters the bytes fails one of the two
-// suites. Regenerate with: go test ./internal/integrations/neonsync -run Vectors -update
+// suites. Regenerate with `go test ./internal/integrations/neonsync -run Vectors -update`.
+//
+//nolint:gochecknoglobals // a test flag must be registered at package level.
 var updateVectors = flag.Bool("update", false, "rewrite testdata/crypto-vectors.json")
 
 type cryptoVectors struct {
@@ -185,8 +187,8 @@ func buildVectors(t *testing.T) cryptoVectors {
 func TestCryptoVectors(t *testing.T) {
 	// canonicalize formats in local time; pin it so the vectors are stable.
 	local := time.Local
-	time.Local = time.UTC
-	t.Cleanup(func() { time.Local = local })
+	time.Local = time.UTC                    //nolint:reassign // pins the zone canonicalize formats in
+	t.Cleanup(func() { time.Local = local }) //nolint:reassign // and restores it
 
 	got, err := json.MarshalIndent(buildVectors(t), "", "  ")
 	if err != nil {

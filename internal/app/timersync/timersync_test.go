@@ -142,13 +142,13 @@ func (p *peer) running() *models.Activity {
 	return nil
 }
 
-var t0 = time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+func t0() time.Time { return time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC) }
 
 func TestStartAndStopReachTheOtherDevice(t *testing.T) {
 	rec := &record{}
 	mac, laptop := newPeer(t, "mac", rec), newPeer(t, "laptop", rec)
 
-	mac.start(t, "Plan", t0)
+	mac.start(t, "Plan", t0())
 	if mac.reconcile(t) {
 		t.Fatal("publishing a local start should not report a local change")
 	}
@@ -158,19 +158,19 @@ func TestStartAndStopReachTheOtherDevice(t *testing.T) {
 	if !laptop.reconcile(t) {
 		t.Fatal("laptop should adopt the mac's timer")
 	}
-	if r := laptop.running(); r == nil || r.Description != "Plan" || !r.StartTime.Equal(t0) {
+	if r := laptop.running(); r == nil || r.Description != "Plan" || !r.StartTime.Equal(t0()) {
 		t.Fatalf("laptop running = %+v", r)
 	}
 
 	// Stopping on the laptop closes the mac's copy at the same instant.
-	if _, err := laptop.log.Stop(t.Context(), models.StopActivityRequest{EndTime: t0.Add(time.Hour)}); err != nil {
+	if _, err := laptop.log.Stop(t.Context(), models.StopActivityRequest{EndTime: t0().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	laptop.reconcile(t)
 	if !mac.reconcile(t) {
 		t.Fatal("mac should adopt the stop")
 	}
-	if mac.running() != nil || len(mac.log.acts) != 1 || !mac.log.acts[0].EndTime.Equal(t0.Add(time.Hour)) {
+	if mac.running() != nil || len(mac.log.acts) != 1 || !mac.log.acts[0].EndTime.Equal(t0().Add(time.Hour)) {
 		t.Fatalf("mac log = %+v", mac.log.acts)
 	}
 	if mac.reconcile(t) || laptop.reconcile(t) {
@@ -181,18 +181,18 @@ func TestStartAndStopReachTheOtherDevice(t *testing.T) {
 func TestStartingElsewhereStopsTheLocalTimer(t *testing.T) {
 	rec := &record{}
 	mac, phone := newPeer(t, "mac", rec), newPeer(t, "phone", rec)
-	mac.start(t, "Plan", t0)
+	mac.start(t, "Plan", t0())
 	mac.reconcile(t)
 	phone.reconcile(t)
 
-	phone.start(t, "Review", t0.Add(30*time.Minute))
+	phone.start(t, "Review", t0().Add(30*time.Minute))
 	phone.reconcile(t)
 	mac.reconcile(t)
 
 	if r := mac.running(); r == nil || r.Description != "Review" {
 		t.Fatalf("mac running = %+v", r)
 	}
-	if !mac.log.acts[0].EndTime.Equal(t0.Add(30 * time.Minute)) {
+	if !mac.log.acts[0].EndTime.Equal(t0().Add(30 * time.Minute)) {
 		t.Fatalf("mac's own timer should stop at the new start, got %v", mac.log.acts[0].EndTime)
 	}
 }
@@ -200,7 +200,7 @@ func TestStartingElsewhereStopsTheLocalTimer(t *testing.T) {
 func TestDeletingTheRunningTimerDeletesItEverywhere(t *testing.T) {
 	rec := &record{}
 	mac, laptop := newPeer(t, "mac", rec), newPeer(t, "laptop", rec)
-	mac.start(t, "Oops", t0)
+	mac.start(t, "Oops", t0())
 	mac.reconcile(t)
 	laptop.reconcile(t)
 
@@ -220,7 +220,7 @@ func TestDeletingTheRunningTimerDeletesItEverywhere(t *testing.T) {
 func TestEditPropagates(t *testing.T) {
 	rec := &record{}
 	mac, laptop := newPeer(t, "mac", rec), newPeer(t, "laptop", rec)
-	mac.start(t, "Plan", t0)
+	mac.start(t, "Plan", t0())
 	mac.reconcile(t)
 	laptop.reconcile(t)
 
@@ -241,8 +241,8 @@ func TestRaceNewerStartWins(t *testing.T) {
 	mac, laptop := newPeer(t, "mac", rec), newPeer(t, "laptop", rec)
 
 	// Both start before either has heard from the other.
-	mac.start(t, "Mac work", t0)
-	laptop.start(t, "Laptop work", t0.Add(time.Minute))
+	mac.start(t, "Mac work", t0())
+	laptop.start(t, "Laptop work", t0().Add(time.Minute))
 	mac.reconcile(t)
 	laptop.reconcile(t) // loses the version race, but its start is newer
 	mac.reconcile(t)
@@ -253,7 +253,7 @@ func TestRaceNewerStartWins(t *testing.T) {
 			t.Fatalf("running = %+v", r)
 		}
 	}
-	if !mac.log.acts[0].EndTime.Equal(t0.Add(time.Minute)) {
+	if !mac.log.acts[0].EndTime.Equal(t0().Add(time.Minute)) {
 		t.Fatalf("mac's timer should stop at the laptop's start, got %v", mac.log.acts[0].EndTime)
 	}
 	if mac.reconcile(t) || laptop.reconcile(t) {
@@ -265,8 +265,8 @@ func TestRaceOlderStartLoses(t *testing.T) {
 	rec := &record{}
 	mac, laptop := newPeer(t, "mac", rec), newPeer(t, "laptop", rec)
 
-	mac.start(t, "Mac work", t0.Add(time.Minute))
-	laptop.start(t, "Laptop work", t0)
+	mac.start(t, "Mac work", t0().Add(time.Minute))
+	laptop.start(t, "Laptop work", t0())
 	mac.reconcile(t)
 	laptop.reconcile(t)
 	mac.reconcile(t)
@@ -283,7 +283,7 @@ func TestAgreedStateSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	l := &log{}
 	first := New(&device{id: "mac", rec: rec}, l, filepath.Join(dir, "timersync.json"))
-	if _, err := l.Start(t.Context(), models.StartActivityRequest{Description: "Plan", StartTime: t0}); err != nil {
+	if _, err := l.Start(t.Context(), models.StartActivityRequest{Description: "Plan", StartTime: t0()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := first.Reconcile(t.Context()); err != nil {
@@ -291,14 +291,14 @@ func TestAgreedStateSurvivesRestart(t *testing.T) {
 	}
 
 	// Stopped while the app was closed, then relaunched.
-	if _, err := l.Stop(t.Context(), models.StopActivityRequest{EndTime: t0.Add(time.Hour)}); err != nil {
+	if _, err := l.Stop(t.Context(), models.StopActivityRequest{EndTime: t0().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	second := New(&device{id: "mac", rec: rec}, l, filepath.Join(dir, "timersync.json"))
 	if _, err := second.Reconcile(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if end := rec.state.Timer.End; end == nil || !end.Equal(t0.Add(time.Hour)) {
+	if end := rec.state.Timer.End; end == nil || !end.Equal(t0().Add(time.Hour)) {
 		t.Fatalf("the offline stop should be published, record = %+v", rec.state.Timer)
 	}
 }

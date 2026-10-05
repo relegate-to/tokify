@@ -47,19 +47,7 @@ func (s *Service) SyncProjectColors(ctx context.Context, local map[string]ColorP
 	if err != nil {
 		return nil, errors.Wrap(err, "marshal projects aad")
 	}
-	remote := map[string]ColorPref{}
-	if row.WrappedProjects != "" && row.ProjectsNonce != "" {
-		ct, cerr := unb64(row.WrappedProjects)
-		nonce, nerr := unb64(row.ProjectsNonce)
-		if cerr == nil && nerr == nil {
-			if plain, oerr := openAAD(dek, ct, nonce, aad); oerr == nil {
-				var p projectPrefs
-				if json.Unmarshal(plain, &p) == nil && p.Colors != nil {
-					remote = p.Colors
-				}
-			}
-		}
-	}
+	remote := openColors(dek, aad, row)
 	merged := MergeColors(remote, local)
 	if maps.Equal(merged, remote) {
 		return merged, nil
@@ -83,6 +71,28 @@ func (s *Service) SyncProjectColors(ctx context.Context, local map[string]ColorP
 		return nil, errors.Wrap(perr, "push project colors")
 	}
 	return merged, nil
+}
+
+// openColors decrypts the synced colors on a user_keys row. Missing or
+// unreadable colors read as none, and the merge below rewrites them.
+func openColors(dek, aad []byte, row *userKeysRow) map[string]ColorPref {
+	if row.WrappedProjects == "" || row.ProjectsNonce == "" {
+		return map[string]ColorPref{}
+	}
+	ct, cerr := unb64(row.WrappedProjects)
+	nonce, nerr := unb64(row.ProjectsNonce)
+	if cerr != nil || nerr != nil {
+		return map[string]ColorPref{}
+	}
+	plain, err := openAAD(dek, ct, nonce, aad)
+	if err != nil {
+		return map[string]ColorPref{}
+	}
+	var p projectPrefs
+	if json.Unmarshal(plain, &p) != nil || p.Colors == nil {
+		return map[string]ColorPref{}
+	}
+	return p.Colors
 }
 
 // MergeColors folds two color sets together, keeping each project's most
