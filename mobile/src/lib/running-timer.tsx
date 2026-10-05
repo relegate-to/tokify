@@ -35,6 +35,7 @@ function useTimerState() {
     const [state, setState] = useState<TimerState>({ version: 0, timer: null });
     const [localOnly, setLocalOnly] = useState(false);
     const [error, setError] = useState('');
+    const [loaded, setLoaded] = useState(false);
     const stateRef = useRef(state);
 
     const adopt = useCallback((next: TimerState) => {
@@ -71,7 +72,10 @@ function useTimerState() {
     useEffect(() => {
         SecureStore.getItemAsync(STATE_KEY)
             .then((cached) => cached && adopt(JSON.parse(cached) as TimerState))
-            .finally(refresh);
+            .finally(() => {
+                setLoaded(true);
+                refresh();
+            });
         let timer = setInterval(refresh, REFRESH_MS);
         const sub = AppState.addEventListener('change', (s) => {
             clearInterval(timer);
@@ -113,6 +117,7 @@ function useTimerState() {
             if (isRunning(previous)) await queueEntry(entryFromTimer({ ...previous, e: timer.s }));
             await run({ version: seen, timer }, () => startTimer(api, account.dek, account.user.id, seen, timer));
             flush();
+            return timer.s;
         },
         [account, run, flush],
     );
@@ -146,7 +151,7 @@ function useTimerState() {
         [account, run],
     );
 
-    return { state, localOnly, error, start, stop, edit, refresh };
+    return { state, loaded, localOnly, error, start, stop, edit, refresh };
 }
 
 type RunningTimerState = ReturnType<typeof useTimerState>;

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import PagerView, { type PagerViewOnPageScrollEventData } from 'react-native-pager-view';
-import Animated, { useEvent, useSharedValue } from 'react-native-reanimated';
+import Animated, { useDerivedValue, useEvent, useSharedValue } from 'react-native-reanimated';
 
 import { Masthead, type Page } from '@/components/Masthead';
 import { SafeAreaView } from '@/components/safe-area-view';
@@ -11,10 +11,12 @@ import { ChartsPage } from '@/pages/ChartsPage';
 import { LogPage } from '@/pages/LogPage';
 import { NowPage } from '@/pages/NowPage';
 import { ReportsPage } from '@/pages/ReportsPage';
+import { SketchpadPage } from '@/pages/SketchpadPage';
 import { StatsPage } from '@/pages/StatsPage';
 
-// The desktop's SWIPE_VIEWS, less the sketchpad.
-const PAGES: Page[] = ['now', 'log', 'reports', 'charts', 'stats'];
+// The desktop's SWIPE_VIEWS: the unlabelled sketchpad sits left of Activity.
+const PAGES: Page[] = ['sketchpad', 'now', 'log', 'reports', 'charts', 'stats'];
+const NOW = PAGES.indexOf('now');
 
 const AnimatedPager = Animated.createAnimatedComponent(PagerView);
 
@@ -40,18 +42,24 @@ export default function MainScreen() {
     const pager = useRef<PagerView>(null);
     const [page, setPage] = useState<Page>('now');
     const { progress, onPageScroll } = usePagerProgress();
+    // The masthead's highlight runs from Activity to Log.
+    const tabProgress = useDerivedValue(() => progress.value - NOW);
+    const goTo = (p: Page) => pager.current?.setPage(PAGES.indexOf(p));
     return (
         <EntriesProvider>
             <RunningTimerProvider>
                 <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-                    <Masthead page={page} progress={progress} onPage={(p) => pager.current?.setPage(PAGES.indexOf(p))} />
+                    <Masthead page={page} progress={tabProgress} onPage={goTo} />
                     <AnimatedPager
                         ref={pager}
                         style={{ flex: 1 }}
-                        initialPage={0}
+                        initialPage={NOW}
                         onPageScroll={onPageScroll}
                         onPageSelected={(e) => setPage(PAGES[e.nativeEvent.position])}
                     >
+                        <View key="sketchpad" style={{ flex: 1 }}>
+                            <SketchpadPage onStarted={() => goTo('now')} />
+                        </View>
                         <NowPage key="now" />
                         <LogPage key="log" />
                         <View key="reports" style={{ flex: 1 }}>

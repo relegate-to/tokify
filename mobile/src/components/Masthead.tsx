@@ -21,7 +21,7 @@ import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { isRunning } from '@/sync/timer';
 
-export type Page = 'now' | 'log' | 'reports' | 'charts' | 'stats';
+export type Page = 'sketchpad' | 'now' | 'log' | 'reports' | 'charts' | 'stats';
 
 const LOG_VIEWS: { page: Page; label: string; icon: typeof FileText }[] = [
     { page: 'reports', label: 'Reports', icon: FileText },
@@ -39,8 +39,9 @@ const resize = LinearTransition.duration(300).easing(EASE_SIZE);
 // continuously. Off the Activity page a running timer turns its tab into the
 // running pill.
 export function Masthead({ page, progress, onPage }: { page: Page; progress: SharedValue<number>; onPage: (page: Page) => void }) {
-    // Every page after Activity belongs to Log, as the desktop's LOG_VIEWS do.
-    const onLog = page !== 'now';
+    // Every page after Activity belongs to Log, as the desktop's LOG_VIEWS do;
+    // the sketchpad before it counts as Activity.
+    const onLog = page !== 'now' && page !== 'sketchpad';
     const { account, signOut } = useSession();
     const { state } = useRunningTimer();
     const running = isRunning(state.timer) ? state.timer : null;
