@@ -9,6 +9,8 @@
     "@expo/metro-runtime": "~57.0.16",
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",
+    "@react-native-community/datetimepicker": "9.1.0",
+    "@rn-primitives/context-menu": "^1.5.2",
     "@rn-primitives/dialog": "^1.5.2",
     "@rn-primitives/dropdown-menu": "^1.5.2",
     "@rn-primitives/portal": "^1.5.3",

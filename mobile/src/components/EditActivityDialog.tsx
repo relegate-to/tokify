@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
+import { RotateCcw } from 'lucide-react-native';
+
+import { DateField, TimeField } from '@/components/TimeField';
 import { Button } from '@/components/ui/button';
+import { Icon } from '@/components/ui/icon';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
@@ -30,6 +34,7 @@ export function EditActivityDialog({
     projects,
     onSave,
     onDelete,
+    onResume,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -40,6 +45,8 @@ export function EditActivityDialog({
     projects: string[];
     onSave: (edit: ActivityEdit) => Promise<void> | void;
     onDelete?: () => Promise<void> | void;
+    // Starts the activity again as it was, not as edited.
+    onResume?: () => Promise<void> | void;
 }) {
     const [edit, setEdit] = useState(initial);
     const [error, setError] = useState('');
@@ -74,7 +81,7 @@ export function EditActivityDialog({
             if (edit.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(edit.date.trim())) throw new Error('Date must be YYYY-MM-DD.');
             for (const t of [edit.start, edit.end]) {
                 const m = t === undefined ? null : HHMM.exec(t);
-                if (t !== undefined && (!m || Number(m[1]) > 23 || Number(m[2]) > 59)) throw new Error('Times must be HH:MM.');
+                if (t !== undefined && (!m || Number(m[1]) > 23 || Number(m[2]) > 59)) throw new Error('Pick a start and an end time.');
             }
             if (edit.start !== undefined && edit.end !== undefined && normalizeClock(edit.end) <= normalizeClock(edit.start)) {
                 throw new Error('End must be after start.');
@@ -114,20 +121,26 @@ export function EditActivityDialog({
                     </Field>
                     {edit.date !== undefined ? (
                         <Field label="Date">
-                            <Input value={edit.date} onChangeText={(date) => set({ date })} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+                            <DateField label="Date" value={edit.date} onChange={(date) => set({ date })} />
                         </Field>
                     ) : null}
                     {edit.start !== undefined ? (
                         <View className="flex-row gap-2">
                             <Field label="Start" className="flex-1">
-                                <Input value={edit.start} onChangeText={(start) => set({ start })} placeholder="HH:MM" keyboardType="numbers-and-punctuation" />
+                                <TimeField label="Start" value={edit.start} onChange={(start) => set({ start })} />
                             </Field>
                             {edit.end !== undefined ? (
                                 <Field label="End" className="flex-1">
-                                    <Input value={edit.end} onChangeText={(end) => set({ end })} placeholder="HH:MM" keyboardType="numbers-and-punctuation" />
+                                    <TimeField label="End" value={edit.end} onChange={(end) => set({ end })} />
                                 </Field>
                             ) : null}
                         </View>
+                    ) : null}
+                    {onResume ? (
+                        <Button variant="outline" className="mt-1 h-11 rounded-lg" disabled={busy} onPress={() => act(onResume)}>
+                            <Icon as={RotateCcw} className="size-4 text-foreground" />
+                            <Text>Resume this activity</Text>
+                        </Button>
                     ) : null}
                     {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
                 </View>

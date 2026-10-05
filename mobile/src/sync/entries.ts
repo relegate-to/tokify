@@ -80,13 +80,17 @@ export async function listEntries(token: string, dek: Uint8Array, owner: string)
 
 // Deletes by tombstone, as the desktop does: the row stays with deleted=true so
 // other devices remove their copy instead of re-uploading it.
+// Batched, since a large selection would otherwise overflow the URL.
+const DELETE_BATCH = 100;
+
 export async function deleteEntries(token: string, ids: string[]) {
-    if (ids.length === 0) return;
-    await dataFetch(token, `/entries?id=in.(${ids.join(',')})`, {
-        method: 'PATCH',
-        body: JSON.stringify({ deleted: true }),
-        prefer: 'return=minimal',
-    });
+    for (let i = 0; i < ids.length; i += DELETE_BATCH) {
+        await dataFetch(token, `/entries?id=in.(${ids.slice(i, i + DELETE_BATCH).join(',')})`, {
+            method: 'PATCH',
+            body: JSON.stringify({ deleted: true }),
+            prefer: 'return=minimal',
+        });
+    }
 }
 
 // An edit changes the content, and so the id: write the new entry, then

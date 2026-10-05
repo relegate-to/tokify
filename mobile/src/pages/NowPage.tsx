@@ -2,11 +2,14 @@ import * as Haptics from 'expo-haptics';
 import { Play } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Keyboard, ScrollView, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeAreaView } from '@/components/safe-area-view';
 
+import { EntryEditor } from '@/components/EntryActions';
 import { JumpBackIn } from '@/components/JumpBackIn';
+import { JumpBackInSkeleton, TodayGoalSkeleton } from '@/components/Skeletons';
 import { NowRunning } from '@/components/NowRunning';
 import { Starter, type StarterDraft } from '@/components/Starter';
 import { TodayGoal } from '@/components/TodayGoal';
@@ -31,6 +34,7 @@ export function NowPage() {
     const [draft, setDraft] = useState<Omit<StarterDraft, 'project'>>({ description: '', notes: '', startAt: null });
     const [picked, setPicked] = useState<string | null>(null);
     const [startError, setStartError] = useState('');
+    const [editing, setEditing] = useState<Entry | null>(null);
     const { state, localOnly, error, start: startTimer, stop, edit } = useRunningTimer();
     const { entries } = useEntries();
     const running = isRunning(state.timer) ? state.timer : null;
@@ -108,9 +112,18 @@ export function NowPage() {
                             onSubmit={start}
                         />
                     )}
-                    {entries !== null ? <TodayGoal totalMs={todayMs + runningMs} goalMinutes={DAILY_GOAL_MINUTES} /> : null}
+                    {entries === null ? (
+                        <>
+                            <TodayGoalSkeleton />
+                            <JumpBackInSkeleton />
+                        </>
+                    ) : (
+                        <Animated.View entering={FadeIn.duration(300)}>
+                            <TodayGoal totalMs={todayMs + runningMs} goalMinutes={DAILY_GOAL_MINUTES} />
+                        </Animated.View>
+                    )}
                     {quickStarts.length > 0 ? (
-                        <JumpBackIn items={quickStarts} contextLabel={contextLabel} onResume={(e) => startTimer(e.description, e.project)} />
+                        <JumpBackIn items={quickStarts} contextLabel={contextLabel} onEdit={setEditing} />
                     ) : null}
                     {error || startError ? <Text className="text-sm text-destructive">{startError || error}</Text> : null}
                     {localOnly ? (
@@ -139,6 +152,7 @@ export function NowPage() {
                     </KeyboardStickyView>
                 )}
             </View>
+            {editing ? <EntryEditor entry={editing} onClose={() => setEditing(null)} /> : null}
         </SafeAreaView>
     );
 }

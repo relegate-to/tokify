@@ -15,6 +15,7 @@ import { Text } from '@/components/ui/text';
 import SketchpadEditor, { type EditorCommand, type EditorState, type SketchpadHandle, type StartTodo } from '@/dom/SketchpadEditor';
 import { projectColorClass } from '@/lib/colors';
 import { useEntries } from '@/lib/entries';
+import { useResume } from '@/lib/resume';
 import { useRunningTimer } from '@/lib/running-timer';
 import {
     completeTodo,
@@ -41,7 +42,8 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
     const text = useRef(value);
     const [editing, setEditing] = useState(IDLE);
     const [finishing, setFinishing] = useState<TodoRun | null>(null);
-    const { state, loaded, start } = useRunningTimer();
+    const { state, loaded } = useRunningTimer();
+    const resume = useResume();
     const { entries } = useEntries();
     const insets = useSafeAreaInsets();
     const keyboard = useReanimatedKeyboardAnimation();
@@ -79,13 +81,13 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
 
     const startTodo = useCallback(
         async (todo: StartTodo) => {
-            const started = await start(todo.description, todo.project, { notes: todo.notes });
+            const started = await resume({ description: todo.description, project: todo.project, notes: todo.notes });
             if (!started) return;
             await writeTodoRuns([...(await readTodoRuns()), { start: started, id: todo.id, description: todo.description }]);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
             onStarted();
         },
-        [start, onStarted],
+        [resume, onStarted],
     );
 
     // As the desktop: an activity started from a to-do has finished once it's
@@ -123,6 +125,8 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
 
     return (
         <Animated.View style={[{ flex: 1 }, lift]}>
+            {/* Without nested scrolling the web view lets the pager take a
+                horizontal swipe, so the pad can be swiped away like any page. */}
             <SketchpadEditor
                 ref={editor}
                 value={value}
@@ -130,7 +134,7 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
                 onChange={save}
                 onStartTodo={startTodo}
                 onState={async (s) => setEditing(s)}
-                dom={{ style: { flex: 1, backgroundColor: 'transparent' }, containerStyle: { flex: 1 }, overScrollMode: 'never' }}
+                dom={{ style: { flex: 1, backgroundColor: 'transparent' }, containerStyle: { flex: 1 }, overScrollMode: 'never', nestedScrollEnabled: false }}
             />
             {editing.focused ? (
                 <View className="flex-row items-center gap-0.5 border-t border-border bg-background px-2 py-1.5">

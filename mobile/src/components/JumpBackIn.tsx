@@ -1,8 +1,8 @@
 import { Play } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { EntryMenu, useEntryActions } from '@/components/EntryActions';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
@@ -13,8 +13,9 @@ import { cn } from '@/lib/utils';
 import type { Entry } from '@/sync/entries';
 
 // The desktop's Jump back in: the last few distinct activities as a ruled
-// ledger, each one tap from running again.
-export function JumpBackIn({ items, contextLabel, onResume }: { items: Entry[]; contextLabel: string; onResume: (e: Entry) => void }) {
+// ledger, each one tap from running again (after a check when that would stop
+// the running one), with the Log's edit and delete on a long press.
+export function JumpBackIn({ items, contextLabel, onEdit }: { items: Entry[]; contextLabel: string; onEdit: (e: Entry) => void }) {
     return (
         <View accessibilityLabel="Jump back in">
             <View className="mb-3 flex-row items-baseline justify-between px-1">
@@ -24,20 +25,20 @@ export function JumpBackIn({ items, contextLabel, onResume }: { items: Entry[]; 
                 ) : null}
             </View>
             {items.map((e) => (
-                <QuickStart key={e.id} entry={e} onResume={onResume} />
+                <QuickStart key={e.id} entry={e} onEdit={onEdit} />
             ))}
         </View>
     );
 }
 
-function QuickStart({ entry: e, onResume }: { entry: Entry; onResume: (e: Entry) => void }) {
-    const tap = useTap(() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onResume(e);
-    });
+function QuickStart({ entry: e, onEdit }: { entry: Entry; onEdit: (e: Entry) => void }) {
+    const { resume } = useEntryActions();
+    const tap = useTap(() => resume(e));
     return (
         <Animated.View entering={enter({ dy: -4, duration: 300, easing: EASE_OUT })}>
-            <Pressable
+            <EntryMenu
+                entry={e}
+                onEdit={() => onEdit(e)}
                 {...tap}
                 accessibilityRole="button"
                 accessibilityLabel={`Start ${e.description} again`}
@@ -57,7 +58,7 @@ function QuickStart({ entry: e, onResume }: { entry: Entry; onResume: (e: Entry)
                         <Icon as={Play} className="size-4 text-foreground" />
                     </View>
                 </View>
-            </Pressable>
+            </EntryMenu>
         </Animated.View>
     );
 }

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import Animated, { withTiming, type EntryExitAnimationFunction } from 'react-native-reanimated';
 
+import { TimeField } from '@/components/TimeField';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -97,15 +98,7 @@ export function Starter({
                         <Animated.View entering={enterFromLeft}>
                             <View className="flex-row items-center gap-2 px-2">
                                 <Text className="text-[15px] text-muted-foreground">started at</Text>
-                                <Input
-                                    value={startAt}
-                                    onChangeText={(t) => onChange({ startAt: t })}
-                                    onSubmitEditing={onSubmit}
-                                    placeholder="HH:MM"
-                                    keyboardType="numbers-and-punctuation"
-                                    autoFocus
-                                    className="h-9 w-[72px] px-2 text-center font-mono"
-                                />
+                                <TimeField label="Started at" value={startAt} onChange={(t) => onChange({ startAt: t })} className="h-9 w-[72px] items-center px-2" openOnMount />
                                 <Pressable onPress={() => onChange({ startAt: null })} accessibilityLabel="Clear start time" hitSlop={8}>
                                     <Icon as={X} className="size-4 text-muted-foreground" />
                                 </Pressable>
