@@ -9,9 +9,10 @@ import { Text } from '@/components/ui/text';
 import { useEntries } from '@/lib/entries';
 import { useResume } from '@/lib/resume';
 import { useSession } from '@/lib/session';
+import { useUndo } from '@/lib/undo';
 import { parseSyncTime } from '@/lib/time';
 import { dataToken } from '@/sync/account';
-import { deleteEntries, editEntry, type Entry } from '@/sync/entries';
+import { deleteEntries, editEntry, restoreEntries, type Entry } from '@/sync/entries';
 
 // What both Jump back in and the Log can do to a tracked activity, as the
 // desktop's ActivityRow offers in both its variants.
@@ -19,21 +20,34 @@ export function useEntryActions() {
     const { account } = useSession();
     const { reload } = useEntries();
     const resume = useResume();
+    const offerUndo = useUndo();
     return {
         resume: (e: Entry) => resume({ description: e.description, project: e.project }),
         save: async (e: Entry, edit: ActivityEdit) => {
             if (!account) return;
-            await editEntry(await dataToken(), account.dek, account.user.id, e, {
+            const nextId = await editEntry(await dataToken(), account.dek, account.user.id, e, {
                 description: edit.description,
                 project: edit.project,
                 start: `${e.start.slice(0, 10)} ${edit.start}`,
                 end: `${e.end.slice(0, 10)} ${edit.end}`,
             });
             await reload();
+            if (nextId === e.id) return;
+            // The edit wrote a new row and retired the old one; undo swaps them back.
+            offerUndo(`Edited “${e.description}”`, async () => {
+                const token = await dataToken();
+                await restoreEntries(token, [e.id]);
+                await deleteEntries(token, [nextId]);
+                await reload();
+            });
         },
         remove: async (e: Entry) => {
             await deleteEntries(await dataToken(), [e.id]);
             await reload();
+            offerUndo(`Deleted “${e.description}”`, async () => {
+                await restoreEntries(await dataToken(), [e.id]);
+                await reload();
+            });
         },
     };
 }

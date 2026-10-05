@@ -23,13 +23,14 @@ import { projectColorClass } from '@/lib/colors';
 import { useEntries } from '@/lib/entries';
 import { useColorsVersion } from '@/lib/project-colors';
 import { useShared } from '@/lib/shared';
+import { useUndo } from '@/lib/undo';
 import { EASE_SIZE, enter } from '@/lib/motion';
 import { useSession } from '@/lib/session';
 import { dayLabel, formatClock, formatTotal, parseSyncTime } from '@/lib/time';
 import { useTap } from '@/lib/use-tap';
 import { cn } from '@/lib/utils';
 import { dataToken } from '@/sync/account';
-import { deleteEntries, pushEntries, syncTime, type Entry } from '@/sync/entries';
+import { deleteEntries, pushEntries, restoreEntries, syncTime, type Entry } from '@/sync/entries';
 import type { SharedActivity } from '@/sync/sharing';
 
 // The people filter's value for the caller's own entries.
@@ -280,7 +281,12 @@ export function LogPage() {
     const removeChosen = async () => {
         setDeleting(true);
         try {
-            await deleteEntries(await dataToken(), chosen.map((e) => e.id));
+            const ids = chosen.map((e) => e.id);
+            await deleteEntries(await dataToken(), ids);
+            offerUndo(`Deleted ${ids.length} ${ids.length === 1 ? 'activity' : 'activities'}`, async () => {
+                await restoreEntries(await dataToken(), ids);
+                await load();
+            });
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
             setConfirming(false);
             setSelection(null);
@@ -302,6 +308,7 @@ export function LogPage() {
     // Teammates' shared entries alongside the caller's own, filtered the same
     // way, plus the desktop's people filter: everyone, you, or one author.
     const { shared } = useShared();
+    const offerUndo = useUndo();
     // Rows are memoized, so a color synced from another device repaints them here.
     const colorsVersion = useColorsVersion();
     const [who, setWho] = useState<string>('');

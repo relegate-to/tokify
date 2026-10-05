@@ -113,24 +113,32 @@ export async function listEntries(token: string, dek: Uint8Array, owner: string)
 // Batched, since a large selection would otherwise overflow the URL.
 const DELETE_BATCH = 100;
 
-export async function deleteEntries(token: string, ids: string[]) {
+async function setDeleted(token: string, ids: string[], deleted: boolean) {
     for (let i = 0; i < ids.length; i += DELETE_BATCH) {
         await dataFetch(token, `/entries?id=in.(${ids.slice(i, i + DELETE_BATCH).join(',')})`, {
             method: 'PATCH',
-            body: JSON.stringify({ deleted: true }),
+            body: JSON.stringify({ deleted }),
             prefer: 'return=minimal',
         });
     }
 }
 
+export const deleteEntries = (token: string, ids: string[]) => setDeleted(token, ids, true);
+
+// Undoes a delete, as the desktop's restorations do: the only path allowed to
+// clear a tombstone. Other devices pull the live row back on their next sync.
+export const restoreEntries = (token: string, ids: string[]) => setDeleted(token, ids, false);
+
 // An edit changes the content, and so the id: write the new entry, then
 // tombstone the old one. The order means a failure part-way leaves a
 // duplicate rather than a loss.
+// Returns the edited entry's new id.
 export async function editEntry(token: string, dek: Uint8Array, owner: string, old: Entry, next: CanonicalEntry) {
     const nextId = entryId(dek, canonicalize(next));
-    if (nextId === old.id) return;
+    if (nextId === old.id) return nextId;
     await pushEntries(token, dek, owner, [next]);
     await deleteEntries(token, [old.id]);
+    return nextId;
 }
 
 // Renames a project across the caller's history: every entry is rewritten

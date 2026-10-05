@@ -132,13 +132,18 @@ function useTimerState() {
         flush();
     }, [account, run, flush]);
 
-    // Renames the running timer; its start stays, so desktops still recognise
-    // it as the same timer. An edit that lost a race leaves the fresh state.
+    // Renames the running timer or changes its notes; its start stays, so
+    // desktops still recognise it as the same timer. An edit that lost a race
+    // leaves the fresh state.
     const edit = useCallback(
-        async (description: string, project: string) => {
+        async (description: string, project: string, notes?: string) => {
             const current = stateRef.current;
             if (!account || !isRunning(current.timer)) return;
             const timer = { ...current.timer, d: description, p: project };
+            if (notes !== undefined) {
+                if (notes) timer.n = notes;
+                else delete timer.n;
+            }
             await run({ version: current.version, timer }, async () => {
                 try {
                     return await writeTimer(api, account.dek, account.user.id, current.version, timer);

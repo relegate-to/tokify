@@ -317,7 +317,13 @@ export const RichTextEditor = memo(function RichTextEditor({
                             if (button.disabled) return;
                             if (node.attrs.checked) {
                                 const position = props.getPos();
-                                if (typeof position === 'number') props.editor.chain().focus().deleteRange({ from: position, to: position + node.nodeSize }).run();
+                                if (typeof position !== 'number') return;
+                                // A list can't be empty, so deleting its last item would leave a
+                                // blank to-do behind: take the whole list then.
+                                const $pos = props.editor.state.doc.resolve(position);
+                                const lone = $pos.parent.type.name === 'taskList' && $pos.parent.childCount === 1;
+                                const range = lone ? { from: $pos.before(), to: $pos.after() } : { from: position, to: position + node.nodeSize };
+                                props.editor.chain().focus().deleteRange(range).run();
                                 return;
                             }
                             if (!description()) return;

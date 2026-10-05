@@ -3,12 +3,12 @@ import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import Animated, { withTiming, type EntryExitAnimationFunction } from 'react-native-reanimated';
 
+import { NotesField } from '@/components/NotesField';
 import { TimeField } from '@/components/TimeField';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
-import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
 import { EASE_OUT, enter } from '@/lib/motion';
@@ -113,15 +113,7 @@ export function Starter({
                         <DialogTitle>Activity notes</DialogTitle>
                         <DialogDescription>These notes will be included when you start the activity.</DialogDescription>
                     </DialogHeader>
-                    <Input
-                        value={notes}
-                        onChangeText={(n) => onChange({ notes: n })}
-                        placeholder="Notes, links, or next steps"
-                        multiline
-                        textAlignVertical="top"
-                        autoFocus
-                        className="h-48 py-3 leading-6"
-                    />
+                    <NotesField value={notes} onChange={(n) => onChange({ notes: n })} placeholder="Notes, links, or next steps" className="h-48" />
                     <DialogFooter>
                         <Button onPress={() => setNotesOpen(false)}>
                             <Text>Done</Text>

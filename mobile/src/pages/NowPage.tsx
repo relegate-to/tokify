@@ -101,7 +101,7 @@ export function NowPage() {
             <View style={{ flex: 1 }}>
                 <ScrollView showsVerticalScrollIndicator={false} className="flex-1" contentContainerClassName="gap-6 px-5 pb-6 pt-4" keyboardShouldPersistTaps="handled">
                     {running ? (
-                        <NowRunning description={running.d} project={running.p} start={parseInstant(running.s)} projects={projects} onStop={stop} onEdit={edit} />
+                        <NowRunning description={running.d} project={running.p} notes={running.n ?? ''} start={parseInstant(running.s)} projects={projects} onStop={stop} onEdit={edit} />
                     ) : (
                         <Starter
                             draft={{ ...draft, project }}

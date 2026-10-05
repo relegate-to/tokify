@@ -22,6 +22,7 @@ const tabular = { fontVariant: ['tabular-nums' as const] };
 export function NowRunning({
     description,
     project,
+    notes,
     start,
     projects,
     onStop,
@@ -29,10 +30,11 @@ export function NowRunning({
 }: {
     description: string;
     project: string;
+    notes: string;
     start: Date;
     projects: string[];
     onStop: () => void;
-    onEdit: (description: string, project: string) => Promise<void> | void;
+    onEdit: (description: string, project: string, notes: string) => Promise<void> | void;
 }) {
     const now = useNow();
     const [editing, setEditing] = useState(false);
@@ -100,9 +102,9 @@ export function NowRunning({
                 open={editing}
                 onOpenChange={setEditing}
                 subtitle={`Started ${start.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} — still running.`}
-                initial={{ description, project }}
+                initial={{ description, project, notes }}
                 projects={projects}
-                onSave={(e) => onEdit(e.description, e.project)}
+                onSave={(e) => onEdit(e.description, e.project, e.notes ?? '')}
             />
         </Animated.View>
     );

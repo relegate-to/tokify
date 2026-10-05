@@ -3,6 +3,7 @@ import { ScrollView, View } from 'react-native';
 
 import { RotateCcw } from 'lucide-react-native';
 
+import { NotesField } from '@/components/NotesField';
 import { DateField, TimeField } from '@/components/TimeField';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -12,7 +13,9 @@ import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
-export type ActivityEdit = { description: string; project: string; date?: string; start?: string; end?: string };
+// notes appear only for the running timer, whose notes sync; completed
+// entries carry none in the sync format.
+export type ActivityEdit = { description: string; project: string; notes?: string; date?: string; start?: string; end?: string };
 
 const HHMM = /^\s*(\d{1,2})\s*:\s*(\d{2})\s*$/;
 
@@ -88,6 +91,7 @@ export function EditActivityDialog({
             }
             await onSave({
                 description: edit.description.trim(),
+                notes: edit.notes,
                 project: edit.project.trim(),
                 date: edit.date?.trim(),
                 start: edit.start === undefined ? undefined : normalizeClock(edit.start),
@@ -119,6 +123,11 @@ export function EditActivityDialog({
                             </ScrollView>
                         ) : null}
                     </Field>
+                    {edit.notes !== undefined ? (
+                        <Field label="Notes">
+                            <NotesField value={edit.notes} onChange={(notes) => set({ notes })} placeholder="Details, links, or next steps" />
+                        </Field>
+                    ) : null}
                     {edit.date !== undefined ? (
                         <Field label="Date">
                             <DateField label="Date" value={edit.date} onChange={(date) => set({ date })} />
