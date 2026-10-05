@@ -116,6 +116,11 @@ export const getEpochs = (token: string, audienceId: string) =>
     get<EpochRow[]>(token, `/audience_epochs?select=*&audience_id=eq.${q(audienceId)}&order=epoch.asc`);
 export const insertEpoch = (token: string, row: EpochRow) => post(token, '/audience_epochs', row);
 
+// The caller's own invitations still waiting to be accepted; RLS shows an
+// invitee their own row, so this needs no sharing identity.
+export const getMyInvites = (token: string, userId: string) =>
+    get<{ audience_id: string }[]>(token, `/audience_members?select=audience_id&member_id=eq.${q(userId)}&status=eq.invited`);
+
 export const getMembers = (token: string, audienceId: string) => get<MemberRow[]>(token, `/audience_members?select=*&audience_id=eq.${q(audienceId)}`);
 
 export async function getMembersByAudiences(token: string, audienceIds: string[]): Promise<Map<string, MemberRow[]>> {

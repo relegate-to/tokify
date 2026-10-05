@@ -56,6 +56,23 @@ export async function signInEmail(email: string, authHash: string): Promise<Sess
     return { token, cookie, user: body.user };
 }
 
+// Creates the account. With email verification on, the response carries no
+// session yet (null here): the code emailed with it is the next step.
+export async function signUpEmail(email: string, authHash: string, name: string): Promise<Session | null> {
+    const res = await post('/sign-up/email', { email, password: authHash, name });
+    const body = (await res.json()) as { token?: string | null; user: User };
+    const token = res.headers.get('set-auth-token') || body.token || '';
+    const cookie = sessionCookie(res);
+    return token && cookie ? { token, cookie, user: body.user } : null;
+}
+
+// Sets the profile picture (a data: URI). /update-user takes the session
+// cookie, not the bearer token, and only the image key is sent so the name
+// stays as it is.
+export async function updateImage(cookie: string, image: string) {
+    await post('/update-user', { image }, cookie);
+}
+
 export async function sendVerificationOTP(email: string) {
     await post('/email-otp/send-verification-otp', { email, type: 'email-verification' });
 }

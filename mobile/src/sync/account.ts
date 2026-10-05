@@ -8,9 +8,21 @@ import { argon2id } from '@/crypto/argon2';
 import { fromBase64, toBase64 } from '@/crypto/bytes';
 import { deriveAuthHash, deriveKEK, seal, unwrapDEK } from '@/crypto/sync';
 
-import { isEmailNotVerified, jwtExpiry, mintJWT, sendVerificationOTP, signInEmail, signOut as revoke, type Session, type User, verifyEmailOTP } from './auth';
+import {
+    isEmailNotVerified,
+    jwtExpiry,
+    mintJWT,
+    sendVerificationOTP,
+    signInEmail,
+    signOut as revoke,
+    signUpEmail,
+    updateImage,
+    verifyEmailOTP,
+    type Session,
+    type User,
+} from './auth';
 import { getUserKeys, insertUserKeys } from './data';
-import { clearIdentity, provisionIdentity } from './identity';
+import { clearIdentity, loadIdentity, provisionIdentity, publish } from './identity';
 import { getSharingKeys } from './sharing-api';
 import { clearSharingState } from './sharing-store';
 
@@ -51,6 +63,29 @@ export async function signIn(email: string, password: string): Promise<SignInRes
         await clear();
         throw e;
     }
+}
+
+// As the desktop's AuthSignUp: create the account with the derived auth hash,
+// then either it's signed in straight away or an emailed code comes first.
+export async function signUp(name: string, email: string, password: string): Promise<SignInResult> {
+    email = email.trim();
+    const authHash = await deriveAuthHash(argon2id, email, password);
+    const session = await signUpEmail(email, authHash, name.trim());
+    if (!session) return { kind: 'verify-email', email };
+    return signIn(email, password);
+}
+
+// Sets the profile picture on the account, then on the sharing identity so
+// teammates see it too.
+export async function updateAvatar(account: Account, image: string): Promise<Account> {
+    const cookie = await SecureStore.getItemAsync(KEYS.cookie);
+    if (!cookie) throw new Error('Signed out');
+    await updateImage(cookie, image);
+    const user = { ...account.user, image };
+    await SecureStore.setItemAsync(KEYS.user, JSON.stringify(user));
+    const id = await loadIdentity();
+    if (id) await publish(await dataToken(), user.id, id, { email: '', name: user.name, image }).catch(() => undefined);
+    return { ...account, user };
 }
 
 export async function verifyEmail(email: string, password: string, code: string): Promise<SignInResult> {

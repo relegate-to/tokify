@@ -206,3 +206,34 @@ func TestSetColorPersistsAndRenameCarriesIt(t *testing.T) {
 		t.Fatalf("want cleared color persisted, got %v", got)
 	}
 }
+
+func TestColorsSyncThroughApplyColors(t *testing.T) {
+	r, err := Open(filepath.Join(t.TempDir(), "projects.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.SetColor("Client", "var(--project-color-3)"); err != nil {
+		t.Fatal(err)
+	}
+	got := r.Colors()["Client"]
+	if got.Color != "var(--project-color-3)" || got.At == "" {
+		t.Fatalf("Colors() = %+v, want the color with its choice time", got)
+	}
+
+	changed, err := r.ApplyColors(map[string]ColorChoice{
+		"Client": {Color: "var(--project-color-6)", At: "2030-01-01T00:00:00Z"},
+		"Ghost":  {Color: "", At: "2030-01-01T00:00:00Z"},
+	})
+	if err != nil || !changed {
+		t.Fatalf("ApplyColors changed=%v err=%v", changed, err)
+	}
+	if c := r.Colors()["Client"].Color; c != "var(--project-color-6)" {
+		t.Errorf("Client color = %q", c)
+	}
+	if _, ok := r.Colors()["Ghost"]; ok {
+		t.Error("a reset for an unknown project registered it")
+	}
+	if changed, _ = r.ApplyColors(r.Colors()); changed {
+		t.Error("re-applying the same colors reported a change")
+	}
+}

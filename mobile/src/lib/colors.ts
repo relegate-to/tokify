@@ -12,7 +12,25 @@ const PROJECT_CLASSES = [
     'bg-project-7',
 ] as const;
 
-function projectIndex(project: string): number {
+// Colors pinned by hand (on any of the account's devices), by palette index.
+// Module-level, as on the desktop, so every caller honors them.
+let overrides: Record<string, number> = {};
+
+export function setColorOverrides(colors: Record<string, { color: string }>) {
+    const next: Record<string, number> = {};
+    for (const [name, { color }] of Object.entries(colors)) {
+        const m = /^var\(--project-color-(\d)\)$/.exec(color);
+        if (m && Number(m[1]) < PROJECT_CLASSES.length) next[name] = Number(m[1]);
+    }
+    overrides = next;
+}
+
+export const PROJECT_PALETTE_SIZE = PROJECT_CLASSES.length;
+
+// The palette index a project shows in: its pinned color, else its name's hash.
+export function projectIndex(project: string): number {
+    const pinned = overrides[project];
+    if (pinned !== undefined) return pinned;
     if (!project) return 0;
     let h = 2166136261;
     for (let i = 0; i < project.length; i++) {

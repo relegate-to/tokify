@@ -7,6 +7,7 @@ import Animated, { FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ContributionGraph } from '@/components/ContributionGraph';
+import { DayTimeline, type DaySpan } from '@/components/DayTimeline';
 import { ContributionGraphSkeleton, LogRowsSkeleton } from '@/components/Skeletons';
 import { EditActivityDialog, type ActivityEdit } from '@/components/EditActivityDialog';
 import { EntryEditor, EntryMenu } from '@/components/EntryActions';
@@ -20,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { projectColorClass } from '@/lib/colors';
 import { useEntries } from '@/lib/entries';
+import { useColorsVersion } from '@/lib/project-colors';
 import { useShared } from '@/lib/shared';
 import { EASE_SIZE, enter } from '@/lib/motion';
 import { useSession } from '@/lib/session';
@@ -33,7 +35,7 @@ import type { SharedActivity } from '@/sync/sharing';
 // The people filter's value for the caller's own entries.
 const SELF = '\u0000self';
 
-type DayItem = { kind: 'day'; key: string; title: string; total: number; ids: string[] };
+type DayItem = { kind: 'day'; key: string; date: Date; title: string; total: number; ids: string[]; spans: DaySpan[] };
 type Item = DayItem | { kind: 'row'; key: string; entry: Entry; from: Date; to: Date } | { kind: 'shared'; key: string; entry: SharedActivity; from: Date; to: Date };
 type LogEntry = Entry | SharedActivity;
 
@@ -51,11 +53,12 @@ function flatten(entries: LogEntry[]) {
         const to = parseSyncTime(entry.end);
         const key = entry.start.slice(0, 10);
         if (day?.key !== key) {
-            day = { kind: 'day', key, title: dayLabel(from), total: 0, ids: [] };
+            day = { kind: 'day', key, date: from, title: dayLabel(from), total: 0, ids: [], spans: [] };
             headers.push(items.length);
             items.push(day);
         }
         day.total += to.getTime() - from.getTime();
+        day.spans.push({ key: isShared(entry) ? `s:${entry.authorId}:${entry.id}` : entry.id, start: from.getTime(), end: to.getTime(), project: entry.project });
         if (isShared(entry)) {
             items.push({ kind: 'shared', key: `s:${entry.authorId}:${entry.id}`, entry, from, to });
         } else {
@@ -122,10 +125,14 @@ const DayHeader = memo(function DayHeader({
                 onToggleDay(day);
             }}
             accessibilityHint="Hold to select this day"
-            className="flex-row items-baseline justify-between border-b border-border bg-background px-5 pb-2.5 pt-7"
+            className="flex-row items-center gap-3.5 border-b border-border bg-background px-5 pb-2.5 pt-7"
         >
-            <Text className="font-sans-semibold text-[15px]">{title}</Text>
-            <Text className="font-mono text-sm text-muted-foreground" style={tabular}>
+            {/* The desktop's day-header rhythm: label, the day's map, total. */}
+            <Text numberOfLines={1} className="min-w-[92px] font-sans-semibold text-[15px]">
+                {title}
+            </Text>
+            <DayTimeline day={day.date} spans={day.spans} className="flex-1" />
+            <Text className="min-w-14 text-right font-mono text-sm text-muted-foreground" style={tabular}>
                 {formatTotal(total)}
             </Text>
         </Pressable>
@@ -295,6 +302,8 @@ export function LogPage() {
     // Teammates' shared entries alongside the caller's own, filtered the same
     // way, plus the desktop's people filter: everyone, you, or one author.
     const { shared } = useShared();
+    // Rows are memoized, so a color synced from another device repaints them here.
+    const colorsVersion = useColorsVersion();
     const [who, setWho] = useState<string>('');
     const authors = useMemo(() => {
         const byId = new Map<string, SharedActivity>();
@@ -374,7 +383,7 @@ export function LogPage() {
                         </View>
                     </View>
                 }
-                extraData={selection}
+                extraData={[selection, colorsVersion]}
                 contentContainerStyle={{ paddingBottom: selecting ? 120 + insets.bottom : 40 }}
                 refreshControl={
                     <RefreshControl

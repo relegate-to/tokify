@@ -120,6 +120,7 @@
         line-height: inherit;
     }
     .rich-editor-start-todo[hidden] { display: none; }
+    .rich-editor-start-todo.is-delete { @apply hover:text-destructive; }
     .rich-editor-prose li:hover:not(:has(li:hover)) > .rich-editor-start-todo,
     .rich-editor-prose li:focus-within:not(:has(li:focus-within)) > .rich-editor-start-todo {
         opacity: 1;

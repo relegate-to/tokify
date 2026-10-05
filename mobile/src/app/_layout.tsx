@@ -10,6 +10,7 @@ import { useUniwind } from 'uniwind';
 
 import { EntriesProvider } from '@/lib/entries';
 import { PrefsProvider } from '@/lib/prefs';
+import { RunningTimerProvider } from '@/lib/running-timer';
 import { SharedProvider } from '@/lib/shared';
 import { SessionProvider, useSession } from '@/lib/session';
 import { NAV_THEME } from '@/lib/theme';
@@ -47,17 +48,21 @@ function Routes() {
     return (
         <EntriesProvider>
             <SharedProvider>
-                <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Protected guard={account !== null}>
-                        <Stack.Screen name="index" />
-                        <Stack.Screen name="settings" />
-                        <Stack.Screen name="teams" />
-                    </Stack.Protected>
-                    <Stack.Protected guard={account === null}>
-                        <Stack.Screen name="sign-in" />
-                    </Stack.Protected>
-                    <Stack.Screen name="crypto-check" />
-                </Stack>
+                <RunningTimerProvider>
+                    <Stack screenOptions={{ headerShown: false }}>
+                        <Stack.Protected guard={account !== null}>
+                            <Stack.Screen name="index" />
+                            <Stack.Screen name="settings" />
+                            <Stack.Screen name="teams" />
+                        <Stack.Screen name="projects" />
+                        <Stack.Screen name="account" />
+                        </Stack.Protected>
+                        <Stack.Protected guard={account === null}>
+                            <Stack.Screen name="sign-in" />
+                        </Stack.Protected>
+                        <Stack.Screen name="crypto-check" />
+                    </Stack>
+                </RunningTimerProvider>
             </SharedProvider>
         </EntriesProvider>
     );

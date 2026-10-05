@@ -422,6 +422,8 @@ function App() {
 
     useEffect(() => {
         loadColors();
+        // Another device chose a color, which arrived with a sync.
+        return EventsOn('projects:changed', loadColors);
     }, []);
 
     // Poll shared entries independently of the local refresh. A sharing/network

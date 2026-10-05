@@ -20,10 +20,15 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* Expo's page reset makes #root a row flexbox with page scrolling off, so the
+   editor fills it explicitly and scrolls itself. */
 .rich-editor-scroll {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    overflow-y: auto;
     box-sizing: border-box;
     padding: 4px 20px 50vh;
 }
@@ -144,6 +149,10 @@ body {
 .rich-editor-start-todo:active {
     background: var(--muted);
     color: var(--foreground);
+}
+
+.rich-editor-start-todo.is-delete:active {
+    color: var(--destructive);
 }
 
 .rich-editor-start-todo[hidden] {

@@ -132,3 +132,11 @@ export async function editEntry(token: string, dek: Uint8Array, owner: string, o
     await pushEntries(token, dek, owner, [next]);
     await deleteEntries(token, [old.id]);
 }
+
+// Renames a project across the caller's history: every entry is rewritten
+// under the new name (a new content id), then the old ones are tombstoned.
+export async function renameProjectEntries(token: string, dek: Uint8Array, owner: string, entries: Entry[], from: string, to: string) {
+    const moving = entries.filter((e) => e.project === from);
+    await pushEntries(token, dek, owner, moving.map(({ description, start, end }) => ({ description, project: to, start, end })));
+    await deleteEntries(token, moving.map((e) => e.id));
+}

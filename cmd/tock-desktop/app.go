@@ -238,9 +238,34 @@ func (a *App) autoSyncOnce() bool {
 	if err != nil {
 		return true
 	}
+	a.syncProjectColors(ctx)
 	a.refreshTrayTitle()
 	wailsruntime.EventsEmit(a.ctx, "sync:updated", status)
 	return true
+}
+
+// syncProjectColors shares project colors with the account's other devices,
+// the newest choice per project winning, and repaints when one arrived. Quiet
+// on failure: colors are cosmetic and the next sync retries.
+func (a *App) syncProjectColors(ctx context.Context) {
+	if a.projects == nil {
+		return
+	}
+	local := map[string]neonsync.ColorPref{}
+	for name, c := range a.projects.Colors() {
+		local[name] = neonsync.ColorPref{Color: c.Color, At: c.At}
+	}
+	merged, err := a.neonSync.SyncProjectColors(ctx, local)
+	if err != nil {
+		return
+	}
+	choices := make(map[string]projectreg.ColorChoice, len(merged))
+	for name, p := range merged {
+		choices[name] = projectreg.ColorChoice{Color: p.Color, At: p.At}
+	}
+	if changed, aerr := a.projects.ApplyColors(choices); aerr == nil && changed {
+		wailsruntime.EventsEmit(a.ctx, "projects:changed")
+	}
 }
 
 // reconcileTimer brings the running activity in line with the other devices
@@ -1655,7 +1680,11 @@ func (a *App) SetProjectColor(name, color string) (projectreg.Project, error) {
 	if !validProjectColor(color) {
 		return projectreg.Project{}, errors.New("invalid color")
 	}
-	return a.projects.SetColor(name, color)
+	p, err := a.projects.SetColor(name, color)
+	if err == nil {
+		a.syncSoon()
+	}
+	return p, err
 }
 
 // validProjectColor accepts an empty string (clear), a Tokify palette variable,

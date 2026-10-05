@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
+import { clearProjectColors } from '@/lib/project-colors';
 import { loadAccount, signOut as endSession, type Account } from '@/sync/account';
 
 type SessionState = {
@@ -21,6 +22,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }, []);
     const signOut = useCallback(async () => {
         await endSession();
+        clearProjectColors();
         setAccount(null);
     }, []);
     return <SessionContext.Provider value={{ account, loading, setAccount, signOut }}>{children}</SessionContext.Provider>;

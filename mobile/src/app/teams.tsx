@@ -18,6 +18,7 @@ import { useEntries } from '@/lib/entries';
 import { enter } from '@/lib/motion';
 import { useSession } from '@/lib/session';
 import { reconcileSoon } from '@/lib/share-sync';
+import { useShared } from '@/lib/shared';
 import { cn } from '@/lib/utils';
 import { unlockSharing } from '@/sync/account';
 import {
@@ -66,10 +67,13 @@ export default function TeamsScreen() {
     const [newName, setNewName] = useState('');
     const [creating, setCreating] = useState(false);
 
+    const { refresh: refreshShared } = useShared();
     const load = useCallback(async () => {
         if (!account) return;
         try {
             setTeams(await listTeams(account));
+            // Keeps the masthead's invitation badge and the Log in step.
+            refreshShared();
             setLocked(false);
             setError('');
         } catch (e) {
@@ -77,7 +81,7 @@ export default function TeamsScreen() {
             else setError(message(e));
             setTeams((t) => t ?? []);
         }
-    }, [account]);
+    }, [account, refreshShared]);
 
     useEffect(() => {
         load();
@@ -179,7 +183,10 @@ export default function TeamsScreen() {
                                             await load();
                                             reconcileNow();
                                         }}
-                                        onDeclined={() => setTeams((cur) => (cur ?? []).filter((x) => x.id !== t.id))}
+                                        onDeclined={() => {
+                                            setTeams((cur) => (cur ?? []).filter((x) => x.id !== t.id));
+                                            refreshShared();
+                                        }}
                                     />
                                 ))}
                             </View>

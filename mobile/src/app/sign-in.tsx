@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { useSession } from '@/lib/session';
-import { resendCode, signIn, verifyEmail, type SignInResult } from '@/sync/account';
+import { resendCode, signIn, signUp, verifyEmail, type SignInResult } from '@/sync/account';
 
 export default function SignInScreen() {
     const { setAccount } = useSession();
+    const [creating, setCreating] = useState(false);
+    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [code, setCode] = useState('');
@@ -27,7 +29,9 @@ export default function SignInScreen() {
         setBusy(true);
         setError('');
         try {
-            finish(verifying ? await verifyEmail(email, password, code) : await signIn(email, password));
+            finish(
+                verifying ? await verifyEmail(email, password, code) : creating ? await signUp(name, email, password) : await signIn(email, password),
+            );
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
@@ -35,7 +39,10 @@ export default function SignInScreen() {
         }
     };
 
-    const canSubmit = !busy && (verifying ? code.trim().length > 0 : email.trim().length > 0 && password.length > 0);
+    // The desktop asks for at least 8 characters; the password also derives the
+    // encryption key, so it is never sent anywhere as-is.
+    const canSubmit =
+        !busy && (verifying ? code.trim().length > 0 : email.trim().length > 0 && (creating ? password.length >= 8 && name.trim().length > 0 : password.length > 0));
 
     return (
         <SafeAreaView className="flex-1 bg-background" edges={['top', 'bottom']}>
@@ -43,12 +50,14 @@ export default function SignInScreen() {
                 <ScrollView showsVerticalScrollIndicator={false} className="flex-1" contentContainerClassName="gap-6 px-5 pt-16" keyboardShouldPersistTaps="handled">
                     <View className="gap-2">
                         <Text className="font-sans-semibold text-[28px] leading-[34px] tracking-[-0.5px]">
-                            {verifying ? 'Check your email' : 'Sign in to Tokify'}
+                            {verifying ? 'Check your email' : creating ? 'Create your account' : 'Sign in to Tokify'}
                         </Text>
                         <Text className="text-muted-foreground">
                             {verifying
                                 ? `We emailed a verification code to ${email.trim()}. Enter it below to finish setting up your account.`
-                                : 'Use the account you sync with on the desktop. Your timer and history stay end-to-end encrypted.'}
+                                : creating
+                                  ? 'Your password also encrypts your history end to end, so keep it somewhere safe: it can’t be reset without losing what’s synced.'
+                                  : 'Use the account you sync with on the desktop. Your timer and history stay end-to-end encrypted.'}
                         </Text>
                     </View>
                     {verifying ? (
@@ -69,6 +78,9 @@ export default function SignInScreen() {
                         </View>
                     ) : (
                         <View className="gap-3">
+                            {creating ? (
+                                <Input value={name} onChangeText={setName} placeholder="Your name" autoComplete="name" textContentType="name" accessibilityLabel="Name" />
+                            ) : null}
                             <Input
                                 value={email}
                                 onChangeText={setEmail}
@@ -82,13 +94,23 @@ export default function SignInScreen() {
                             <Input
                                 value={password}
                                 onChangeText={setPassword}
-                                placeholder="Your password"
+                                placeholder={creating ? 'At least 8 characters' : 'Your password'}
                                 secureTextEntry
-                                autoComplete="current-password"
-                                textContentType="password"
+                                autoComplete={creating ? 'new-password' : 'current-password'}
+                                textContentType={creating ? 'newPassword' : 'password'}
                                 accessibilityLabel="Password"
                                 onSubmitEditing={() => canSubmit && submit()}
                             />
+                            <Button
+                                variant="ghost"
+                                className="self-start px-0"
+                                onPress={() => {
+                                    setCreating((c) => !c);
+                                    setError('');
+                                }}
+                            >
+                                <Text className="text-muted-foreground">{creating ? 'Already have an account? Sign in' : 'New to Tokify? Create an account'}</Text>
+                            </Button>
                         </View>
                     )}
                     {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
@@ -96,7 +118,7 @@ export default function SignInScreen() {
                 <View className="px-5 pb-3 pt-2">
                     <Button size="lg" className="h-14 rounded-xl" disabled={!canSubmit} onPress={submit}>
                         {busy ? <ActivityIndicator className="text-primary-foreground" /> : null}
-                        <Text className="font-sans-semibold text-base">{verifying ? 'Verify email' : 'Sign in'}</Text>
+                        <Text className="font-sans-semibold text-base">{verifying ? 'Verify email' : creating ? 'Create account' : 'Sign in'}</Text>
                     </Button>
                 </View>
             </KeyboardAvoidingView>

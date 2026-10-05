@@ -160,3 +160,12 @@ CREATE POLICY running_timers_own_rows ON public.running_timers
 
 -- No DELETE: the row is the version counter, so it lives as long as the user.
 GRANT SELECT, INSERT, UPDATE ON public.running_timers TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- user_keys.wrapped_projects: the account's project colors (a JSON map of
+-- project name to color and choice time), sealed under the DEK with AAD
+-- {"user_id","kind":"projects"} so every device colors projects alike. The
+-- own-row user_keys policy already covers it.
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.user_keys ADD COLUMN IF NOT EXISTS wrapped_projects text;  -- base64 ciphertext
+ALTER TABLE public.user_keys ADD COLUMN IF NOT EXISTS projects_nonce text;    -- base64 24-byte nonce

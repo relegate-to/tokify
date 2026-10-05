@@ -29,7 +29,7 @@ import {
 import { cn } from '@/lib/utils';
 import { isRunning } from '@/sync/timer';
 
-const THEME_VARS = ['--color-foreground', '--color-muted-foreground', '--color-muted', '--color-border'];
+const THEME_VARS = ['--color-foreground', '--color-muted-foreground', '--color-muted', '--color-border', '--color-destructive'];
 
 const IDLE: EditorState = { focused: false, task: false, bold: false, italic: false, heading: false, bullet: false, list: false };
 

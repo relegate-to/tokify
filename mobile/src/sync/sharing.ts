@@ -602,3 +602,25 @@ async function reconcileAudience(s: Session, audienceId: string, entries: Entry[
         if (!wanted.has(id)) await api.deleteGrant(s.token, id, audienceId);
     }
 }
+
+// --- Projects across shares -------------------------------------------------------------------
+
+// Rewrites every share this account administers that names a project, so a
+// renamed project keeps reaching the same teams (RenameProjectInShares) or a
+// deleted one stops being advertised (RemoveProjectFromShares). Teams the
+// account only joined are not its to change.
+async function rewriteSharedProject(account: Account, from: string, to: string | null) {
+    if (!(await sharingUnlocked())) return;
+    const s = await session(account);
+    const teams = (await listTeams(account)).filter((t) => !t.pending && t.role === 'admin');
+    for (const t of teams) {
+        const share = await currentFilter(s, t.id);
+        if (!share || !share.filter.projects.includes(from)) continue;
+        const kept = share.filter.projects.filter((p) => p !== from);
+        const projects = to === null || kept.includes(to) ? kept : [...kept, to];
+        await setTeamShare(account, t.id, { projects, sinceDays: share.filter.sinceDays });
+    }
+}
+
+export const renameProjectInShares = (account: Account, from: string, to: string) => rewriteSharedProject(account, from, to);
+export const removeProjectFromShares = (account: Account, name: string) => rewriteSharedProject(account, name, null);

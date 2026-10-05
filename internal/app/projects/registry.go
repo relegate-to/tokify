@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-faster/errors"
 
@@ -34,6 +35,10 @@ type Project struct {
 	Name       string `json:"name"`
 	AudienceID string `json:"audience_id,omitempty"`
 	Color      string `json:"color,omitempty"`
+	// ColorAt is when Color was last chosen (RFC 3339, UTC), so the newest
+	// choice wins when colors sync between devices. Empty for colors chosen
+	// before syncing existed.
+	ColorAt string `json:"color_at,omitempty"`
 }
 
 // Registry is the persisted set of known projects. Safe for concurrent use.
@@ -165,6 +170,7 @@ func (r *Registry) Rename(oldName, newName string) (Project, error) {
 		case oldName:
 			renamed.AudienceID = it.AudienceID
 			renamed.Color = it.Color
+			renamed.ColorAt = it.ColorAt
 		case newName:
 			// Drop any pre-existing new-name entry so the carried audience wins and
 			// the list holds one row per name.
@@ -193,22 +199,78 @@ func (r *Registry) SetColor(name, color string) (Project, error) {
 	if name == "" {
 		return Project{}, errors.New("project name is empty")
 	}
+	at := time.Now().UTC().Format(time.RFC3339Nano)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if i, ok := r.index[name]; ok {
 		r.items[i].Color = color
+		r.items[i].ColorAt = at
 		if err := r.save(); err != nil {
 			return Project{}, err
 		}
 		return r.items[i], nil
 	}
-	p := Project{Name: name, Color: color}
+	p := Project{Name: name, Color: color, ColorAt: at}
 	r.index[name] = len(r.items)
 	r.items = append(r.items, p)
 	if err := r.save(); err != nil {
 		return Project{}, err
 	}
 	return p, nil
+}
+
+// ColorChoice is one project's color and when it was chosen.
+type ColorChoice struct {
+	Color string
+	At    string
+}
+
+// Colors returns every color choice the registry holds, including resets (an
+// empty color with a time), keyed by project name.
+func (r *Registry) Colors() map[string]ColorChoice {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]ColorChoice)
+	for _, it := range r.items {
+		if it.Color != "" || it.ColorAt != "" {
+			out[it.Name] = ColorChoice{Color: it.Color, At: it.ColorAt}
+		}
+	}
+	return out
+}
+
+// ApplyColors adopts color choices made elsewhere, registering any project it
+// hasn't seen, and reports whether anything changed. The caller has already
+// decided which choice wins; this only writes it.
+func (r *Registry) ApplyColors(choices map[string]ColorChoice) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	changed := false
+	for name, c := range choices {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		i, ok := r.index[name]
+		if !ok && c.Color == "" {
+			continue // a reset for a project this device doesn't have
+		}
+		if !ok {
+			r.index[name] = len(r.items)
+			r.items = append(r.items, Project{Name: name, Color: c.Color, ColorAt: c.At})
+			changed = true
+			continue
+		}
+		if r.items[i].Color != c.Color || r.items[i].ColorAt != c.At {
+			r.items[i].Color = c.Color
+			r.items[i].ColorAt = c.At
+			changed = true
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+	return true, r.save()
 }
 
 // Delete removes a project from the registry, returning the removed entry (so the

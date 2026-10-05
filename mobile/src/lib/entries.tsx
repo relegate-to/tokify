@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
+import { syncProjectColors } from '@/lib/project-colors';
 import { reconcileSoon } from '@/lib/share-sync';
 import { useSession } from '@/lib/session';
 import { dataToken } from '@/sync/account';
@@ -21,6 +22,7 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
             setEntries(list);
             setError('');
             reconcileSoon(account, list);
+            syncProjectColors(account);
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         }

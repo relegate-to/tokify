@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
-import { Activity as ActivityIcon, BarChart3, FileText, List, LogOut, Settings as SettingsIcon, Users } from 'lucide-react-native';
-import { useEffect, type ComponentProps } from 'react';
-import { Pressable, View, type LayoutChangeEvent } from 'react-native';
+import { Activity as ActivityIcon, BarChart3, Download, FileText, List, FolderKanban, LogOut, Settings as SettingsIcon, User, Users } from 'lucide-react-native';
+import { useEffect, useState, type ComponentProps } from 'react';
+import { Image, Pressable, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
     interpolate,
     interpolateColor,
@@ -19,13 +19,15 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ExportDialog } from '@/components/ExportDialog';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { accountInitials } from '@/lib/account';
 import { projectColorClass } from '@/lib/colors';
-import { EASE_SIZE, LivePulse } from '@/lib/motion';
+import { EASE_SIZE, enter, LivePulse } from '@/lib/motion';
 import { useRunningTimer } from '@/lib/running-timer';
 import { useSession } from '@/lib/session';
+import { useShared } from '@/lib/shared';
 import { formatDuration, parseInstant } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
@@ -76,6 +78,8 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
     const onLog = page !== 'now' && page !== 'sketchpad';
     const { account, signOut } = useSession();
     const { state } = useRunningTimer();
+    const { invites } = useShared();
+    const [exporting, setExporting] = useState(false);
     const running = isRunning(state.timer) ? state.timer : null;
     const date = new Date().toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short' }).toLowerCase();
     const [activeInk, mutedInk, runningInk] = useCSSVariable([...COLOR_VARS]).map(String);
@@ -163,80 +167,112 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
     );
 
     return (
-        <View className="flex-row items-center justify-between px-4 pb-3 pt-2">
-            <View className="flex-row items-center gap-1 overflow-hidden rounded-xl bg-navigation p-[3px]">
-                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: PAD, bottom: PAD, left: 0 }, highlight]}>
-                    <View className="flex-1 rounded-[9px] bg-navigation-active shadow-sm shadow-black/10" />
-                </Animated.View>
-                <View pointerEvents="none" style={{ position: 'absolute', opacity: 0, left: 0, top: 0, width: 1000 }}>
-                    <View onLayout={measureActivity} className="h-9 flex-row items-center self-start pl-3.5 pr-3">
-                        {activityContent(true)}
+        <>
+            <View className="flex-row items-center justify-between px-4 pb-3 pt-2">
+                <View className="flex-row items-center gap-1 overflow-hidden rounded-xl bg-navigation p-[3px]">
+                    <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: PAD, bottom: PAD, left: 0 }, highlight]}>
+                        <View className="flex-1 rounded-[9px] bg-navigation-active shadow-sm shadow-black/10" />
+                    </Animated.View>
+                    <View pointerEvents="none" style={{ position: 'absolute', opacity: 0, left: 0, top: 0, width: 1000 }}>
+                        <View onLayout={measureActivity} className="h-9 flex-row items-center self-start pl-3.5 pr-3">
+                            {activityContent(true)}
+                        </View>
                     </View>
-                </View>
-                <Animated.View style={[{ overflow: 'hidden' }, activityStyle]}>
-                    <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }, pill]}>
-                        <View className="flex-1 rounded-[9px] bg-running-card shadow-sm shadow-black/10" />
+                    <Animated.View style={[{ overflow: 'hidden' }, activityStyle]}>
+                        <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }, pill]}>
+                            <View className="flex-1 rounded-[9px] bg-running-card shadow-sm shadow-black/10" />
+                        </Animated.View>
+                        <Pressable
+                            onPress={() => onPage('now')}
+                            accessibilityRole="tab"
+                            accessibilityState={{ selected: !onLog }}
+                            className="h-9 flex-row items-center pl-3.5 pr-3"
+                        >
+                            {activityContent(false)}
+                        </Pressable>
                     </Animated.View>
                     <Pressable
-                        onPress={() => onPage('now')}
+                        onPress={() => onPage('log')}
+                        onLayout={(e) => (logWidth.value = e.nativeEvent.layout.width)}
                         accessibilityRole="tab"
-                        accessibilityState={{ selected: !onLog }}
-                        className="h-9 flex-row items-center pl-3.5 pr-3"
+                        accessibilityState={{ selected: onLog }}
+                        className="h-9 flex-row items-center gap-2 pl-3.5 pr-3"
                     >
-                        {activityContent(false)}
+                        <TabIcon icon={List} active={logActiveIcon} />
+                        <Animated.Text style={[LABEL, logInk]}>Log</Animated.Text>
                     </Pressable>
-                </Animated.View>
-                <Pressable
-                    onPress={() => onPage('log')}
-                    onLayout={(e) => (logWidth.value = e.nativeEvent.layout.width)}
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected: onLog }}
-                    className="h-9 flex-row items-center gap-2 pl-3.5 pr-3"
-                >
-                    <TabIcon icon={List} active={logActiveIcon} />
-                    <Animated.Text style={[LABEL, logInk]}>Log</Animated.Text>
-                </Pressable>
-                <Animated.View style={[{ overflow: 'hidden' }, icons]}>
-                    <View className="flex-row items-center pl-1" style={{ width: ICONS_WIDTH, gap: ICON_GAP }}>
-                        <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, width: ICON, height: ICON }, iconHighlight]}>
-                            <View className="flex-1 rounded-lg bg-navigation-active shadow-sm shadow-black/10" />
-                        </Animated.View>
-                        {LOG_VIEWS.map((v, i) => (
-                            <LogIcon key={v.page} view={v} index={i} progress={progress} selected={page === v.page} onPress={() => onPage(v.page)} />
-                        ))}
-                    </View>
-                </Animated.View>
-            </View>
-            <DropdownMenu>
-                <DropdownMenuTrigger className="rounded-[10px] p-2 active:bg-muted" accessibilityLabel="Account">
-                    <View className="size-7 items-center justify-center rounded-lg bg-muted">
-                        <Text className="font-sans-semibold text-xs leading-none text-foreground/70">
-                            {accountInitials(account?.user.name, account?.user.email)}
+                    <Animated.View style={[{ overflow: 'hidden' }, icons]}>
+                        <View className="flex-row items-center pl-1" style={{ width: ICONS_WIDTH, gap: ICON_GAP }}>
+                            <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, width: ICON, height: ICON }, iconHighlight]}>
+                                <View className="flex-1 rounded-lg bg-navigation-active shadow-sm shadow-black/10" />
+                            </Animated.View>
+                            {LOG_VIEWS.map((v, i) => (
+                                <LogIcon key={v.page} view={v} index={i} progress={progress} selected={page === v.page} onPress={() => onPage(v.page)} />
+                            ))}
+                        </View>
+                    </Animated.View>
+                </View>
+                <DropdownMenu>
+                    <DropdownMenuTrigger className="rounded-[10px] p-2 active:bg-muted" accessibilityLabel="Account">
+                        <View className="size-7 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                            <Text className="font-sans-semibold text-xs leading-none text-foreground/70">
+                                {accountInitials(account?.user.name, account?.user.email)}
+                            </Text>
+                            {/* Over the initials, so a slow or broken picture leaves them showing. */}
+                            {account?.user.image ? <Image source={{ uri: account.user.image }} style={{ position: 'absolute', width: 28, height: 28 }} /> : null}
+                        </View>
+                        {/* The desktop's amber invitation signal, as a dot where the pill won't fit. */}
+                        {invites > 0 ? (
+                            <Animated.View entering={enter({ scale: 0.4, duration: 300 })} style={{ position: 'absolute', top: 4, right: 4 }}>
+                                <View className="size-2.5 rounded-full border-2 border-background bg-amber-400" />
+                            </Animated.View>
+                        ) : null}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-52">
+                        <Text className="px-2 pb-1 pt-0.5 text-[13px] text-muted-foreground">{date}</Text>
+                        <Text numberOfLines={1} className="px-2 pb-1 text-[13px] text-muted-foreground">
+                            {account?.user.email}
                         </Text>
-                    </View>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-52">
-                    <Text className="px-2 pb-1 pt-0.5 text-[13px] text-muted-foreground">{date}</Text>
-                    <Text numberOfLines={1} className="px-2 pb-1 text-[13px] text-muted-foreground">
-                        {account?.user.email}
-                    </Text>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onPress={() => router.push('/teams')}>
-                        <Icon as={Users} className="size-4 text-foreground opacity-70" />
-                        <Text>Teams</Text>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onPress={() => router.push('/settings')}>
-                        <Icon as={SettingsIcon} className="size-4 text-foreground opacity-70" />
-                        <Text>Settings</Text>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onPress={signOut}>
-                        <Icon as={LogOut} className="size-4 text-foreground opacity-70" />
-                        <Text>Sign out</Text>
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </View>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onPress={() => router.push('/account')}>
+                            <Icon as={User} className="size-4 text-foreground opacity-70" />
+                            <Text>Account</Text>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onPress={() => router.push('/projects')}>
+                            <Icon as={FolderKanban} className="size-4 text-foreground opacity-70" />
+                            <Text>Projects</Text>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onPress={() => router.push('/teams')}>
+                            <Icon as={Users} className="size-4 text-foreground opacity-70" />
+                            <Text className="flex-1">Teams</Text>
+                            {invites > 0 ? (
+                                <View className="rounded-md border border-amber-300/60 bg-amber-100/70 px-1.5 py-0.5 dark:border-amber-400/25 dark:bg-amber-400/10">
+                                    <Text className="font-sans-medium text-[11px] text-amber-900 dark:text-amber-200">
+                                        {invites === 1 ? 'Invitation' : `${invites} invitations`}
+                                    </Text>
+                                </View>
+                            ) : null}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onPress={() => setExporting(true)}>
+                            <Icon as={Download} className="size-4 text-foreground opacity-70" />
+                            <Text>Export…</Text>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onPress={() => router.push('/settings')}>
+                            <Icon as={SettingsIcon} className="size-4 text-foreground opacity-70" />
+                            <Text>Settings</Text>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onPress={signOut}>
+                            <Icon as={LogOut} className="size-4 text-foreground opacity-70" />
+                            <Text>Sign out</Text>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </View>
+            {/* Outside the row: its root is a view, which would join the
+                space-between layout and pull the account button along. */}
+            <ExportDialog open={exporting} onClose={() => setExporting(false)} />
+        </>
     );
 }
 
