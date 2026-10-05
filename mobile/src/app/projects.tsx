@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { ArrowLeft, Check, MoreHorizontal, Palette, Pencil, Trash2 } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { ArrowLeft, Check, MoreHorizontal, Palette, Pencil, Trash2, Users } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -22,7 +22,7 @@ import { formatTotal, parseSyncTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { dataToken } from '@/sync/account';
 import { deleteEntries, renameProjectEntries } from '@/sync/entries';
-import { removeProjectFromShares, renameProjectInShares } from '@/sync/sharing';
+import { projectShares, removeProjectFromShares, renameProjectInShares } from '@/sync/sharing';
 import { isRunning } from '@/sync/timer';
 
 type Rollup = { ms: number; sessions: number; last: number };
@@ -37,6 +37,15 @@ export default function ProjectsScreen() {
     const { state } = useRunningTimer();
     useColorsVersion();
     const running = isRunning(state.timer) ? state.timer.p : null;
+    // Who can see each project, as the desktop marks shared ones.
+    const { account } = useSession();
+    const [shares, setShares] = useState<Map<string, number>>(new Map());
+    useEffect(() => {
+        if (!account) return;
+        projectShares(account)
+            .then((m) => setShares(new Map([...m].map(([p, members]) => [p, members.length]))))
+            .catch(() => undefined);
+    }, [account]);
 
     const rows = useMemo(() => {
         const stats = new Map<string, Rollup>();
@@ -85,7 +94,7 @@ export default function ProjectsScreen() {
                         <View className="overflow-hidden rounded-2xl border border-border bg-card">
                             <View className="-mb-px">
                                 {rows.map((r) => (
-                                    <ProjectRow key={r.name} name={r.name} roll={r.roll} tracking={r.name === running} taken={rows.map((x) => x.name)} />
+                                    <ProjectRow key={r.name} name={r.name} roll={r.roll} tracking={r.name === running} sharedWith={shares.get(r.name) ?? 0} taken={rows.map((x) => x.name)} />
                                 ))}
                             </View>
                         </View>
@@ -96,7 +105,7 @@ export default function ProjectsScreen() {
     );
 }
 
-function ProjectRow({ name, roll, tracking, taken }: { name: string; roll: Rollup; tracking: boolean; taken: string[] }) {
+function ProjectRow({ name, roll, tracking, sharedWith, taken }: { name: string; roll: Rollup; tracking: boolean; sharedWith: number; taken: string[] }) {
     const [dialog, setDialog] = useState<'color' | 'rename' | 'delete' | null>(null);
     const meta = roll.sessions
         ? `${roll.sessions} ${roll.sessions === 1 ? 'session' : 'sessions'} · last ${new Date(roll.last).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
@@ -118,9 +127,18 @@ function ProjectRow({ name, roll, tracking, taken }: { name: string; roll: Rollu
                         </View>
                     ) : null}
                 </View>
-                <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
-                    {meta}
-                </Text>
+                <View className="flex-row items-center gap-1.5">
+                    <Text numberOfLines={1} className="shrink text-[13px] text-muted-foreground">
+                        {meta}
+                    </Text>
+                    {sharedWith > 0 ? (
+                        <View className="flex-row items-center gap-1" accessibilityLabel={`Shared with ${sharedWith} ${sharedWith === 1 ? 'person' : 'people'}`}>
+                            <Text className="text-[13px] text-muted-foreground">·</Text>
+                            <Icon as={Users} className="size-3 text-muted-foreground" />
+                            <Text className="text-[13px] text-muted-foreground">{sharedWith}</Text>
+                        </View>
+                    ) : null}
+                </View>
             </View>
             <Text className="font-mono text-sm text-foreground/80" style={{ fontVariant: ['tabular-nums'] }}>
                 {roll.sessions ? formatTotal(roll.ms) : '—'}

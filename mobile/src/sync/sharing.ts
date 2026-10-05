@@ -624,3 +624,23 @@ async function rewriteSharedProject(account: Account, from: string, to: string |
 
 export const renameProjectInShares = (account: Account, from: string, to: string) => rewriteSharedProject(account, from, to);
 export const removeProjectFromShares = (account: Account, name: string) => rewriteSharedProject(account, name, null);
+
+// Per shared project, who can see it: the members (other than the caller) of
+// every active team whose share includes it (ProjectShares). A team whose
+// filter can't be read is left out rather than failing the rest.
+export async function projectShares(account: Account): Promise<Map<string, TeamMember[]>> {
+    const out = new Map<string, TeamMember[]>();
+    if (!(await sharingUnlocked())) return out;
+    const s = await session(account);
+    for (const t of (await listTeams(account)).filter((x) => !x.pending)) {
+        const share = await currentFilter(s, t.id).catch(() => null);
+        for (const project of share?.filter.projects ?? []) {
+            const members = out.get(project) ?? [];
+            for (const m of t.members) {
+                if (m.userId !== s.userId && !members.some((x) => x.userId === m.userId)) members.push(m);
+            }
+            out.set(project, members);
+        }
+    }
+    return out;
+}

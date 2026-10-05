@@ -159,24 +159,41 @@ uploaded to Firebase.
 
 - Stack: **React Native on Expo** in `mobile/` (decided October 2026), to
   share the desktop's look, TypeScript types and React logic. The look carries
-  over through react-native-reusables (shadcn for React Native, on NativeWind)
-  fed the desktop's design tokens. Live Activities and widgets still need
-  native Swift alongside. Native folders are generated (`expo prebuild`), not
-  committed.
+  over through react-native-reusables (shadcn for React Native) on Uniwind
+  (Tailwind v4, CSS-first) fed the desktop's design tokens. Rich text (the
+  sketchpad and activity notes) runs the desktop's tiptap editor in Expo DOM
+  components. Live Activities and widgets still need native Swift alongside.
+  Native folders are generated (`expo prebuild`), not committed.
 - Order of work:
   - **4a. Crypto parity** (done): `mobile/src/crypto` ports the sync crypto
     and checks itself against `internal/integrations/neonsync/testdata/
     crypto-vectors.json`, which the Go tests generate and verify. Argon2id is
-    native (`react-native-argon2`) because the desktop uses four lanes, which
-    libsodium cannot reproduce.
-  - **4b. App shell**: Expo Router, NativeWind, reusables, desktop tokens.
-  - **4c. Sign-in and unlock**: Neon Auth with the derived auth hash, DEK
-    unwrapped and kept in the secure store.
-  - **4d. Running timer**: read, start and stop through `running_timers`,
-    keeping the exact start string so desktops still recognise the timer.
-  - **4e. History**: read own entries; push completed ones so a timer started
-    and stopped on the phone reaches the cloud without a desktop.
-  - **4f.** Push (Phase 3), the iOS Live Activity and reminders.
+    native (the local `mobile/modules/tokify-argon2`) because the desktop
+    uses four lanes, which libsodium cannot reproduce.
+  - **4b. App shell** (done): Expo Router, Uniwind, reusables, desktop tokens,
+    the desktop's motion, and its swipeable pages (sketchpad, Activity, Log,
+    Reports, Charts, Stats) under the same masthead.
+  - **4c. Sign-in and unlock** (done): sign-in and sign-up against Neon Auth
+    with the derived auth hash; the DEK and the sharing identity are unwrapped
+    with the password-derived key and kept in the secure store.
+  - **4d. Running timer** (done; live once `running_timers` is migrated):
+    read, start, stop and edit through `running_timers`, keeping the exact
+    start string so desktops still recognise the timer. A start that would
+    stop the running timer asks first.
+  - **4e. History** (done): read own entries, push completed ones in the
+    signed v2 format, edit, delete, multi-select, undo, Add past, search, the
+    contribution graph and day timelines; Reports, Charts and Stats from the
+    desktop's own summary code; Export to the share sheet.
+  - **4f. Desktop parity** (done): sketchpad with to-dos that start and tick
+    off activities, Settings, Projects (color, rename, delete), Account
+    (profile picture), and Teams: the sharing crypto is ported and checked
+    against `sharing/testdata/sharing-vectors.json`, with invitations,
+    membership, share filters, granting the phone's own entries, and
+    teammates' entries in the Log. Project colors sync through
+    `user_keys.wrapped_projects` (desktop and mobile; live once migrated).
+  - **4g.** Push (Phase 3), the iOS Live Activity and reminders.
+  - **4h.** iOS build and test: needs Xcode, which the build Mac doesn't have
+    yet. The Swift half of `tokify-argon2` has never been compiled.
 - Sign-in with email/password or OTP against Neon Auth, matching desktop.
   Neon Auth has no Sign in with Apple; App Store rule 4.8 does not require it
   without third-party login. If social login becomes required, self-hosting
