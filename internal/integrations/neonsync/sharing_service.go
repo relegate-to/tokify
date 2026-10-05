@@ -373,6 +373,9 @@ func (s *Service) CreateAudience(ctx context.Context) (string, error) {
 	if perr := s.pins.Repin(sess.userID, sharing.Fingerprint(sess.id.Public())); perr != nil {
 		return "", perr
 	}
+	if jerr := s.pins.MarkJoined(audienceID); jerr != nil {
+		return "", jerr
+	}
 	s.pushPins(ctx, sess)
 	return audienceID, nil
 }

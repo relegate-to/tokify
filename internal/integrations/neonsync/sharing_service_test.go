@@ -778,3 +778,112 @@ func TestInsertMemberIdempotent(t *testing.T) {
 		t.Fatalf("want 1 member row after re-insert, got %d", len(fake.members))
 	}
 }
+
+// activeMembershipFixture sets up a member who is 'active' in an audience run by
+// a teammate they have already pinned, with a share filter that matches their
+// one local entry. Whether reconcile grants into it depends only on the pin
+// store's joined set, which each test arranges.
+func activeMembershipFixture(t *testing.T) (*Service, *fakePostgREST, *sharingSession, map[string]models.Activity) {
+	t.Helper()
+	fake := &fakePostgREST{}
+	srv := httptest.NewServer(fake.handler())
+	t.Cleanup(srv.Close)
+	svc := newFlowService(t, srv)
+	ctx := context.Background()
+
+	admin, err := sharing.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := sharing.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminDEK, _ := GenerateDEK()
+	memberDEK, _ := GenerateDEK()
+	adminSess := &sharingSession{svc: svc, base: srv.URL, token: "tok", userID: "admin-sub", id: admin, dek: adminDEK}
+	memberSess := &sharingSession{svc: svc, base: srv.URL, token: "tok", userID: "member-sub", id: member, dek: memberDEK}
+
+	fake.identities = append(fake.identities, identityRow{
+		UserID: "admin-sub", PubEnc: b64(admin.Public().EncPub), PubSig: b64(admin.Public().SigPub),
+	})
+	if err = svc.pins.Pin("admin-sub", sharing.Fingerprint(admin.Public())); err != nil {
+		t.Fatal(err)
+	}
+
+	fake.audiences = append(fake.audiences, audienceRow{ID: "aud-1", CreatedBy: "admin-sub"})
+	fake.members = append(fake.members,
+		audienceMemberRow{AudienceID: "aud-1", MemberID: "admin-sub", Role: "admin", Status: "active"},
+		audienceMemberRow{AudienceID: "aud-1", MemberID: "member-sub", Role: "member", Status: "active"},
+	)
+	epochPriv, err := sharing.GenerateEpochKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.publishEpoch(ctx, adminSess, "aud-1", 1, "", epochPriv); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.wrapEpochToMembers(ctx, adminSess, "aud-1", 1, epochPriv.Bytes(),
+		[]memberKey{{id: "member-sub", encPub: member.Public().EncPub}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.writeShare(ctx, adminSess, "aud-1", "share-1", 1, epochPriv.PublicKey().Bytes(),
+		shareFilter{Projects: []string{"tokify"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Date(2026, 7, 12, 9, 0, 0, 0, time.Local)
+	end := start.Add(time.Hour)
+	a := models.Activity{Project: "tokify", Description: "private", StartTime: start, EndTime: &end}
+	return svc, fake, memberSess, map[string]models.Activity{EntryID(memberDEK, canonicalize(a)): a}
+}
+
+// TestReconcileSkipsUnjoinedAudience guards invite consent on the client: an
+// 'active' row the server reports is not enough for reconcile to share into an
+// audience; the member must have accepted it (or created it) on some device.
+func TestReconcileSkipsUnjoinedAudience(t *testing.T) {
+	svc, fake, sess, local := activeMembershipFixture(t)
+	ctx := context.Background()
+	if err := svc.pins.SeedJoined(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if errs := svc.reconcileAudiences(ctx, sess, local, time.Now()); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if len(fake.grants) != 0 {
+		t.Fatalf("reconcile granted into an audience the member never accepted: %+v", fake.grants)
+	}
+
+	if err := svc.pins.MarkJoined("aud-1"); err != nil {
+		t.Fatal(err)
+	}
+	if errs := svc.reconcileAudiences(ctx, sess, local, time.Now()); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if len(fake.grants) != 1 {
+		t.Fatalf("want 1 grant once the audience is joined, got %d", len(fake.grants))
+	}
+}
+
+// TestReconcileSeedsJoinedFromActiveMemberships guards the upgrade path: the
+// first reconcile after the joined set exists adopts the memberships that were
+// already active, so existing teams keep receiving shares.
+func TestReconcileSeedsJoinedFromActiveMemberships(t *testing.T) {
+	svc, fake, sess, local := activeMembershipFixture(t)
+	ctx := context.Background()
+
+	if errs := svc.reconcileAudiences(ctx, sess, local, time.Now()); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if len(fake.grants) != 1 {
+		t.Fatalf("want the pre-existing membership grandfathered, got %d grants", len(fake.grants))
+	}
+	joined, seeded, err := svc.pins.JoinedAudiences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded || !joined["aud-1"] {
+		t.Fatalf("want aud-1 seeded as joined, got joined=%v seeded=%v", joined, seeded)
+	}
+}

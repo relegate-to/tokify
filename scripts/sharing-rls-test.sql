@@ -300,6 +300,51 @@ SELECT expect_fail('bob',
        VALUES ('audC','bob','admin')$q$,
     'non-creator bob cannot bootstrap-self-admin alice''s audience');
 
+-- ---- INVITE CONSENT ------------------------------------------------------
+-- An admin can only plant an 'invited' row, and only the invitee can accept.
+-- Otherwise an admin could make carol an accepted member unasked, and carol's
+-- client would reconcile grants into the audience.
+SELECT expect_fail('alice',
+    $q$INSERT INTO public.audience_members (audience_id, member_id, role)
+       VALUES ('audA','carol','member')$q$,
+    'admin alice cannot add carol with the default active status');
+SELECT expect_fail('alice',
+    $q$INSERT INTO public.audience_members (audience_id, member_id, role, status)
+       VALUES ('audA','carol','member','active')$q$,
+    'admin alice cannot add carol as active');
+SELECT expect_ok('alice',
+    $q$INSERT INTO public.audience_members (audience_id, member_id, role, status)
+       VALUES ('audA','carol','member','invited')$q$,
+    'admin alice can invite carol');
+SELECT expect_fail('alice',
+    $q$UPDATE public.audience_members SET status='active'
+       WHERE audience_id='audA' AND member_id='carol'$q$,
+    'admin alice cannot accept carol''s invitation for her');
+SELECT expect_ok('alice',
+    $q$UPDATE public.audience_members SET role='admin'
+       WHERE audience_id='audA' AND member_id='carol'$q$,
+    'admin alice can still re-role a pending invitee');
+SELECT expect_ok('carol',
+    $q$UPDATE public.audience_members SET status='active'
+       WHERE audience_id='audA' AND member_id='carol'$q$,
+    'invitee carol accepts her own invitation');
+RESET role;
+DO $$
+BEGIN
+    IF (SELECT status FROM public.audience_members
+         WHERE audience_id='audA' AND member_id='carol') <> 'active' THEN
+        RAISE EXCEPTION 'FAIL: carol''s accept did not land';
+    END IF;
+    RAISE NOTICE 'PASS: carol''s accept landed';
+END $$;
+DELETE FROM public.audience_members WHERE audience_id='audA' AND member_id='carol';
+
+-- An author who is also a grant admin passes entries_update either way, so the
+-- guard must stop them handing an entry to another user.
+SELECT expect_fail('alice',
+    $q$UPDATE public.entries SET user_id='bob' WHERE id='e_appr'$q$,
+    'author alice cannot reassign her entry to bob');
+
 -- ---- GRANT REVOKE + column guard -----------------------------------------
 -- Seed a bob-authored grant (bob is member, epoch 2 current). Need a share on
 -- audA (exists) and a bob entry granted to audA at current epoch.
@@ -686,6 +731,56 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS: creator deletes a team and the cascade reaps its tracking rows';
 END $$;
+
+-- ==========================================================================
+-- running_timers (schema.sql): owner-only rows and a strictly sequential
+-- compare-and-swap version.
+-- ==========================================================================
+RESET role;
+SELECT expect_fail('alice',
+    $q$INSERT INTO public.running_timers (user_id, version, ciphertext, nonce) VALUES ('alice', 2, 'ct', 'n')$q$,
+    'running_timers: first insert must be version 1');
+RESET role;
+SELECT expect_ok('alice',
+    $q$INSERT INTO public.running_timers (user_id, version, ciphertext, nonce) VALUES ('alice', 1, 'ct1', 'n1')$q$,
+    'running_timers: alice creates her row at version 1');
+RESET role;
+SELECT expect_fail('bob',
+    $q$INSERT INTO public.running_timers (user_id, version, ciphertext, nonce) VALUES ('alice', 1, 'x', 'x')$q$,
+    'running_timers: bob cannot insert a row for alice');
+RESET role;
+SELECT assert_count('bob', $q$SELECT count(*) FROM public.running_timers$q$, 0,
+    'running_timers: bob cannot see alice''s row');
+SELECT test_as('bob', $q$UPDATE public.running_timers SET version = 2, ciphertext = 'x' WHERE user_id = 'alice'$q$);
+RESET role;
+SELECT assert_count('alice', $q$SELECT count(*) FROM public.running_timers WHERE ciphertext = 'ct1'$q$, 1,
+    'running_timers: bob''s update reaches no rows');
+
+-- A stale compare-and-swap matches nothing; the current one advances by one.
+SELECT test_as('alice', $q$UPDATE public.running_timers SET version = 1, ciphertext = 'stale' WHERE version = 0$q$);
+RESET role;
+SELECT assert_count('alice', $q$SELECT count(*) FROM public.running_timers WHERE version = 1 AND ciphertext = 'ct1'$q$, 1,
+    'running_timers: a CAS on a stale version changes nothing');
+SELECT expect_ok('alice',
+    $q$UPDATE public.running_timers SET version = 2, ciphertext = 'ct2', nonce = 'n2' WHERE version = 1$q$,
+    'running_timers: CAS on the current version advances to 2');
+RESET role;
+SELECT expect_fail('alice',
+    $q$UPDATE public.running_timers SET version = 5, ciphertext = 'x' WHERE version = 2$q$,
+    'running_timers: version cannot skip ahead');
+RESET role;
+SELECT expect_fail('alice',
+    $q$UPDATE public.running_timers SET version = 1, ciphertext = 'x' WHERE version = 2$q$,
+    'running_timers: version cannot rewind');
+RESET role;
+SELECT expect_fail('alice',
+    $q$UPDATE public.running_timers SET user_id = 'bob', version = 3 WHERE version = 2$q$,
+    'running_timers: user_id cannot be reassigned');
+RESET role;
+SELECT expect_fail('alice',
+    $q$DELETE FROM public.running_timers WHERE user_id = 'alice'$q$,
+    'running_timers: rows cannot be deleted');
+RESET role;
 
 \echo '==================================================================='
 \echo 'ALL RLS ASSERTIONS PASSED'

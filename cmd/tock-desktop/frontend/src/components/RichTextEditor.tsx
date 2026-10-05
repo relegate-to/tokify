@@ -301,16 +301,32 @@ export const RichTextEditor = memo(function RichTextEditor({
                         button.className = 'rich-editor-start-todo';
                         button.textContent = 'Start →';
                         const description = () => todoText(node).description;
+                        // A ticked to-do is done with: it offers to go instead of to start.
                         const sync = () => {
-                            button.hidden = Boolean(node.attrs.checked) || !description();
-                            button.setAttribute('aria-label', `Start activity: ${description()}`);
+                            const done = Boolean(node.attrs.checked);
+                            button.hidden = !done && !description();
+                            button.textContent = done ? 'Delete' : 'Start →';
+                            button.classList.toggle('is-delete', done);
+                            button.setAttribute('aria-label', done ? `Delete to-do: ${description()}` : `Start activity: ${description()}`);
                         };
                         sync();
                         button.onmousedown = (event) => event.preventDefault();
                         button.onclick = async (event) => {
                             event.preventDefault();
                             event.stopPropagation();
-                            if (button.disabled || node.attrs.checked || !description()) return;
+                            if (button.disabled) return;
+                            if (node.attrs.checked) {
+                                const position = props.getPos();
+                                if (typeof position !== 'number') return;
+                                // A list can't be empty, so deleting its last item would leave a
+                                // blank to-do behind: take the whole list then.
+                                const $pos = props.editor.state.doc.resolve(position);
+                                const lone = $pos.parent.type.name === 'taskList' && $pos.parent.childCount === 1;
+                                const range = lone ? { from: $pos.before(), to: $pos.after() } : { from: position, to: position + node.nodeSize };
+                                props.editor.chain().focus().deleteRange(range).run();
+                                return;
+                            }
+                            if (!description()) return;
                             button.disabled = true;
                             try {
                                 let project = '';

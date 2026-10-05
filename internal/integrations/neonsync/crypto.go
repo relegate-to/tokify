@@ -138,6 +138,12 @@ func EntryID(dek, canonical []byte) string {
 // the detached nonce alongside the ciphertext so callers can store them in
 // separate columns.
 func seal(key, plaintext []byte) ([]byte, []byte, error) {
+	return sealAAD(key, plaintext, nil)
+}
+
+// sealAAD is seal with additional authenticated data, which open must be given
+// unchanged or decryption fails.
+func sealAAD(key, plaintext, aad []byte) ([]byte, []byte, error) {
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "new aead")
@@ -146,10 +152,14 @@ func seal(key, plaintext []byte) ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return aead.Seal(nil, nonce, plaintext, nil), nonce, nil
+	return aead.Seal(nil, nonce, plaintext, aad), nonce, nil
 }
 
 func open(key, ciphertext, nonce []byte) ([]byte, error) {
+	return openAAD(key, ciphertext, nonce, nil)
+}
+
+func openAAD(key, ciphertext, nonce, aad []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return nil, errors.Wrap(err, "new aead")
@@ -157,7 +167,7 @@ func open(key, ciphertext, nonce []byte) ([]byte, error) {
 	if len(nonce) != aead.NonceSize() {
 		return nil, errors.New("wrong nonce size")
 	}
-	plaintext, err := aead.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := aead.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
 		// Covers a wrong key, a tampered ciphertext, and nonce reuse detection —
 		// all indistinguishable and all a hard failure.

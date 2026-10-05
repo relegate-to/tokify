@@ -216,3 +216,43 @@ func TestPinsPersistAcrossInstances(t *testing.T) {
 		t.Fatalf("watermark did not persist: %d", wm)
 	}
 }
+
+func TestJoinedSeedOnceAndMerge(t *testing.T) {
+	device1 := newTestPins(t)
+	if err := device1.SeedJoined([]string{"aud-old"}); err != nil {
+		t.Fatal(err)
+	}
+	// A second seed is ignored: only MarkJoined adds audiences after the first.
+	if err := device1.SeedJoined([]string{"aud-forced"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := device1.MarkJoined("aud-new"); err != nil {
+		t.Fatal(err)
+	}
+	joined, seeded, err := device1.JoinedAudiences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded || !joined["aud-old"] || !joined["aud-new"] || joined["aud-forced"] {
+		t.Fatalf("unexpected joined set %v (seeded=%v)", joined, seeded)
+	}
+
+	blob, err := device1.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	device2 := newTestPins(t)
+	if err = device2.MarkJoined("aud-local"); err != nil {
+		t.Fatal(err)
+	}
+	if err = device2.MergeRemote(blob); err != nil {
+		t.Fatal(err)
+	}
+	joined, seeded, err = device2.JoinedAudiences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded || !joined["aud-old"] || !joined["aud-new"] || !joined["aud-local"] {
+		t.Fatalf("merge should union joined sets and carry the seed flag: %v (seeded=%v)", joined, seeded)
+	}
+}

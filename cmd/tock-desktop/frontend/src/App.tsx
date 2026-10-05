@@ -27,6 +27,7 @@ import {
     SharingListTeams,
     SharingProjectShares,
     SharingSharedEntries,
+    RefreshRunningTimer,
     Start,
     StartAt,
     Stop,
@@ -421,18 +422,23 @@ function App() {
 
     useEffect(() => {
         loadColors();
+        // Another device chose a color, which arrived with a sync.
+        return EventsOn('projects:changed', loadColors);
     }, []);
 
     // Poll shared entries independently of the local refresh. A sharing/network
     // error (or sync being off) is best-effort: it must never break local state,
     // and a transient failure keeps the last-good rows rather than flickering the
     // merged view empty. Cadence follows window attention, and the poll pauses
-    // while hidden, waking with an immediate pull when the window returns.
+    // while hidden, waking with an immediate pull when the window returns. The
+    // same tick checks for a timer started or stopped on another device; the
+    // backend emits activities:changed when that changes anything here.
     useEffect(() => {
         let timer: number | null = null;
         let cancelled = false;
 
         const pull = () => {
+            RefreshRunningTimer();
             SharingSharedEntries()
                 .then((entries) => {
                     if (cancelled) return;

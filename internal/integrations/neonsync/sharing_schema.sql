@@ -543,9 +543,14 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
+    -- Authorship is immutable for everyone. The author branch below would
+    -- otherwise let an author who is also a grant admin pass entries_update's
+    -- WITH CHECK while handing the row to another user.
+    IF NEW.user_id IS DISTINCT FROM OLD.user_id THEN
+        RAISE EXCEPTION 'entries.user_id is immutable';
+    END IF;
     IF auth.user_id() IS DISTINCT FROM OLD.user_id THEN
         IF NEW.id            IS DISTINCT FROM OLD.id
-        OR NEW.user_id       IS DISTINCT FROM OLD.user_id
         OR NEW.ciphertext    IS DISTINCT FROM OLD.ciphertext
         OR NEW.nonce         IS DISTINCT FROM OLD.nonce
         OR NEW.deleted       IS DISTINCT FROM OLD.deleted
@@ -793,12 +798,15 @@ CREATE POLICY audience_members_select ON public.audience_members
     TO authenticated
     USING (public.sharing_is_member(audience_id) OR member_id = auth.user_id());
 
+-- An admin may only plant an 'invited' row: status DEFAULTs to 'active', so
+-- without the status clause an admin could add anyone as an accepted member and
+-- their client would start granting entries into the audience unasked.
 DROP POLICY IF EXISTS audience_members_insert ON public.audience_members;
 CREATE POLICY audience_members_insert ON public.audience_members
     FOR INSERT
     TO authenticated
     WITH CHECK (
-        public.sharing_is_admin(audience_id)
+        (public.sharing_is_admin(audience_id) AND status = 'invited')
         OR (
             member_id = auth.user_id()
             AND role = 'admin'
@@ -820,8 +828,8 @@ CREATE POLICY audience_members_update ON public.audience_members
 -- Guard the self-service accept: when the caller is NOT an admin of the audience
 -- (i.e. an invitee flipping their own row), the ONLY permitted change is
 -- status 'invited' -> 'active'; role / audience_id / member_id must be unchanged.
--- An admin update bypasses the guard and keeps its full membership-management
--- surface. sharing_is_admin sees the pre-update row (still 'invited' for the
+-- An admin keeps the rest of the membership-management surface, but never the
+-- accept itself. sharing_is_admin sees the pre-update row (still 'invited' for the
 -- accepting invitee), so an accept correctly takes the narrow branch.
 CREATE OR REPLACE FUNCTION public.audience_members_guard_update()
 RETURNS trigger
@@ -830,6 +838,12 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
+    -- Acceptance is the member's alone, admin or not: an admin who could flip an
+    -- invitee to 'active' could bypass consent exactly as a direct insert would.
+    IF NEW.status = 'active' AND OLD.status IS DISTINCT FROM 'active'
+       AND NEW.member_id IS DISTINCT FROM auth.user_id() THEN
+        RAISE EXCEPTION 'only the invitee may accept an invitation';
+    END IF;
     IF NOT public.sharing_is_admin(NEW.audience_id) THEN
         IF NEW.audience_id IS DISTINCT FROM OLD.audience_id
         OR NEW.member_id   IS DISTINCT FROM OLD.member_id

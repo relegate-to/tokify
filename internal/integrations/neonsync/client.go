@@ -35,6 +35,10 @@ type userKeysRow struct {
 	// patchPinsColumns. See PinStore.MergeRemote for the sync semantics.
 	WrappedPins string `json:"wrapped_pins,omitempty"`
 	PinsNonce   string `json:"pins_nonce,omitempty"`
+	// Project colors, sealed under the account DEK (schema.sql). Empty until a
+	// device pushes them; see SyncProjectColors.
+	WrappedProjects string `json:"wrapped_projects,omitempty"`
+	ProjectsNonce   string `json:"projects_nonce,omitempty"`
 }
 
 type entryRow struct {

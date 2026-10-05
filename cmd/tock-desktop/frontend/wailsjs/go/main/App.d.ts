@@ -65,6 +65,8 @@ export function Projects():Promise<Array<string>>;
 
 export function RedoLastActivityChange():Promise<string>;
 
+export function RefreshRunningTimer():Promise<void>;
+
 export function RemoveActivity(arg1:models.Activity):Promise<void>;
 
 export function RenameProject(arg1:string,arg2:string):Promise<projects.Project>;

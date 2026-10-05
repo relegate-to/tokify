@@ -1,0 +1,10 @@
+/* The notes field is a small framed box rather than a page. */
+.notes-editor {
+    min-height: 100%;
+    padding: 10px 14px;
+}
+
+.notes-editor .rich-editor-prose {
+    font-size: 15px;
+    line-height: 26px;
+}

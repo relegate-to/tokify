@@ -26,6 +26,7 @@ import (
 	"github.com/kriuchkov/tock/internal/app/runtime"
 	appstorage "github.com/kriuchkov/tock/internal/app/storage"
 	teamreg "github.com/kriuchkov/tock/internal/app/teams"
+	"github.com/kriuchkov/tock/internal/app/timersync"
 	"github.com/kriuchkov/tock/internal/appdir"
 	"github.com/kriuchkov/tock/internal/core/models"
 	"github.com/kriuchkov/tock/internal/core/ports"
@@ -41,7 +42,10 @@ type App struct {
 	rt       *runtime.Runtime
 	neonAuth *neonauth.Service
 	neonSync *neonsync.Service
-	projects *projectreg.Registry
+	// timerSync mirrors the running activity through the account's running-
+	// timer record so other devices see it; nil when sync isn't set up.
+	timerSync *timersync.Syncer
+	projects  *projectreg.Registry
 	// teamNames is the client-side audience-id -> local name map for sharing
 	// teams.
 	teamNames *teamreg.Registry
@@ -133,6 +137,9 @@ func (a *App) startup(ctx context.Context) {
 	if a.neonAuth != nil {
 		if sync, err := neonsync.NewService(rt.ActivityService, a.neonAuth); err == nil {
 			a.neonSync = sync
+			if p, perr := appdir.Path("timersync.json"); perr == nil {
+				a.timerSync = timersync.New(sync, rt.ActivityService, p)
+			}
 			if a.neonAuth.Status().SignedIn {
 				a.forceSyncEnabled()
 			}
@@ -220,15 +227,66 @@ func (a *App) autoSyncOnce() bool {
 	}
 	defer a.syncing.Store(false)
 
+	// The timer goes first: a peer that stopped a timer has already published
+	// the stop, so closing the local copy here keeps the entry pull below from
+	// adding a second, minute-rounded copy of the same activity.
+	a.reconcileTimer()
+
 	ctx, cancel := context.WithTimeout(a.ctx, 90*time.Second)
 	defer cancel()
 	status, err := a.neonSync.SyncNow(ctx)
 	if err != nil {
 		return true
 	}
+	a.syncProjectColors(ctx)
 	a.refreshTrayTitle()
 	wailsruntime.EventsEmit(a.ctx, "sync:updated", status)
 	return true
+}
+
+// syncProjectColors shares project colors with the account's other devices,
+// the newest choice per project winning, and repaints when one arrived. Quiet
+// on failure: colors are cosmetic and the next sync retries.
+func (a *App) syncProjectColors(ctx context.Context) {
+	if a.projects == nil {
+		return
+	}
+	local := map[string]neonsync.ColorPref{}
+	for name, c := range a.projects.Colors() {
+		local[name] = neonsync.ColorPref{Color: c.Color, At: c.At}
+	}
+	merged, err := a.neonSync.SyncProjectColors(ctx, local)
+	if err != nil {
+		return
+	}
+	choices := make(map[string]projectreg.ColorChoice, len(merged))
+	for name, p := range merged {
+		choices[name] = projectreg.ColorChoice{Color: p.Color, At: p.At}
+	}
+	if changed, aerr := a.projects.ApplyColors(choices); aerr == nil && changed {
+		wailsruntime.EventsEmit(a.ctx, "projects:changed")
+	}
+}
+
+// reconcileTimer brings the running activity in line with the other devices
+// and repaints when that changed it. Quiet on every failure, like autoSyncOnce:
+// signed out, locked, offline and unconfigured all just skip.
+func (a *App) reconcileTimer() {
+	if a.timerSync == nil || a.neonAuth == nil || !a.neonAuth.Status().SignedIn {
+		return
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
+	defer cancel()
+	if changed, err := a.timerSync.Reconcile(ctx); err == nil && changed {
+		a.refreshTrayTitle()
+		wailsruntime.EventsEmit(a.ctx, "activities:changed")
+	}
+}
+
+// RefreshRunningTimer checks for a timer started or stopped on another device.
+// The window calls it on its poll.
+func (a *App) RefreshRunningTimer() {
+	a.reconcileTimer()
 }
 
 // trayRecentSlots caps the "Start Recent" submenu. Menu items can't be
@@ -344,6 +402,7 @@ func (a *App) trayLoop(m *trayMenu, stop <-chan struct{}) {
 			timer.Reset(nextMinute())
 		case <-systray.TrayOpenedCh:
 			a.refreshTrayTitle()
+			go a.reconcileTimer()
 		case <-m.stop.ClickedCh:
 			if _, err := a.Stop(); err == nil {
 				wailsruntime.EventsEmit(a.ctx, "activities:changed")
@@ -1621,7 +1680,11 @@ func (a *App) SetProjectColor(name, color string) (projectreg.Project, error) {
 	if !validProjectColor(color) {
 		return projectreg.Project{}, errors.New("invalid color")
 	}
-	return a.projects.SetColor(name, color)
+	p, err := a.projects.SetColor(name, color)
+	if err == nil {
+		a.syncSoon()
+	}
+	return p, err
 }
 
 // validProjectColor accepts an empty string (clear), a Tokify palette variable,

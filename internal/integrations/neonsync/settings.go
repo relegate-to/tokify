@@ -26,6 +26,11 @@ type Settings struct {
 	// a network round-trip.
 	LastSync   string `json:"last_sync,omitempty"`
 	EntryCount int    `json:"entry_count,omitempty"`
+
+	// DeviceID identifies this install in the running-timer record, so a
+	// device can tell its own timer from one started elsewhere. Random, set on
+	// first use.
+	DeviceID string `json:"device_id,omitempty"`
 }
 
 func defaultSettingsPath() (string, error) {

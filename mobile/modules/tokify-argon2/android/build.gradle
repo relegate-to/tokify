@@ -1,0 +1,19 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'io.github.finchett.tokify'
+version = '0.1.0'
+
+android {
+  namespace "io.github.finchett.tokify.argon2"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+dependencies {
+  implementation 'com.lambdapioneer.argon2kt:argon2kt:1.6.0'
+}

@@ -24,6 +24,9 @@ import (
 //     prefix 1..k of a valid chain is itself a valid chain. The watermark closes
 //     that gap — seeing fewer epochs than the recorded high-water mark is a hard
 //     stop.
+//   - Joined audiences: the audiences this account created or explicitly
+//     accepted. A membership row the server reports as 'active' is not consent,
+//     so reconcile grants entries only into audiences recorded here.
 //
 // Persisted as plaintext JSON alongside neonsync.json, following the
 // tombstoneStore pattern. It holds only public fingerprints and epoch counts —
@@ -44,6 +47,11 @@ type pinFile struct {
 	Fingerprints map[string]string `json:"fingerprints"`
 	// Epochs maps an audience id to the highest epoch count ever seen for it.
 	Epochs map[string]int `json:"epochs"`
+	// Joined holds the audience ids this account created or accepted.
+	Joined map[string]bool `json:"joined,omitempty"`
+	// JoinedSeeded is set once Joined has adopted the memberships that predate
+	// it, so an upgrade does not silently stop sharing into existing teams.
+	JoinedSeeded bool `json:"joined_seeded,omitempty"`
 }
 
 // load reads the persisted pins. Caller must hold p.mu.
@@ -51,7 +59,7 @@ func (p *PinStore) load() (pinFile, error) {
 	data, err := os.ReadFile(p.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return pinFile{Fingerprints: map[string]string{}, Epochs: map[string]int{}}, nil
+			return pinFile{Fingerprints: map[string]string{}, Epochs: map[string]int{}, Joined: map[string]bool{}}, nil
 		}
 		return pinFile{}, errors.Wrap(err, "read pins")
 	}
@@ -64,6 +72,9 @@ func (p *PinStore) load() (pinFile, error) {
 	}
 	if f.Epochs == nil {
 		f.Epochs = map[string]int{}
+	}
+	if f.Joined == nil {
+		f.Joined = map[string]bool{}
 	}
 	return f, nil
 }
@@ -202,8 +213,8 @@ func (p *PinStore) trustState() (string, error) {
 // with the LOCAL value winning any conflict — a remote fingerprint that
 // disagrees with one already pinned here is never silently accepted, preserving
 // the same key-swap protection as Pin. Epoch high-water marks take the max, so
-// the truncation detector only ever ratchets up. Persists only if the local file
-// actually changed.
+// the truncation detector only ever ratchets up; joined audiences union.
+// Persists only if the local file actually changed.
 func (p *PinStore) MergeRemote(remote []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -227,6 +238,16 @@ func (p *PinStore) MergeRemote(remote []byte) error {
 			f.Epochs[aud] = epoch
 			changed = true
 		}
+	}
+	for aud := range r.Joined {
+		if !f.Joined[aud] {
+			f.Joined[aud] = true
+			changed = true
+		}
+	}
+	if r.JoinedSeeded && !f.JoinedSeeded {
+		f.JoinedSeeded = true
+		changed = true
 	}
 	if !changed {
 		return nil
@@ -266,4 +287,50 @@ func (p *PinStore) EpochWatermark(audienceID string) (int, error) {
 		return 0, err
 	}
 	return f.Epochs[audienceID], nil
+}
+
+// MarkJoined records that this account created or accepted an audience.
+func (p *PinStore) MarkJoined(audienceID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	f, err := p.load()
+	if err != nil {
+		return err
+	}
+	if f.Joined[audienceID] {
+		return nil
+	}
+	f.Joined[audienceID] = true
+	return p.save(f)
+}
+
+// JoinedAudiences returns the joined set and whether it has been seeded.
+func (p *PinStore) JoinedAudiences() (map[string]bool, bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	f, err := p.load()
+	if err != nil {
+		return nil, false, err
+	}
+	return f.Joined, f.JoinedSeeded, nil
+}
+
+// SeedJoined adopts the given audiences as joined, once. Before the joined set
+// existed every active membership was trusted, so the first seed carries those
+// forward; after that only MarkJoined adds to it.
+func (p *PinStore) SeedJoined(audienceIDs []string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	f, err := p.load()
+	if err != nil {
+		return err
+	}
+	if f.JoinedSeeded {
+		return nil
+	}
+	for _, id := range audienceIDs {
+		f.Joined[id] = true
+	}
+	f.JoinedSeeded = true
+	return p.save(f)
 }

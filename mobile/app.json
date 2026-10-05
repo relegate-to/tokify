@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Tokify",
+    "slug": "tokify",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "io.github.finchett.tokify"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "io.github.finchett.tokify"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "tokify",
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/instrument-sans/400Regular/InstrumentSans_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/instrument-sans/500Medium/InstrumentSans_500Medium.ttf",
+            "./node_modules/@expo-google-fonts/instrument-sans/600SemiBold/InstrumentSans_600SemiBold.ttf",
+            "./node_modules/@expo-google-fonts/ibm-plex-mono/400Regular/IBMPlexMono_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/ibm-plex-mono/500Medium/IBMPlexMono_500Medium.ttf"
+          ]
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

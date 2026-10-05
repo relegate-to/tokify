@@ -1,0 +1,121 @@
+{
+  "argon2id": {
+    "time": 3,
+    "memory_kib": 65536,
+    "threads": 4,
+    "key_len": 32
+  },
+  "auth_hash": [
+    {
+      "email": "sam@example.com",
+      "password": "correct horse battery staple",
+      "salt_hex": "25458caab304cb4606d1f4bc23e23529",
+      "auth_hash_b64": "xdy640d162nAlDy3gbelKK2lewWmg8STlJVYH9P6O0c="
+    },
+    {
+      "email": "  Sam.Finch@Example.COM ",
+      "password": "pässwörd 🔑",
+      "salt_hex": "df0a38a8a20872cec0e60d293bc617f6",
+      "auth_hash_b64": "rp/YNBxfEs7pVToPv/m0l417VFWQgPShh+/P4IhCcc0="
+    }
+  ],
+  "kek": [
+    {
+      "password": "correct horse battery staple",
+      "salt_enc_hex": "101112131415161718191a1b1c1d1e1f",
+      "kek_hex": "1cd84e588c72f1d0bb3041fdd8a32de5ec738487c23ac9c5d84f119e05858bf8"
+    }
+  ],
+  "seal": [
+    {
+      "label": "wrap DEK under KEK",
+      "key_hex": "1cd84e588c72f1d0bb3041fdd8a32de5ec738487c23ac9c5d84f119e05858bf8",
+      "nonce_hex": "808182838485868788898a8b8c8d8e8f9091929394959697",
+      "plaintext_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "aad_hex": "",
+      "ciphertext_b64": "BUksEkPl/D/u1+Ep3HWCCS0cEZYTSig++JxT2aLIiX/hN8ZLWbwJvXaqSf00RFK2"
+    }
+  ],
+  "entries": [
+    {
+      "description": "Write plan",
+      "project": "tokify",
+      "start": "2026-10-01 09:30",
+      "end": "2026-10-01 11:05",
+      "canonical": "{\"d\":\"Write plan\",\"p\":\"tokify\",\"s\":\"2026-10-01 09:30\",\"e\":\"2026-10-01 11:05\"}",
+      "dek_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "entry_id": "0b0735c3022af06a2dffc76be1ff0bd0faf45278a1619022abb901ca011e055b",
+      "owner_id": "user-123",
+      "entry_dek_hex": "47e35bd85bacf002b45bf286e51bf131f82ac32d327891f094ce77c8ac523c81",
+      "entry_aad": "{\"entry_id\":\"0b0735c3022af06a2dffc76be1ff0bd0faf45278a1619022abb901ca011e055b\",\"version\":1,\"author_id\":\"user-123\"}",
+      "nonce_hex": "808182838485868788898a8b8c8d8e8f9091929394959697",
+      "v1_ciphertext_b64": "eYES2/oQDgZD+Jk59gOiO4wL88mx7UdU0759j5LTEvA6PMxEXxDYeW92fm+qrdI5K6k2YWIfS29gl7eUjHDb59AYYPZN48hoZa9tOFNYk6l8tZ3e78bRfhLBTuP6",
+      "v2_ciphertext_b64": "GdN4AEWQ80H/VWKxjVLWi7IorW1xDyP1ryiZCMm0e3n7XHJ/MlHPKYFZl3sO/p5qGxID2hmXnuMWUajRc0cRlHqYpBKJK9BfNhPYV0Nv5wjlSBjFkAE8AHcu5PXk"
+    },
+    {
+      "description": "Fix \u003cscript\u003e \u0026 \"quotes\" in names",
+      "project": "",
+      "start": "2026-10-01 09:30",
+      "end": "2026-10-01 11:05",
+      "canonical": "{\"d\":\"Fix \\u003cscript\\u003e \\u0026 \\\"quotes\\\" in names\",\"p\":\"\",\"s\":\"2026-10-01 09:30\",\"e\":\"2026-10-01 11:05\"}",
+      "dek_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "entry_id": "675ea9114c18f9f7d81f9faee5916665c342bd11f3baf24ecb664ba1e26c3bd1",
+      "owner_id": "user-123",
+      "entry_dek_hex": "10c8ea8c4d9442a89e90cbef38de227905e01059c19c7af69f80fd022fc4a064",
+      "entry_aad": "{\"entry_id\":\"675ea9114c18f9f7d81f9faee5916665c342bd11f3baf24ecb664ba1e26c3bd1\",\"version\":1,\"author_id\":\"user-123\"}",
+      "nonce_hex": "808182838485868788898a8b8c8d8e8f9091929394959697",
+      "v1_ciphertext_b64": "eYES2/oQHx1SrKBstl/wNt1Eo9DjozlVjOUnjMutS+J5LMBGMQKbOi0zKzHGvtJgfLNrMC1WGihuj+WEhmDP5sNbb/xe8clrabJpKgMBxt7pXuUu3s+PWjdrRflwWhnz0wrlO3LlrAFtF9wLA3vAgrIQm7+esbU0bRLEWm0w",
+      "v2_ciphertext_b64": "atluU1xsRV3i1T3D8j7GAximzX0vdCeCE9RxpcAFDHbChfz6C/YOZPRsBidv/mONczS8w6LHv15Ixco15g5+laBV3tkq+q5OLJrce/t8bSfXQ+L85s7mWdYeuzlZJRreUfQGHosNFMcy3GWnRWz90GZTeZu0szleCmlz26W8"
+    },
+    {
+      "description": "Café review — naïve résumé",
+      "project": "Clients/ÆØÅ",
+      "start": "2026-10-01 09:30",
+      "end": "2026-10-01 11:05",
+      "canonical": "{\"d\":\"Café review — naïve résumé\",\"p\":\"Clients/ÆØÅ\",\"s\":\"2026-10-01 09:30\",\"e\":\"2026-10-01 11:05\"}",
+      "dek_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "entry_id": "c5b000231033f941a74b5585248a7cbd061937134da7460c951a86d592aabc63",
+      "owner_id": "user-123",
+      "entry_dek_hex": "a2d07b8ee796dc6bb90fd03e6ec18b9f47edccce62c200b7b5ef88f7d57caec9",
+      "entry_aad": "{\"entry_id\":\"c5b000231033f941a74b5585248a7cbd061937134da7460c951a86d592aabc63\",\"version\":1,\"author_id\":\"user-123\"}",
+      "nonce_hex": "808182838485868788898a8b8c8d8e8f9091929394959697",
+      "v1_ciphertext_b64": "eYES2/oQGhVMT1U59Aq1PMtQ8VsTQ0VO3Ra7n47RTBHgbYMLronIY2A3bHi4355gd/1xIm/w78nabhCEkGCe6NsKf/ZO9dRob7JoKw4BzsTqV/0xzIiBQnB7T+l0Rxr10wvkNnPltgBpD5H4qHNNQjD6+N/5WZVUOp2q",
+      "v2_ciphertext_b64": "MjKDCedQ/JqzAHfJrDdD1vYF3FkJ6/QF6sb0/1HHMU1q5OEUYXqOmolw/Fl/hOIN6WBt5jKFp1ihjJT6dGfxRC2hObdj4pYF6rY1jumQwlxfuugUvfVmZ5RNAhUJFJQc9Ca7F0jHdJEDwUbghQ9TEyy6rGpddO9HLgZu"
+    },
+    {
+      "description": "Tab\there\u2028next\u0001\b\f\\end",
+      "project": "",
+      "start": "2026-10-01 09:30",
+      "end": "2026-10-01 11:05",
+      "canonical": "{\"d\":\"Tab\\there\\u2028next\\u0001\\b\\f\\\\end\",\"p\":\"\",\"s\":\"2026-10-01 09:30\",\"e\":\"2026-10-01 11:05\"}",
+      "dek_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "entry_id": "ab5f6ce00062b2b97bae3b5207233ba39c934ec67a8ba3670aeebdcd1b7b4a66",
+      "owner_id": "user-123",
+      "entry_dek_hex": "ebce0a4c7a4191a31754160d3c12e421a58127f39082e62cf5d18850a258b1d7",
+      "entry_aad": "{\"entry_id\":\"ab5f6ce00062b2b97bae3b5207233ba39c934ec67a8ba3670aeebdcd1b7b4a66\",\"version\":1,\"author_id\":\"user-123\"}",
+      "nonce_hex": "808182838485868788898a8b8c8d8e8f9091929394959697",
+      "v1_ciphertext_b64": "eYES2/oQDRVI0Ihx4x2mCdsV4YuruQBYyIlh2dvBD44rQpA6MUWEKz1lYmDqvsgrML8nImIJSzhyn6OLjXLA+tAIff9G8Ml7c709OBQTxc7rUfIs3sCTSXJ4TuFyXwm4QbdPvEBwX1sFDpgv9CM7/A==",
+      "v2_ciphertext_b64": "JD6BMirDQW6RYZVxaG9JI+90ZjBc/LSf2/35xZ+tQ8Cja7f3TCZStA7tQ2wEwOI6Zavyzv2QnpdfhJudWyejUsT7ahKt0KaqpF/hKOGGFfQz09MUM37PfuJ0zjirDS4r5cwpwyxBREn/g0b0B8AOfA=="
+    }
+  ],
+  "timers": [
+    {
+      "dek_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "owner_id": "user-123",
+      "version": 7,
+      "timer_json": "{\"d\":\"Plan the release\",\"p\":\"tokify\",\"t\":[\"docs\"],\"s\":\"2026-10-01T09:30:15.123456789+01:00\",\"dev\":\"mac\"}",
+      "aad": "tokify/running-timer/v1\u0000user-123\u00007",
+      "nonce_hex": "808182838485868788898a8b8c8d8e8f9091929394959697",
+      "ciphertext_b64": "eYES2/oQCRhL4txt7grjJ8tLtNjgskcMnqU208mFUbkgeI9EQQKebXgcbCb1/4ErT78nImIJSzhyn6OLjXLA+tB8ff9G8Mljbqp2KxwCw8vvUOckxd2SQmJ5XfdgDk6z3AH3eyO3rk0+Kkz6i9jwTNXiPAEHGLMj"
+    },
+    {
+      "dek_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "owner_id": "user-123",
+      "version": 7,
+      "timer_json": "{\"d\":\"Plan the release\",\"p\":\"tokify\",\"s\":\"2026-10-01T09:30:15.123456789+01:00\",\"e\":\"2026-10-01T10:30:15.123456789+01:00\",\"dev\":\"mac\"}",
+      "aad": "tokify/running-timer/v1\u0000user-123\u00007",
+      "nonce_hex": "808182838485868788898a8b8c8d8e8f9091929394959697",
+      "ciphertext_b64": "eYES2/oQCRhL4txt7grjJ8tLtNjgskcMnqU208mFUbkgeI9EQQKZbXhlfHKoqt84Ir41YBQDUDBxna+XiWzc+NIcePBL+8Byb65iKh4T29y8ReU/3N2RTn94T/ZyW3/0zgHmJnjluR5tH98KFDBv+nLdlA9xjUN28CArJmbdyImK6NWSZM6b3VeUNqG7vH4dD9OEkKo="
+    }
+  ]
+}

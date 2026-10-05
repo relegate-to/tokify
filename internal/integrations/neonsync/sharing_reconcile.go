@@ -68,7 +68,8 @@ func (s *Service) encodeSharedEntry(sess *sharingSession, id string, act models.
 }
 
 // reconcileAudiences runs the reconcile-on-write pass for every audience the
-// caller is a member of (plan §4). For each audience it verifies the full epoch
+// caller created or accepted (plan §4); an audience the server merely reports
+// them active in is skipped. For each audience it verifies the full epoch
 // chain and watermark (a hard stop skips the audience, never wraps to an
 // unverified epoch), unwraps the filter, evaluates it over local completed
 // entries, inserts missing grants, and deletes grants for entries that no longer
@@ -84,13 +85,59 @@ func (s *Service) reconcileAudiences(
 	if err != nil {
 		return []error{gerrors.Wrap(err, "list audiences")}
 	}
+	// Pick up audiences joined on another device before deciding what to skip.
+	s.pullPins(ctx, sess)
+	joined, err := s.joinedAudiences(ctx, sess, audiences)
+	if err != nil {
+		return []error{err}
+	}
 	var errs []error
 	for _, aud := range audiences {
+		if !joined[aud.ID] {
+			continue
+		}
 		if rerr := s.reconcileAudience(ctx, sess, aud.ID, localByID, now); rerr != nil {
 			errs = append(errs, gerrors.Wrapf(rerr, "audience %s", aud.ID))
 		}
 	}
 	return errs
+}
+
+// joinedAudiences returns the audiences this account created or accepted. The
+// first call after upgrading seeds the set from the memberships that were
+// already active, which is what reconcile trusted before the set existed.
+func (s *Service) joinedAudiences(ctx context.Context, sess *sharingSession, audiences []audienceRow) (map[string]bool, error) {
+	joined, seeded, err := s.pins.JoinedAudiences()
+	if err != nil || seeded {
+		return joined, err
+	}
+	ids := make([]string, len(audiences))
+	for i, aud := range audiences {
+		ids[i] = aud.ID
+	}
+	members, err := getMembersByAudiences(ctx, s.http, sess.base, sess.token, ids)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "list memberships")
+	}
+	var seed []string
+	for _, aud := range audiences {
+		if aud.CreatedBy == sess.userID {
+			seed = append(seed, aud.ID)
+			continue
+		}
+		for _, m := range members[aud.ID] {
+			if m.MemberID == sess.userID && m.Status == "active" {
+				seed = append(seed, aud.ID)
+				break
+			}
+		}
+	}
+	if err = s.pins.SeedJoined(seed); err != nil {
+		return nil, err
+	}
+	s.pushPins(ctx, sess)
+	joined, _, err = s.pins.JoinedAudiences()
+	return joined, err
 }
 
 func (s *Service) reconcileAudience(

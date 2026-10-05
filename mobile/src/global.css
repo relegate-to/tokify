@@ -1,0 +1,136 @@
+@import 'tailwindcss';
+@import 'uniwind';
+
+@import 'tw-animate-css';
+
+/* Tokens mirror the desktop (cmd/tock-desktop/frontend/src/style.css). Keep
+   the two in step: the point of the shared stack is that a timer looks the
+   same on every device. */
+
+@theme {
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: var(--radius);
+    --radius-xl: 14px;
+    --radius-2xl: 18px;
+
+    --spacing-hairline: hairlineWidth();
+
+    /* React Native picks a weight by font file, so each weight is its own family. */
+    --font-sans: 'InstrumentSans_400Regular';
+    --font-sans-medium: 'InstrumentSans_500Medium';
+    --font-sans-semibold: 'InstrumentSans_600SemiBold';
+    --font-mono: 'IBMPlexMono_400Regular';
+    --font-mono-medium: 'IBMPlexMono_500Medium';
+}
+
+@layer theme {
+    :root {
+        @variant light {
+            --color-background: #f7f7f7;
+            --color-foreground: #171717;
+            --color-card: #ffffff;
+            --color-card-foreground: #171717;
+            --color-popover: #ffffff;
+            --color-popover-foreground: #171717;
+            --color-primary: #171717;
+            --color-primary-foreground: #fafafa;
+            --color-secondary: #ececec;
+            --color-secondary-foreground: #3d3d3d;
+            --color-muted: #ececec;
+            --color-muted-foreground: #6e6e6e;
+            --color-accent: #f1f1f1;
+            --color-accent-foreground: #171717;
+            --color-destructive: oklch(0.58 0.2 25);
+            --color-border: #e4e4e4;
+            --color-input: #e4e4e4;
+            --color-ring: #b4b4b4;
+            --color-ink-faint: #8a8a8a;
+            --color-running-card: #171717;
+            --color-running-card-foreground: #fafafa;
+            --color-running-card-muted: #b4b4b4;
+            --color-running-card-faint: #9a9a9a;
+            --color-running-stop: #fafafa;
+            --color-running-stop-foreground: #171717;
+            --color-running-stop-glyph: oklch(0.58 0.2 25);
+            --color-live-dot: oklch(0.62 0.16 145);
+            --color-live-dot-hero: oklch(0.72 0.18 145);
+            --color-idle-dot: #cfcfcf;
+            --color-navigation: #ececec;
+            --color-goal-accent: oklch(0.62 0.19 285);
+            --color-contribution-0: #e4e4e4;
+            --color-contribution-1: #f0e6cf;
+            --color-contribution-2: #e3cd97;
+            --color-contribution-3: #cbab5f;
+            --color-contribution-4: #b8932e;
+            --color-subtle-surface: #f1f1f1;
+            --color-day-total-foreground: #3d3d3d;
+            --color-subtle-surface-border: #e4e4e4;
+            --color-navigation-active: #ffffff;
+            --color-navigation-active-foreground: #171717;
+            --color-navigation-muted-foreground: #9a9a9a;
+            --color-project-0: #e35648;
+            --color-project-1: #1fa877;
+            --color-project-2: #dca017;
+            --color-project-3: #3f84dc;
+            --color-project-4: #0ab4ac;
+            --color-project-5: #db4f8c;
+            --color-project-6: #7b6ef2;
+            --color-project-7: #ec7f2e;
+        }
+
+        @variant dark {
+            --color-background: #121212;
+            --color-foreground: #fafafa;
+            --color-card: #1a1a1a;
+            --color-card-foreground: #fafafa;
+            --color-popover: #1a1a1a;
+            --color-popover-foreground: #fafafa;
+            --color-primary: #fafafa;
+            --color-primary-foreground: #171717;
+            --color-secondary: #262626;
+            --color-secondary-foreground: #dcdcdc;
+            --color-muted: #262626;
+            --color-muted-foreground: #a1a1a1;
+            --color-accent: #262626;
+            --color-accent-foreground: #fafafa;
+            --color-destructive: oklch(0.66 0.18 25);
+            --color-border: #303030;
+            --color-input: #303030;
+            --color-ring: #6e6e6e;
+            --color-ink-faint: #8a8a8a;
+            --color-running-card: #f0f0f0;
+            --color-running-card-foreground: #171717;
+            --color-running-card-muted: #6e6e6e;
+            --color-running-card-faint: #8a8a8a;
+            --color-running-stop: #171717;
+            --color-running-stop-foreground: #fafafa;
+            --color-running-stop-glyph: oklch(0.66 0.19 25);
+            --color-live-dot: oklch(0.72 0.18 145);
+            --color-live-dot-hero: oklch(0.58 0.16 145);
+            --color-idle-dot: #4a4a4a;
+            --color-navigation: #262626;
+            --color-goal-accent: oklch(0.7 0.17 285);
+            --color-contribution-0: #1f1f1f;
+            --color-contribution-1: #302d1d;
+            --color-contribution-2: #554b22;
+            --color-contribution-3: #78652e;
+            --color-contribution-4: #a18f45;
+            --color-subtle-surface: #1a1a1a;
+            --color-day-total-foreground: #d4d4d4;
+            --color-subtle-surface-border: #303030;
+            --color-navigation-active: #3b3b3b;
+            --color-navigation-active-foreground: #fafafa;
+            --color-navigation-muted-foreground: #8a8a8a;
+            --color-project-0: #f26a5b;
+            --color-project-1: #2ec08a;
+            --color-project-2: #ecb43e;
+            --color-project-3: #5a98ea;
+            --color-project-4: #22cabf;
+            --color-project-5: #ea6aa2;
+            --color-project-6: #9184f9;
+            --color-project-7: #f5904a;
+        }
+    }
+}
