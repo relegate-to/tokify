@@ -359,6 +359,7 @@ export namespace projects {
 	    name: string;
 	    audience_id?: string;
 	    color?: string;
+	    color_at?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Project(source);
@@ -369,6 +370,7 @@ export namespace projects {
 	        this.name = source["name"];
 	        this.audience_id = source["audience_id"];
 	        this.color = source["color"];
+	        this.color_at = source["color_at"];
 	    }
 	}
 
