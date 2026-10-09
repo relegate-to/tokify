@@ -1,3 +1,62 @@
+export namespace hotkeys {
+	
+	export class Shortcut {
+	    key: string;
+	    cmd?: boolean;
+	    ctrl?: boolean;
+	    alt?: boolean;
+	    shift?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Shortcut(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.cmd = source["cmd"];
+	        this.ctrl = source["ctrl"];
+	        this.alt = source["alt"];
+	        this.shift = source["shift"];
+	    }
+	}
+	export class Binding {
+	    action: string;
+	    shortcut: Shortcut;
+	    global?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Binding(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.action = source["action"];
+	        this.shortcut = this.convertValues(source["shortcut"], Shortcut);
+	        this.global = source["global"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace main {
 	
 	export class CLIStatus {

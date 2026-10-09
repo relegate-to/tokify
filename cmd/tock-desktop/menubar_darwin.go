@@ -228,6 +228,7 @@ import (
 	"github.com/go-faster/errors"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/kriuchkov/tock/internal/app/hotkeys"
 	"github.com/kriuchkov/tock/internal/appdir"
 )
 
@@ -239,6 +240,9 @@ const (
 
 type desktopPrefs struct {
 	MenuBarMode bool `json:"menu_bar_mode"`
+	// Hotkeys is nil until the user first saves shortcuts, which is how a fresh
+	// install gets the defaults.
+	Hotkeys []hotkeys.Binding `json:"hotkeys,omitempty"`
 }
 
 func desktopPrefsPath() (string, error) {
@@ -303,13 +307,16 @@ func (a *App) SetMenuBarMode(enabled bool) error {
 		wailsruntime.EventsEmit(a.ctx, "menubar:mode", false)
 	}
 	a.refreshTrayTitle()
-	return saveDesktopPrefs(desktopPrefs{MenuBarMode: enabled})
+	prefs := loadDesktopPrefs()
+	prefs.MenuBarMode = enabled
+	return saveDesktopPrefs(prefs)
 }
 
 // domReady reapplies a saved menu bar mode once the window exists. main sets
 // the flag before launch so the page reads the right mode on first paint; the
 // window starts hidden, so the popover then waits for a click on the item.
 func (a *App) domReady(_ context.Context) {
+	a.startHotkeys()
 	if !a.menuBar.Load() {
 		return
 	}

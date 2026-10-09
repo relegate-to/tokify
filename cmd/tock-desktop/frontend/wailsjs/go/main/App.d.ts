@@ -5,6 +5,7 @@ import {mcpserver} from '../models';
 import {neonauth} from '../models';
 import {main} from '../models';
 import {projects} from '../models';
+import {hotkeys} from '../models';
 import {neonsync} from '../models';
 
 export function ActivityHistoryState():Promise<string>;
@@ -45,6 +46,10 @@ export function Export(arg1:string,arg2:string,arg3:string,arg4:string,arg5:bool
 
 export function GetRunning():Promise<models.Activity>;
 
+export function HotkeyDefaults():Promise<Array<hotkeys.Binding>>;
+
+export function Hotkeys():Promise<Array<hotkeys.Binding>>;
+
 export function InstallCLI():Promise<main.CLIStatus>;
 
 export function ListPastYear():Promise<Array<models.Activity>>;
@@ -61,6 +66,8 @@ export function OpenActivityLog():Promise<void>;
 
 export function OpenApplicationDataDirectory():Promise<void>;
 
+export function PauseHotkeys(arg1:boolean):Promise<void>;
+
 export function Projects():Promise<Array<string>>;
 
 export function RedoLastActivityChange():Promise<string>;
@@ -70,6 +77,10 @@ export function RefreshRunningTimer():Promise<void>;
 export function RemoveActivity(arg1:models.Activity):Promise<void>;
 
 export function RenameProject(arg1:string,arg2:string):Promise<projects.Project>;
+
+export function RunHotkeyAction(arg1:string):Promise<void>;
+
+export function SetHotkeys(arg1:Array<hotkeys.Binding>):Promise<Array<string>>;
 
 export function SetMenuBarMode(arg1:boolean):Promise<void>;
 

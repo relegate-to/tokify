@@ -78,6 +78,14 @@ export function GetRunning() {
   return window['go']['main']['App']['GetRunning']();
 }
 
+export function HotkeyDefaults() {
+  return window['go']['main']['App']['HotkeyDefaults']();
+}
+
+export function Hotkeys() {
+  return window['go']['main']['App']['Hotkeys']();
+}
+
 export function InstallCLI() {
   return window['go']['main']['App']['InstallCLI']();
 }
@@ -110,6 +118,10 @@ export function OpenApplicationDataDirectory() {
   return window['go']['main']['App']['OpenApplicationDataDirectory']();
 }
 
+export function PauseHotkeys(arg1) {
+  return window['go']['main']['App']['PauseHotkeys'](arg1);
+}
+
 export function Projects() {
   return window['go']['main']['App']['Projects']();
 }
@@ -128,6 +140,14 @@ export function RemoveActivity(arg1) {
 
 export function RenameProject(arg1, arg2) {
   return window['go']['main']['App']['RenameProject'](arg1, arg2);
+}
+
+export function RunHotkeyAction(arg1) {
+  return window['go']['main']['App']['RunHotkeyAction'](arg1);
+}
+
+export function SetHotkeys(arg1) {
+  return window['go']['main']['App']['SetHotkeys'](arg1);
 }
 
 export function SetMenuBarMode(arg1) {

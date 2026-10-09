@@ -28,6 +28,8 @@ import { main, mcpserver } from '../../wailsjs/go/models';
 import type { ActivityView, Theme } from '@/types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { ShortcutsSettings } from '@/components/ShortcutsSettings';
+import type { Binding } from '@/lib/hotkeys';
 
 export function SettingsView({
     showAccount,
@@ -44,6 +46,8 @@ export function SettingsView({
     onThemeChange,
     menuBar,
     onMenuBarChange,
+    hotkeyBindings,
+    onHotkeyBindingsChange,
     onBack,
 }: {
     showAccount: boolean;
@@ -60,6 +64,8 @@ export function SettingsView({
     onThemeChange: (v: Theme) => void;
     menuBar: boolean;
     onMenuBarChange: (v: boolean) => void;
+    hotkeyBindings: Binding[];
+    onHotkeyBindingsChange: (next: Binding[]) => void;
     onBack: () => void;
 }) {
     return (
@@ -137,6 +143,13 @@ export function SettingsView({
                     value={showAccount}
                     onChange={onShowAccountChange}
                 />
+            </div>
+
+            <div className="flex flex-col gap-3">
+                <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Keyboard shortcuts
+                </h3>
+                <ShortcutsSettings bindings={hotkeyBindings} onChange={onHotkeyBindingsChange} />
             </div>
 
             <div className="flex flex-col gap-3">

@@ -204,27 +204,6 @@ export function Masthead({
   }, [open]);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName.toLowerCase();
-      if (tag === "input" || tag === "textarea" || target?.isContentEditable) {
-        return;
-      }
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.key === "1") {
-        event.preventDefault();
-        onView("now");
-      }
-      if (event.key === "2") {
-        event.preventDefault();
-        onView("history");
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onView]);
-
-  useEffect(() => {
     let cancelled = false;
     setRunningShorthand(null);
 
