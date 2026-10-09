@@ -20,8 +20,10 @@ import {
     ListProjects,
     ListRecent,
     ListToday,
+    Hotkeys,
     MenuBarMode,
     Projects,
+    RunHotkeyAction,
     RemoveActivity,
     SetMenuBarMode,
     SharingListTeams,
@@ -37,6 +39,7 @@ import {
     UpdateActivity,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
+import { FOCUS_STARTER_EVENT, matchInWindow, type Binding } from '@/lib/hotkeys';
 import { main, neonauth } from '../wailsjs/go/models';
 
 import type { Activity, ActivityItem, ActivityView, Theme, UndoState, View } from '@/types';
@@ -607,6 +610,25 @@ function App() {
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [handleRedo, handleUndo]);
 
+    // The configurable shortcuts that work inside the window. Global ones are
+    // registered with macOS by the Go side and never reach the page.
+    const [hotkeyBindings, setHotkeyBindings] = useState<Binding[]>([]);
+    useEffect(() => {
+        Hotkeys()
+            .then((b) => setHotkeyBindings(b ?? []))
+            .catch(() => {});
+    }, []);
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            const hit = matchInWindow(hotkeyBindings, event);
+            if (!hit) return;
+            event.preventDefault();
+            RunHotkeyAction(hit.action).catch((e) => toast.error(String(e)));
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [hotkeyBindings]);
+
     useEffect(() => {
         MenuBarMode()
             .then(setMenuBar)
@@ -617,6 +639,8 @@ function App() {
             // The tray starts and stops activities behind the page's back.
             EventsOn('activities:changed', () => afterMutation()),
             EventsOn('tray:navigate', (next: View) => setView(next)),
+            // After the view switch lands, so the starter is mounted to take focus.
+            EventsOn('hotkey:new-activity', () => setTimeout(() => window.dispatchEvent(new Event(FOCUS_STARTER_EVENT)), 50)),
             EventsOn('tray:error', (message: string) => toast.error(message)),
         ];
         return () => offs.forEach((off) => off());
@@ -1025,6 +1049,8 @@ function App() {
                                 onThemeChange={setTheme}
                                 menuBar={menuBar}
                                 onMenuBarChange={handleMenuBarChange}
+                                hotkeyBindings={hotkeyBindings}
+                                onHotkeyBindingsChange={setHotkeyBindings}
                                 onBack={() => setView('now')}
                             />
                         </div>

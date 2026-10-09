@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FileText, X } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { FOCUS_STARTER_EVENT } from '@/lib/hotkeys';
 import { EASE_THUNK } from '@/lib/motion';
 import { buildClockISO, formatClock } from '@/lib/time';
 import { Input } from '@/components/ui/input';
@@ -38,6 +39,10 @@ export function Starter({
 
     useEffect(() => {
         inputRef.current?.focus();
+        // The New activity shortcut, from anywhere.
+        const focus = () => inputRef.current?.focus();
+        window.addEventListener(FOCUS_STARTER_EVENT, focus);
+        return () => window.removeEventListener(FOCUS_STARTER_EVENT, focus);
     }, []);
 
     useEffect(() => {
