@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { ConfigContext, ExpoConfig } from 'expo/config';
@@ -23,8 +23,15 @@ function repoEnv(): Record<string, string> {
 
 export default ({ config }: ConfigContext): ExpoConfig => {
     const env = { ...repoEnv(), ...process.env };
+    // Firebase config is gitignored, so builds without it still work, just
+    // without push.
+    const googleServicesFile = env.GOOGLE_SERVICES_JSON ?? './google-services.json';
     return {
         ...(config as ExpoConfig),
+        android: {
+            ...config.android,
+            ...(existsSync(resolve(__dirname, googleServicesFile)) && { googleServicesFile }),
+        },
         extra: {
             ...config.extra,
             neonAuthUrl: env.NEON_AUTH_URL ?? '',

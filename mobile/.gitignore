@@ -44,3 +44,6 @@ yarn-error.*
 /android
 /ios
 /modules/*/android/build
+
+# Firebase client config; kept out of the public repo
+google-services.json
