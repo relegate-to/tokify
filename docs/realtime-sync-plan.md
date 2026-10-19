@@ -205,7 +205,9 @@ Firebase; FCM cannot reach an iPhone without them.
     membership, share filters, granting the phone's own entries, and
     teammates' entries in the Log. Project colors sync through
     `user_keys.wrapped_projects` (desktop and mobile; live).
-  - **4g.** Push (Phase 3), the iOS Live Activity and reminders.
+  - **4g.** Push (Phase 3), the iOS Live Activity and reminders. Android shows
+    the running timer as an ongoing notification with a native chronometer,
+    redrawn by a background task when a timer push arrives with the app closed.
   - **4h.** iOS build and test: needs Xcode, which the build Mac doesn't have
     yet. The Swift half of `tokify-argon2` has never been compiled.
 - Sign-in with email/password or OTP against Neon Auth, matching desktop.

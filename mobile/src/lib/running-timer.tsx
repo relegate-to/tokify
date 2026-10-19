@@ -7,15 +7,15 @@ import { bytesToHex } from '@/crypto/bytes';
 import type { RunningTimer } from '@/crypto/sync';
 import { useEntries } from '@/lib/entries';
 import { usePushDevice } from '@/lib/push';
+import { askForNotifications, showTimerNotification } from '@/lib/timer-notification';
 import { useSession } from '@/lib/session';
 import { dataToken } from '@/sync/account';
 import { entryFromTimer, flushPending, queueEntry } from '@/sync/entries';
 import { notifyDevices } from '@/sync/push';
-import { isRunning, readTimer, startTimer, stopTimer, TimerConflict, writeTimer, type TimerState } from '@/sync/timer';
+import { isRunning, readTimer, startTimer, stopTimer, TIMER_STATE_KEY, TimerConflict, writeTimer, type TimerState } from '@/sync/timer';
 import { dataApi, isMissingTable } from '@/sync/timer-api';
 
 const REFRESH_MS = 15_000;
-const STATE_KEY = 'timer.state';
 const DEVICE_KEY = 'device.id';
 
 const api = dataApi(dataToken);
@@ -43,7 +43,7 @@ function useTimerState() {
     const adopt = useCallback((next: TimerState) => {
         stateRef.current = next;
         setState(next);
-        SecureStore.setItemAsync(STATE_KEY, JSON.stringify(next)).catch(() => undefined);
+        SecureStore.setItemAsync(TIMER_STATE_KEY, JSON.stringify(next)).catch(() => undefined);
     }, []);
 
     // Completed activities the phone ended go to the entries table, which
@@ -72,7 +72,7 @@ function useTimerState() {
     }, [account, localOnly, adopt, flush]);
 
     useEffect(() => {
-        SecureStore.getItemAsync(STATE_KEY)
+        SecureStore.getItemAsync(TIMER_STATE_KEY)
             .then((cached) => cached && adopt(JSON.parse(cached) as TimerState))
             .finally(() => {
                 setLoaded(true);
@@ -93,6 +93,14 @@ function useTimerState() {
     }, [refresh, adopt]);
 
     usePushDevice(account?.user.id, refresh);
+
+    const running = isRunning(state.timer);
+    useEffect(() => {
+        if (running) askForNotifications().then(() => showTimerNotification(stateRef.current.timer));
+    }, [running]);
+    useEffect(() => {
+        if (loaded) showTimerNotification(account ? state.timer : null);
+    }, [account, loaded, state.timer]);
 
     // Resolves true once the server has the write.
     const run = useCallback(
