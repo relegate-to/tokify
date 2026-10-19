@@ -1,22 +1,21 @@
 # E2EE Link Shares — One-Off Recipients Without an Account
 
-## Implementation status (September 2026)
+## Implementation status (October 2026)
 
-The desktop sender path is implemented: link creation/list/revocation, synthetic
-link identities, epoch/grant reconciliation, the SQL schema/RPC, and focused Go
-and RLS tests are in this repository. The next phase is the recipient browser
-viewer in the sibling `tokify.to` app.
+Implemented end to end. The desktop mints links (`sharing_link.go`, Settings ->
+Sharing) as `https://tokify.to/share/<audience-id>#<secret>`, and the
+`tokify.to` site decrypts them in the browser (`app/lib/share-link.ts`,
+`app/share/[audience]`): a TypeScript port of the holder path using Argon2id
+from WASM, with author signatures checked against the trust bundle.
 
-Start that phase by verifying Neon's anonymous RPC support in the deployed
-project, then freeze cross-language crypto test vectors before choosing between
-Go/WASM and a TypeScript implementation. After that, build `/share/<audience-id>`
-with fragment-secret handling, paged fetch/decrypt, signature verification, and
-expired/revoked/error states. The URL fragment secret must never be sent to the
-server or included in telemetry.
-
-**Status:** sender and data plane implemented; the browser recipient viewer
-remains. Everything else in
-[`e2ee-sharing-plan-v2.md`](e2ee-sharing-plan-v2.md) is implemented.
+- **Anonymous access is confirmed** on the deployed project: `GET
+  <auth>/token/anonymous` issues a `role: anonymous` JWT that can call
+  `sharing_link_fetch` and is refused on the base tables.
+- **Cross-language vectors:** `testdata/link-vectors.json` is minted by the real
+  sender path (`TestLinkVectors`); Go and the website's `bun test` both decrypt
+  it. Regenerate with `-update` and copy it to the website.
+- **Telemetry:** the site loads no analytics on `/share`, sends no referrer, and
+  is `noindex`.
 
 **Problem:** the v2 plan assumes every recipient is an account holder. Both planes
 demand it — the visibility plane gates every read on `member_id = auth.user_id()`

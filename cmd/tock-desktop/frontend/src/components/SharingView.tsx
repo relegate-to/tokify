@@ -50,7 +50,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 
 const SHARE_BASE_URL =
-    import.meta.env.VITE_TOKIFY_SHARE_BASE_URL || 'https://tokify.app/share';
+    import.meta.env.VITE_TOKIFY_SHARE_BASE_URL || 'https://tokify.to/share';
 
 const SINCE_OPTIONS = [
     { label: '7 days', value: 7 },
