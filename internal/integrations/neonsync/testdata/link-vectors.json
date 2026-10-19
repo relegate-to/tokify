@@ -1,0 +1,74 @@
+{
+  "secret": "lN0kOePSid9kafELOZFh8g",
+  "link_token": "d029685af4258b49e2d935dd5a3aa6e09a1d64b43b47ff807a146b12231e7b7e",
+  "token_hash": "682da658a147124fd8429d0877ba4bffc96255c1d12fc01b99e723c201fc65d0",
+  "kek_hex": "ea04e5041ce2342723db32591c538af83771c302bb9d48e3d7e492eef97a8c81",
+  "sender_sig_pub_b64": "V7UutqxHgwmhdgyuz9ViHHII01BZIpZAeP0dBLO0PL0=",
+  "rpc": {
+    "audience_id": "link-aud",
+    "member_id": "9981ecd61fbf2e2276e9c600329b26c3",
+    "wrapped_identity": "xPrmYUCRubeG4bfLLgUUYCFw8rfVlrc0RVpt3t9niBz/iybEl7rhVPux1EFSAXer/GAj2929CcpfGUhl0WtFrcG1QGyML9ZBjjsiNouWzT+DQ9b96UyPBKqzV+J8YynmBjw6nIbsb0L+hY4zdK/+vt9/uh8jfR2BTwJKmf9HEwe5Nl5lvg+Vxkj6675dR1jl8PzyfbsQu57tlQktLc+rKnmGBXCTdQ9o8ACxfvmQmwZm",
+    "identity_nonce": "r+ShrvmxHbO6u2U7TMP5M2WZkTpvfprL",
+    "salt_enc": "Y4XmIied0iaD57v7fFc2vQ==",
+    "trust_bundle": "FiyMZBTqWHqEx3jc8/LQ0h2HNDm+7TRzWqh6h42xlf1n9U0fC/vRRYPoNKoP6+Vr",
+    "trust_bundle_nonce": "MNj0JF1ZYlQzIv84C4VWWqRu44tAHsC0",
+    "epoch_keys": [
+      {
+        "epoch": 1,
+        "wrapped_epoch_privkey": "QAbHSE5eCYn427RajFk55O3jR+URBNVBhXIQDubJZA4FfANJ8UaRAusCYTmw5STcnLCZ7jLqWkOhG+4TbDrCeHFk4kkcfqAQNJcXCFwvzm8="
+      }
+    ],
+    "entries": [
+      {
+        "id": "9ae35b281d1fa624bc7e04975d5cb65c2de069e43e538ebcf3ca6620383be3ed",
+        "ciphertext": "3ocZqq5hhtTKKOfAZOl04OrdbmIZvpZG1M+s2ld/XI0U/CIXew1CsQL7OMudZvlcIBTW7BZtkMy19EmUQmboCsmk2pVckiRA68YGLbayi0GvBHCLbnClEvB4nyOd8Ortr7YFbrj9gfOmco1k2vOCgP+kr5NPeEVk7YiM/CibqyA=",
+        "nonce": "U/plCpp5IaVEKi7ukVepOJKOeQPwjDiV",
+        "version": 1,
+        "author_sig": "cH6OB9cAFVwOyAsgkHQttYg/gfL/ovGYqWpXD1buNvsivnIRpKVCO6Oc449NXb5FZtSq6idrpa9U2oCJWkWBDg==",
+        "author_id": "sender-sub",
+        "grant_epoch": 1,
+        "wrapped_dek": "JJ7797m2Le8WPj/x6IKDjYj4axNGC+Jn0FXC1USvXwxB4AO0AHbe+2N13Oj/SLBBlFjjqSZEgmTKE7vr7bF4yupFw97Fs7hVaFpoTqYuaMk="
+      },
+      {
+        "id": "5130e41a2b6b6a76b2e7520e2250a18d0952eb72da558641e6aa42d504fe5a19",
+        "ciphertext": "3IlA/dm49VPW28I7YoamztPDMxyM5fjieiSmL/LZUFqMC5XLp/Cr0oXfdZMcM1Le2FV4Kz7lPIuMZjylCgqtil3tY2MhOhCwxwDcNxE019QD1Yuf4VOEZdS5r4z0",
+        "nonce": "KBAtA4in+EfrVRNX4KMG7CTSJxOA7LHk",
+        "version": 1,
+        "author_sig": "FbqXlLsNK8BQpSm5eLZPDssKNVBNPGAQy2BREn2miV0m3KHgBi8Jt30+Nm9f3W9WzjA9ikiu8zqV/+tmeld8Dg==",
+        "author_id": "sender-sub",
+        "grant_epoch": 1,
+        "wrapped_dek": "XxzjbZZz/aUa5vHJzmtCoagCHZKYPKzTTho07UtGxRQYRnnqrOJfUZOd8lg+RPt0RlhcnBqkPnhifWKsrzfrLUgZ3/TUP4pD2a63aE3UBos="
+      },
+      {
+        "id": "b8f5b595f0958960b7e88121c44a60719e7d34a082ddca6a4cff4173692cd332",
+        "ciphertext": "0JPMHfVaLEe12PsjSCnuSlO9wRfyswUKjcnS3GGo6gWWiCu7I4SE4KLZstEAipfWitr+W0PUFo5/+QszF73HuQgZXs/Lt1Kj9tZT1HYieUahf8MyAtztdifqma+0jn3rF6aGjkHcbZdiZq1mmszjjjpoaeuojH2cSD+vAg8TCqSQ0al8",
+        "nonce": "E/8jyyMpOQVoRpD5O2otVpJuVL2lcXLb",
+        "version": 1,
+        "author_sig": "jSEwn1XS8lPS1ygU9EHuF5QmYemS1pMbpE2ii2UQ+eP7wW6x8Xo1bvAt5cQA7Mc+OMYqNXdYw78SAy4wGql6DQ==",
+        "author_id": "sender-sub",
+        "grant_epoch": 1,
+        "wrapped_dek": "dmoDObCenGotlAzfu8Jx3U0M5dZsHwpi3NEepUJ9bnur5U7srupfln7iG61qNG0BhVVVdWCMDvHFzzYJMYrErT3jAfSy7zo+PhNcscqjuGo="
+      }
+    ]
+  },
+  "entries": [
+    {
+      "d": "Café review — naïve résumé 🔑",
+      "p": "Clients/ÆØÅ",
+      "s": "2026-10-01 15:30",
+      "e": "2026-10-01 17:05"
+    },
+    {
+      "d": "Write plan",
+      "p": "tokify",
+      "s": "2026-10-01 09:30",
+      "e": "2026-10-01 11:05"
+    },
+    {
+      "d": "Fix \u003cscript\u003e \u0026 \"quotes\" in names",
+      "p": "tokify",
+      "s": "2026-10-01 12:30",
+      "e": "2026-10-01 14:05"
+    }
+  ]
+}

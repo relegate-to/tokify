@@ -50,7 +50,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 
 const SHARE_BASE_URL =
-    import.meta.env.VITE_TOKIFY_SHARE_BASE_URL || 'https://tokify.app/share';
+    import.meta.env.VITE_TOKIFY_SHARE_BASE_URL || 'https://tokify.to/share';
 
 const SINCE_OPTIONS = [
     { label: '7 days', value: 7 },
@@ -109,13 +109,15 @@ export function SharingView({
         [projects],
     );
 
+    // The status is local and quick; listing links goes to the server. Loading
+    // them separately keeps a slow or failed list from hiding the sync state.
     const loadLinks = () => {
         setLoading(true);
-        Promise.all([SyncStatus(), SharingListLinks()])
-            .then(([nextStatus, nextLinks]) => {
-                setStatus(nextStatus);
-                setLinks(nextLinks ?? []);
-            })
+        SyncStatus()
+            .then(setStatus)
+            .catch(() => setStatus(null));
+        SharingListLinks()
+            .then((nextLinks) => setLinks(nextLinks ?? []))
             .catch((e) => {
                 setLinks([]);
                 toast.error(authErrorText(e));
@@ -204,7 +206,7 @@ export function SharingView({
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                    {!canCreate && (
+                    {status && !canCreate && (
                         <Alert>
                             <ShieldCheck />
                             <AlertTitle>Sign in and unlock sync first</AlertTitle>

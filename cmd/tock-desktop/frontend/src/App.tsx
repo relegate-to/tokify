@@ -1070,7 +1070,7 @@ function App() {
                             <SharingView
                                 projects={projects}
                                 initialProject={sharingProject}
-                                onBack={() => setView('history')}
+                                onBack={() => setView('now')}
                             />
                         </div>
                     )}
