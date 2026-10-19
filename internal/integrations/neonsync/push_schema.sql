@@ -42,6 +42,9 @@ CREATE POLICY push_devices_delete ON public.push_devices
     TO authenticated
     USING (user_id = auth.user_id());
 
+-- The project's default privileges give authenticated every verb on new
+-- tables; take back the ones this table has no policy for.
+REVOKE INSERT, UPDATE, TRUNCATE, REFERENCES, TRIGGER ON public.push_devices FROM authenticated;
 GRANT SELECT, DELETE ON public.push_devices TO authenticated;
 
 -- Registers the caller's phone, or refreshes last_seen when it already is.

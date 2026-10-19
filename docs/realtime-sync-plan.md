@@ -2,9 +2,8 @@
 
 ## Status (October 2026)
 
-Draft. Phase 1 is implemented in the repository; its migration still has to be
-applied to the live Neon project. The Phase 2a spike is done and dropped the
-live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`), and so is Phase 4 up to 4f. Phase 3 is Android-only for now and implemented (`push_schema.sql`, `functions/`, `mobile/src/sync/push.ts`); its migration and the Function deploy wait on the owner. 2d is not started.
+Draft. Phase 1 is implemented and live on the Neon project. The Phase 2a spike is done and dropped the
+live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`), and so is Phase 4 up to 4f. Phase 3 is Android-only for now and implemented (`push_schema.sql`, `functions/`, `mobile/src/sync/push.ts`); `push_schema.sql` is live, the `notify` Function is not deployed yet. 2d is not started.
 
 **Problem:** the running timer never leaves the device it started on.
 `SyncNow` pushes only completed activities, every 5 minutes
@@ -191,7 +190,7 @@ Firebase; FCM cannot reach an iPhone without them.
   - **4c. Sign-in and unlock** (done): sign-in and sign-up against Neon Auth
     with the derived auth hash; the DEK and the sharing identity are unwrapped
     with the password-derived key and kept in the secure store.
-  - **4d. Running timer** (done; live once `running_timers` is migrated):
+  - **4d. Running timer** (done; `running_timers` is live):
     read, start, stop and edit through `running_timers`, keeping the exact
     start string so desktops still recognise the timer. A start that would
     stop the running timer asks first.
@@ -205,7 +204,7 @@ Firebase; FCM cannot reach an iPhone without them.
     against `sharing/testdata/sharing-vectors.json`, with invitations,
     membership, share filters, granting the phone's own entries, and
     teammates' entries in the Log. Project colors sync through
-    `user_keys.wrapped_projects` (desktop and mobile; live once migrated).
+    `user_keys.wrapped_projects` (desktop and mobile; live).
   - **4g.** Push (Phase 3), the iOS Live Activity and reminders.
   - **4h.** iOS build and test: needs Xcode, which the build Mac doesn't have
     yet. The Swift half of `tokify-argon2` has never been compiled.
