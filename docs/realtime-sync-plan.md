@@ -158,14 +158,15 @@ Firebase; FCM cannot reach an iPhone without them.
   owner, last seen; RLS to the owner. Phones register through the
   `register_push_device` RPC, which moves a token to the account that
   registers it last, and remove their own row with a DELETE on sign-out.
-- `notify` (`functions/`, done) is a short Neon Function the phone calls after
-  a start or stop. It checks the caller's Neon Auth JWT against the JWKS, sends
+- `notify` (`functions/`, done) is a short Neon Function a phone or desktop
+  calls after it writes the running timer. It checks the caller's Neon Auth JWT against the JWKS, sends
   a data-only FCM message to the caller's other phones (the record's version
   and a timestamp, never titles) and forgets tokens FCM reports as
   `UNREGISTERED`. A foregrounded phone refreshes the timer when one arrives;
   handling them in the background comes with the reminders (4g).
-- Not done: desktops do not call `notify` yet, so a desktop start reaches a
-  phone only when it next polls or opens.
+- The desktop calls `notify` after each running-timer write it wins
+  (`PutRunningTimer`), in the background and only when a notify URL is set; it
+  has no push token, so it excludes none.
 
 ---
 

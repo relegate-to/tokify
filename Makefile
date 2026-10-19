@@ -36,7 +36,8 @@ DESKTOP_DIR := cmd/tock-desktop
 -include .env
 NEON_AUTH_URL ?=
 NEON_DATA_URL ?=
-DESKTOP_LDFLAGS := -X github.com/kriuchkov/tock/internal/integrations/neonauth.DefaultAuthURL=$(NEON_AUTH_URL) -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultDataURL=$(NEON_DATA_URL)
+NEON_NOTIFY_URL ?=
+DESKTOP_LDFLAGS := -X github.com/kriuchkov/tock/internal/integrations/neonauth.DefaultAuthURL=$(NEON_AUTH_URL) -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultDataURL=$(NEON_DATA_URL) -X github.com/kriuchkov/tock/internal/integrations/neonsync.DefaultNotifyURL=$(NEON_NOTIFY_URL)
 
 # App version stamped into release builds for the Settings "Check for updates"
 # panel, derived from the current git tag (e.g. v0.1.0). Overridable per-invoke.
@@ -69,6 +70,7 @@ desktop-run: desktop-build
 desktop-dev:
 	cd $(DESKTOP_DIR) && \
 		TOKIFY_NEON_AUTH_URL="$(NEON_AUTH_URL)" TOKIFY_NEON_DATA_URL="$(NEON_DATA_URL)" \
+		TOKIFY_NEON_NOTIFY_URL="$(NEON_NOTIFY_URL)" \
 		$(WAILS) dev
 
 # Check that the Wails CLI and its prerequisites are installed.

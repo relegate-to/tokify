@@ -52,8 +52,9 @@ The Function lives in `functions/` (`neon.ts` declares it). It needs
 the gitignored env file passed to `neon deploy --env <file>`; the key itself
 stays outside the repo. Run it locally with `neon dev`, after
 `npm install` in `functions/`. Put its invocation URL
-(`neon functions get notify`) in `.env` as `NEON_NOTIFY_URL` for the mobile
-app.
+(`neon functions get notify`) in `.env` as `NEON_NOTIFY_URL`; the mobile app
+and release desktop builds read it from there, and a dev desktop also takes
+`TOKIFY_NEON_NOTIFY_URL` or `notify_url` in `neonsync.json`.
 
 ### Reload the Data API schema cache after applying
 

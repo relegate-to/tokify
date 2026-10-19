@@ -17,9 +17,12 @@ import (
 // DataURL is the Neon Data API (PostgREST) base URL; find it in the Neon
 // Console under the Data API section. Enabled is the master switch the Account
 // panel toggles — turning it off leaves the DEK and any synced rows in place.
+// NotifyURL is the notify Function's invocation URL; left empty, the desktop
+// pushes nothing to phones and they see its timer changes when they next poll.
 type Settings struct {
-	DataURL string `json:"data_url"`
-	Enabled bool   `json:"enabled"`
+	DataURL   string `json:"data_url"`
+	NotifyURL string `json:"notify_url,omitempty"`
+	Enabled   bool   `json:"enabled"`
 
 	// LastSync (RFC3339) and EntryCount are sync bookkeeping, not preferences,
 	// but they live in the same file so Status can render "last synced" without

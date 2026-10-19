@@ -1,6 +1,7 @@
 package neonsync
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -157,5 +158,83 @@ func TestRunningTimerRejectsOtherKey(t *testing.T) {
 	}
 	if _, err := readTimer(ctx, hc, srv.URL, "tok", testDEK(t)); err == nil {
 		t.Fatal("want decrypt failure under a different DEK")
+	}
+}
+
+func TestNotifyPhonesPostsVersion(t *testing.T) {
+	type call struct {
+		method, auth, contentType string
+		body                      map[string]any
+	}
+	calls := make(chan call, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		calls <- call{r.Method, r.Header.Get("Authorization"), r.Header.Get("Content-Type"), body}
+		_, _ = io.WriteString(w, `{"sent":1}`)
+	}))
+	defer srv.Close()
+
+	svc := &Service{http: srv.Client(), settings: Settings{NotifyURL: srv.URL}}
+	svc.notifyPhones(t.Context(), "jwt", 7)
+
+	select {
+	case got := <-calls:
+		if got.method != http.MethodPost || got.auth != "Bearer jwt" || got.contentType != "application/json" {
+			t.Fatalf("request = %+v", got)
+		}
+		if len(got.body) != 1 || got.body["version"] != float64(7) {
+			t.Fatalf("body = %v, want only version 7", got.body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("notify was not called")
+	}
+}
+
+func TestNotifyPhonesSkippedWithoutURL(t *testing.T) {
+	called := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called <- struct{}{}
+	}))
+	defer srv.Close()
+
+	svc := &Service{http: srv.Client(), settings: Settings{DataURL: srv.URL}}
+	svc.notifyPhones(t.Context(), "jwt", 7)
+
+	select {
+	case <-called:
+		t.Fatal("notify called with no notify URL configured")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestNotifyPhonesOutlivesCallerContext(t *testing.T) {
+	calls := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		calls <- struct{}{}
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	svc := &Service{http: srv.Client(), settings: Settings{NotifyURL: srv.URL}}
+	svc.notifyPhones(ctx, "jwt", 3)
+
+	select {
+	case <-calls:
+	case <-time.After(5 * time.Second):
+		t.Fatal("notify was dropped when the caller's context ended")
+	}
+}
+
+func TestNotifyReportsFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"unauthorized"}`)
+	}))
+	defer srv.Close()
+
+	if err := notify(t.Context(), srv.Client(), srv.URL, "bad", 1); err == nil {
+		t.Fatal("notify succeeded on a 401")
 	}
 }
