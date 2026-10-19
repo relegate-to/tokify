@@ -36,6 +36,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             ...config.extra,
             neonAuthUrl: env.NEON_AUTH_URL ?? '',
             neonDataUrl: env.NEON_DATA_URL ?? '',
+            neonNotifyUrl: env.NEON_NOTIFY_URL ?? '',
         },
     };
 };

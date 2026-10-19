@@ -37,6 +37,12 @@ const dekAccount = "dek"
 //nolint:gochecknoglobals // ldflags injection target; must be a package var.
 var DefaultDataURL string
 
+// DefaultNotifyURL is the notify Function's URL, baked in like DefaultDataURL
+// and overridden by TOKIFY_NEON_NOTIFY_URL or the settings file.
+//
+//nolint:gochecknoglobals // ldflags injection target; must be a package var.
+var DefaultNotifyURL string
+
 // syncTimeLayout preserves the legacy text log's minute-precision wire format.
 // Existing encrypted rows were keyed from this representation, so SQLite-backed
 // clients must keep using it to retain stable content ids across upgrades.
@@ -104,6 +110,11 @@ func NewService(activities ActivityStore, tokens TokenProvider) (*Service, error
 	} else if strings.TrimSpace(s.DataURL) == "" {
 		s.DataURL = DefaultDataURL
 	}
+	if env := strings.TrimSpace(os.Getenv("TOKIFY_NEON_NOTIFY_URL")); env != "" {
+		s.NotifyURL = env
+	} else if strings.TrimSpace(s.NotifyURL) == "" {
+		s.NotifyURL = DefaultNotifyURL
+	}
 	return &Service{
 		store:      newKeychainStore(),
 		http:       &http.Client{Timeout: 30 * time.Second},
@@ -121,6 +132,12 @@ func (s *Service) dataURL() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return strings.TrimSpace(s.settings.DataURL)
+}
+
+func (s *Service) notifyURL() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return strings.TrimSpace(s.settings.NotifyURL)
 }
 
 // SetDataURL points the service at a Neon Data API project and persists it.

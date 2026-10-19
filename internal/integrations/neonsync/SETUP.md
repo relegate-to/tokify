@@ -41,12 +41,29 @@ column is opaque base64, and no filter is ever evaluated by the database. The
 consciously accepted metadata leakage (the sharing graph and grant time-window
 bounds) is documented in the file's header comment.
 
+## Apply the push schema
+
+`push_schema.sql` adds `push_devices`, the phones the `notify` Function
+(`functions/`) pushes to, and the `register_push_device` RPC the app calls
+after sign-in. Apply it after `schema.sql`, the same way. It is idempotent.
+
+The Function lives in `functions/` (`neon.ts` declares it). It needs
+`FCM_SERVICE_ACCOUNT`, the Firebase service-account JSON base64-encoded, in
+the gitignored env file passed to `neon deploy --env <file>`; the key itself
+stays outside the repo. Run it locally with `neon dev`, after
+`npm install` in `functions/`. Put its invocation URL
+(`neon functions get notify`) in `.env` as `NEON_NOTIFY_URL`; the mobile app
+and release desktop builds read it from there, and a dev desktop also takes
+`TOKIFY_NEON_NOTIFY_URL` or `notify_url` in `neonsync.json`.
+
 ### Reload the Data API schema cache after applying
 
-Whenever the schema adds a column, reload PostgREST's schema cache:
+Whenever the schema adds a table, function or column, reload the Data API's
+schema cache. `NOTIFY pgrst` does not reach Neon's Data API (a new table and
+RPC stayed invisible after it in October 2026); the CLI does:
 
 ```sh
-psql "$NEON_CONNECTION_STRING" -c "NOTIFY pgrst, 'reload schema';"
+neon data-api refresh-schema --project-id <project> --branch production --database neondb
 ```
 
 Skipping this fails in a way that looks like a client bug rather than a missing
@@ -65,15 +82,19 @@ fail. Verify a new column by writing to it, not by selecting it.
 
 `scripts/sharing-rls-test.sh` is a self-contained harness that spins up an
 ephemeral Postgres container, stubs the Neon environment (the `authenticated`
-role and `auth.user_id()`), applies `schema.sql` + `sharing_schema.sql` twice
-(idempotency check), and runs `scripts/sharing-rls-test.sql` — a suite that
-drives the policies as three users (author/admin, member, non-member) and
-asserts forgery prevention, the epoch-bump race guard, three-tier read
-visibility, the approval gate, admin-only membership/epoch writes, and the
-grant-revoke column guard. It requires Docker and exits non-zero on any failure:
+role and `auth.user_id()`), applies `schema.sql` + `sharing_schema.sql` +
+`push_schema.sql` twice (idempotency check), and runs
+`scripts/sharing-rls-test.sql` — a suite that drives the policies as three
+users (author/admin, member, non-member) and asserts forgery prevention, the
+epoch-bump race guard, three-tier read visibility, the approval gate,
+admin-only membership/epoch writes, and the grant-revoke column guard — then
+`scripts/push-rls-test.sql` for `push_devices`. It requires Docker, or with
+`--local` the host's `initdb` and `pg_ctl` (Homebrew Postgres works), and
+exits non-zero on any failure:
 
 ```sh
 scripts/sharing-rls-test.sh
+scripts/sharing-rls-test.sh --local
 ```
 
 ## Find the Data API base URL

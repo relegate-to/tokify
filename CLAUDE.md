@@ -40,6 +40,7 @@ internal/             Tokify domain and application code
   adapters/           SQLite plus the legacy text-log migration reader
   core/               models, ports, errors — the domain
   services/activity   activity service
+functions/            Neon Functions (notify: FCM push to phones), own package
 scripts/              build and integration helper scripts
 TOKIFY.md             source attribution + license posture
 ```

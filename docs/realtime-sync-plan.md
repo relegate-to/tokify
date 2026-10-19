@@ -2,9 +2,8 @@
 
 ## Status (October 2026)
 
-Draft. Phase 1 is implemented in the repository; its migration still has to be
-applied to the live Neon project. The Phase 2a spike is done and dropped the
-live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`), and so is Phase 4 up to 4f. Phase 3 is Android-only for now; its spike is done (see Phase 3). 2d is not started.
+Draft. Phase 1 is implemented and live on the Neon project. The Phase 2a spike is done and dropped the
+live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`), and so is Phase 4 up to 4f. Phase 3 is Android-only for now and implemented (`push_schema.sql`, `functions/`, `mobile/src/sync/push.ts`); `push_schema.sql` is live and `notify` is deployed on the production branch. 2d is not started.
 
 **Problem:** the running timer never leaves the device it started on.
 `SyncNow` pushes only completed activities, every 5 minutes
@@ -155,11 +154,19 @@ Firebase; FCM cannot reach an iPhone without them.
   warm, with the access token cached per isolate. `mobile/src/app/push-check`
   (open `tokify://push-check`) shows a device's token for testing. Live
   Activities are untested until iOS.
-- `push_devices` table: device token, platform, owner, last seen; RLS to the
-  owner; registration and removal endpoints.
-- `notify` is a short Neon Function the app calls after a start or stop; it
-  pushes to the user's phones. Payloads carry ids and timestamps only, never
-  titles.
+- `push_devices` table (`push_schema.sql`, done): device token, platform,
+  owner, last seen; RLS to the owner. Phones register through the
+  `register_push_device` RPC, which moves a token to the account that
+  registers it last, and remove their own row with a DELETE on sign-out.
+- `notify` (`functions/`, done) is a short Neon Function a phone or desktop
+  calls after it writes the running timer. It checks the caller's Neon Auth JWT against the JWKS, sends
+  a data-only FCM message to the caller's other phones (the record's version
+  and a timestamp, never titles) and forgets tokens FCM reports as
+  `UNREGISTERED`. A foregrounded phone refreshes the timer when one arrives;
+  handling them in the background comes with the reminders (4g).
+- The desktop calls `notify` after each running-timer write it wins
+  (`PutRunningTimer`), in the background and only when a notify URL is set; it
+  has no push token, so it excludes none.
 
 ---
 
@@ -184,7 +191,7 @@ Firebase; FCM cannot reach an iPhone without them.
   - **4c. Sign-in and unlock** (done): sign-in and sign-up against Neon Auth
     with the derived auth hash; the DEK and the sharing identity are unwrapped
     with the password-derived key and kept in the secure store.
-  - **4d. Running timer** (done; live once `running_timers` is migrated):
+  - **4d. Running timer** (done; `running_timers` is live):
     read, start, stop and edit through `running_timers`, keeping the exact
     start string so desktops still recognise the timer. A start that would
     stop the running timer asks first.
@@ -198,8 +205,10 @@ Firebase; FCM cannot reach an iPhone without them.
     against `sharing/testdata/sharing-vectors.json`, with invitations,
     membership, share filters, granting the phone's own entries, and
     teammates' entries in the Log. Project colors sync through
-    `user_keys.wrapped_projects` (desktop and mobile; live once migrated).
-  - **4g.** Push (Phase 3), the iOS Live Activity and reminders.
+    `user_keys.wrapped_projects` (desktop and mobile; live).
+  - **4g.** Push (Phase 3), the iOS Live Activity and reminders. Android shows
+    the running timer as an ongoing notification with a native chronometer,
+    redrawn by a background task when a timer push arrives with the app closed.
   - **4h.** iOS build and test: needs Xcode, which the build Mac doesn't have
     yet. The Swift half of `tokify-argon2` has never been compiled.
 - Sign-in with email/password or OTP against Neon Auth, matching desktop.

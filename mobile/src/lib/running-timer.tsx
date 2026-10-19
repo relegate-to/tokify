@@ -6,14 +6,16 @@ import { AppState } from 'react-native';
 import { bytesToHex } from '@/crypto/bytes';
 import type { RunningTimer } from '@/crypto/sync';
 import { useEntries } from '@/lib/entries';
+import { usePushDevice } from '@/lib/push';
+import { askForNotifications, showTimerNotification } from '@/lib/timer-notification';
 import { useSession } from '@/lib/session';
 import { dataToken } from '@/sync/account';
 import { entryFromTimer, flushPending, queueEntry } from '@/sync/entries';
-import { isRunning, readTimer, startTimer, stopTimer, TimerConflict, writeTimer, type TimerState } from '@/sync/timer';
+import { notifyDevices } from '@/sync/push';
+import { isRunning, readTimer, startTimer, stopTimer, TIMER_STATE_KEY, TimerConflict, writeTimer, type TimerState } from '@/sync/timer';
 import { dataApi, isMissingTable } from '@/sync/timer-api';
 
 const REFRESH_MS = 15_000;
-const STATE_KEY = 'timer.state';
 const DEVICE_KEY = 'device.id';
 
 const api = dataApi(dataToken);
@@ -41,7 +43,7 @@ function useTimerState() {
     const adopt = useCallback((next: TimerState) => {
         stateRef.current = next;
         setState(next);
-        SecureStore.setItemAsync(STATE_KEY, JSON.stringify(next)).catch(() => undefined);
+        SecureStore.setItemAsync(TIMER_STATE_KEY, JSON.stringify(next)).catch(() => undefined);
     }, []);
 
     // Completed activities the phone ended go to the entries table, which
@@ -70,7 +72,7 @@ function useTimerState() {
     }, [account, localOnly, adopt, flush]);
 
     useEffect(() => {
-        SecureStore.getItemAsync(STATE_KEY)
+        SecureStore.getItemAsync(TIMER_STATE_KEY)
             .then((cached) => cached && adopt(JSON.parse(cached) as TimerState))
             .finally(() => {
                 setLoaded(true);
@@ -90,22 +92,45 @@ function useTimerState() {
         };
     }, [refresh, adopt]);
 
+    usePushDevice(account?.user.id, refresh);
+
+    const running = isRunning(state.timer);
+    useEffect(() => {
+        if (running) askForNotifications().then(() => showTimerNotification(stateRef.current.timer));
+    }, [running]);
+    useEffect(() => {
+        if (loaded) showTimerNotification(account ? state.timer : null);
+    }, [account, loaded, state.timer]);
+
+    // Resolves true once the server has the write.
     const run = useCallback(
         async (local: TimerState, remote: () => Promise<TimerState>) => {
             const before = stateRef.current;
             adopt(local);
-            if (localOnly) return;
+            if (localOnly) return false;
             try {
                 adopt(await remote());
                 setError('');
+                return true;
             } catch (e) {
-                if (isMissingTable(e)) return setLocalOnly(true);
-                adopt(before);
-                setError(e instanceof Error ? e.message : String(e));
+                if (isMissingTable(e)) setLocalOnly(true);
+                else {
+                    adopt(before);
+                    setError(e instanceof Error ? e.message : String(e));
+                }
+                return false;
             }
         },
         [adopt, localOnly],
     );
+
+    // Lets the account's other phones know; they read the record themselves.
+    const notify = useCallback(() => {
+        const { version } = stateRef.current;
+        dataToken()
+            .then((jwt) => notifyDevices(jwt, version))
+            .catch(() => undefined);
+    }, []);
 
     const start = useCallback(
         async (description: string, project: string, opts: { notes?: string; at?: Date } = {}) => {
@@ -115,11 +140,11 @@ function useTimerState() {
             const { version: seen, timer: previous } = stateRef.current;
             // A start ends whatever was running at its start time.
             if (isRunning(previous)) await queueEntry(entryFromTimer({ ...previous, e: timer.s }));
-            await run({ version: seen, timer }, () => startTimer(api, account.dek, account.user.id, seen, timer));
+            if (await run({ version: seen, timer }, () => startTimer(api, account.dek, account.user.id, seen, timer))) notify();
             flush();
             return timer.s;
         },
-        [account, run, flush],
+        [account, run, flush, notify],
     );
 
     const stop = useCallback(async () => {
@@ -128,9 +153,9 @@ function useTimerState() {
         const end = new Date();
         const stopped = { ...current.timer, e: end.toISOString() };
         await queueEntry(entryFromTimer(stopped));
-        await run({ version: current.version, timer: stopped }, () => stopTimer(api, account.dek, account.user.id, current, end));
+        if (await run({ version: current.version, timer: stopped }, () => stopTimer(api, account.dek, account.user.id, current, end))) notify();
         flush();
-    }, [account, run, flush]);
+    }, [account, run, flush, notify]);
 
     // Renames the running timer or changes its notes; its start stays, so
     // desktops still recognise it as the same timer. An edit that lost a race

@@ -23,11 +23,12 @@ import {
 } from './auth';
 import { getUserKeys, insertUserKeys } from './data';
 import { clearIdentity, loadIdentity, provisionIdentity, publish } from './identity';
+import { removeDevice } from './push';
 import { getSharingKeys } from './sharing-api';
 import { clearSharingState } from './sharing-store';
 
 // Separate slots: some platforms warn on secure-store values over 2 KB.
-const KEYS = { token: 'session.token', cookie: 'session.cookie', user: 'session.user', dek: 'sync.dek', timer: 'timer.state', pending: 'entries.pending' } as const;
+const KEYS = { token: 'session.token', cookie: 'session.cookie', user: 'session.user', dek: 'sync.dek', timer: 'timer.state', pending: 'entries.pending', push: 'push.token' } as const;
 
 export type Account = { user: User; dek: Uint8Array };
 
@@ -98,6 +99,10 @@ export async function resendCode(email: string) {
 }
 
 export async function signOut() {
+    // While the session can still mint a Data API token.
+    await dataToken()
+        .then(removeDevice)
+        .catch(() => undefined);
     const token = await SecureStore.getItemAsync(KEYS.token);
     if (token) await revoke(token);
     await clear();

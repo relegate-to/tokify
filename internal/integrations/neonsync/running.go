@@ -14,6 +14,10 @@ import (
 	"github.com/kriuchkov/tock/internal/integrations/netcheck"
 )
 
+// notifyTimeout bounds the call to the notify Function, which runs after the
+// write has already returned.
+const notifyTimeout = 10 * time.Second
+
 // ErrTimerConflict means the running-timer record moved on since the caller
 // read it: another device started or stopped a timer first. The caller re-reads
 // and applies its change on top of the fresh state.
@@ -69,7 +73,41 @@ func (s *Service) PutRunningTimer(ctx context.Context, seen int64, timer Running
 	if err != nil {
 		return TimerState{}, err
 	}
-	return writeTimer(ctx, s.http, base, token, dek, owner, seen, timer)
+	state, err := writeTimer(ctx, s.http, base, token, dek, owner, seen, timer)
+	if err == nil {
+		s.notifyPhones(ctx, token, state.Version)
+	}
+	return state, err
+}
+
+// notifyPhones asks the notify Function to push the new version to the
+// account's phones, without holding up the caller. Best-effort: a phone that
+// misses the push reads the record when it next polls or opens.
+func (s *Service) notifyPhones(ctx context.Context, token string, version int64) {
+	url := s.notifyURL()
+	if url == "" {
+		return
+	}
+	go func() {
+		nctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), notifyTimeout)
+		defer cancel()
+		_ = notify(nctx, s.http, url, token, version)
+	}()
+}
+
+// notify posts the version just written. Desktops have no push token, so
+// there is no device to exclude.
+func notify(ctx context.Context, hc *http.Client, url, token string, version int64) error {
+	body, err := json.Marshal(struct {
+		Version int64 `json:"version"`
+	}{version})
+	if err != nil {
+		return err
+	}
+	if _, err = doJSON(ctx, hc, http.MethodPost, url, token, body, ""); err != nil {
+		return gerrors.Wrap(err, "notify phones")
+	}
+	return nil
 }
 
 // DeviceID returns this install's id for RunningTimer.DeviceID, creating and

@@ -7,6 +7,10 @@ import { openTimer, sealTimer, type RunningTimer } from '@/crypto/sync';
 
 export type TimerState = { version: number; timer: RunningTimer | null };
 
+// The last state this phone saw, in the secure store, read at launch and by the
+// background push task.
+export const TIMER_STATE_KEY = 'timer.state';
+
 export type Row = { user_id: string; version: number; ciphertext: string; nonce: string };
 
 // The transport, injectable so tests can stand in for the Data API.

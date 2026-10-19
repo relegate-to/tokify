@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["io.github.finchett.tokify.timernotification.TokifyTimerNotificationModule"]
+  }
+}
