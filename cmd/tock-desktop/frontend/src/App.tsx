@@ -48,6 +48,7 @@ import { captureFlip, playFlip, type FlipSnapshot } from '@/lib/flip';
 import { setProjectColorOverrides } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 import { CompactContext } from '@/lib/compact';
+import { TimePickerContext } from '@/lib/time-input';
 import {
     ProjectSharesContext,
     type ProjectSharesMap,
@@ -77,6 +78,7 @@ import { StatsView } from '@/components/StatsView';
 const SHOW_ACCOUNT_KEY = 'tokify.showAccount';
 const ACTIVITY_VIEW_KEY = 'tokify.activityView';
 const SHOW_SCROLLBARS_KEY = 'tokify.showScrollbars';
+const TIME_PICKER_KEY = 'tokify.timePicker';
 const THEME_KEY = 'tokify.theme';
 const DAILY_GOAL_KEY = 'tokify.dailyGoal';
 const AUTO_COMPLETE_TODOS_KEY = 'tokify.autoCompleteTodos';
@@ -256,6 +258,13 @@ function App() {
             return false;
         }
     });
+    const [timePicker, setTimePicker] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(TIME_PICKER_KEY) !== '0';
+        } catch {
+            return true;
+        }
+    });
     const [activityView, setActivityView] = useState<ActivityView>(() =>
         readActivityView(),
     );
@@ -315,6 +324,14 @@ function App() {
             showScrollbars,
         );
     }, [showScrollbars]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(TIME_PICKER_KEY, timePicker ? '1' : '0');
+        } catch {
+            // ignore
+        }
+    }, [timePicker]);
 
     useEffect(() => {
         try {
@@ -887,6 +904,7 @@ function App() {
         <ProjectSharesContext.Provider value={projectShares}>
         <TeamsCacheContext.Provider value={teams}>
         <CompactContext.Provider value={menuBar}>
+        <TimePickerContext.Provider value={timePicker}>
         {menuBar && <MenuBarTail x={tailX ?? window.innerWidth / 2} />}
         <div
             className={cn(
@@ -1043,6 +1061,8 @@ function App() {
                                 onDailyGoalChange={setDailyGoal}
                                 showScrollbars={showScrollbars}
                                 onShowScrollbarsChange={setShowScrollbars}
+                                timePicker={timePicker}
+                                onTimePickerChange={setTimePicker}
                                 autoCompleteTodos={autoCompleteTodos}
                                 onAutoCompleteTodosChange={setAutoCompleteTodos}
                                 theme={theme}
@@ -1104,6 +1124,7 @@ function App() {
             />
             <Toaster position="bottom-right" richColors closeButton />
         </div>
+        </TimePickerContext.Provider>
         </CompactContext.Provider>
         </TeamsCacheContext.Provider>
         </ProjectSharesContext.Provider>

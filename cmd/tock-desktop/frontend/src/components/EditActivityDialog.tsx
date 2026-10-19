@@ -3,7 +3,13 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 import type { Activity } from '@/types';
-import { buildClockISO, formatClock } from '@/lib/time';
+import {
+    buildClockISO,
+    buildEndISO,
+    dayOffsetLabel,
+    daysAfter,
+    formatClock,
+} from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -15,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ProjectField } from '@/components/ProjectField';
+import { TimeField } from '@/components/TimeField';
 import { RichTextEditor } from '@/components/RichTextEditor';
 
 export function EditActivityDialog({
@@ -52,6 +59,21 @@ export function EditActivityDialog({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, activity.description, activity.project, activity.notes, activity.start_time, activity.end_time]);
 
+    // An untouched end keeps its saved date, so a span longer than a day isn't
+    // pulled back to within 24 hours of the start.
+    const buildEnd = (startISO: string) => {
+        if (!end) return null;
+        const kept = endStr === formatClock(end) ? buildClockISO(end, endStr) : null;
+        if (kept && new Date(kept).getTime() > new Date(startISO).getTime()) return kept;
+        return buildEndISO(startISO, endStr);
+    };
+    const startPreview = buildClockISO(start, startStr);
+    const endPreview = startPreview && buildEnd(startPreview);
+    const endDays =
+        startPreview && endPreview
+            ? daysAfter(new Date(startPreview), new Date(endPreview))
+            : 0;
+
     const submit = () => {
         const trimmed = desc.trim();
         if (!trimmed) {
@@ -65,7 +87,7 @@ export function EditActivityDialog({
         }
         let endISO = '';
         if (end) {
-            const built = buildClockISO(end, endStr);
+            const built = buildEnd(startISO);
             if (built === null) {
                 toast.error('End must be HH:MM');
                 return;
@@ -135,29 +157,32 @@ export function EditActivityDialog({
                             <label className="text-xs text-muted-foreground">
                                 Start
                             </label>
-                            <Input
+                            <TimeField
                                 value={startStr}
-                                onChange={(e) => setStartStr(e.target.value)}
+                                onValueChange={setStartStr}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') submit();
                                 }}
-                                placeholder="HH:MM"
-                                className="h-8 w-20 px-2 text-center font-mono tabular-nums"
+                                aria-label="Start time"
                             />
                         </div>
                         {end && (
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs text-muted-foreground">
+                                <label className="whitespace-nowrap text-xs text-muted-foreground">
                                     End
+                                    {endDays > 0 && (
+                                        <span className="opacity-60">
+                                            {' '}· {dayOffsetLabel(endDays)}
+                                        </span>
+                                    )}
                                 </label>
-                                <Input
+                                <TimeField
                                     value={endStr}
-                                    onChange={(e) => setEndStr(e.target.value)}
+                                    onValueChange={setEndStr}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') submit();
                                     }}
-                                    placeholder="HH:MM"
-                                    className="h-8 w-20 px-2 text-center font-mono tabular-nums"
+                                    aria-label="End time"
                                 />
                             </div>
                         )}

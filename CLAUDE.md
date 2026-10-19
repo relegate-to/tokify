@@ -118,7 +118,7 @@ Stack:
   reserves room for them — preserve that.
 - Persisted UI state lives in `localStorage` keys prefixed `tokify.*`
   (`tokify.theme`, `tokify.activityView`, `tokify.showScrollbars`,
-  `tokify.showAccount`, `tokify.displayName`, `tokify.email`,
+  `tokify.showAccount`, `tokify.timePicker`, `tokify.displayName`, `tokify.email`,
   `tokify.sketchpad`). Use the same prefix and `try { … } catch {}` pattern for
   any new key. The sketchpad is the unlabelled swipe screen immediately to the
   left of Now; keep it out of the masthead navigation.

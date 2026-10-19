@@ -79,9 +79,7 @@ export function pad(n: number) {
 export function formatClock(d: Date) {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-// Parses "HH:MM" and combines it with the date portion of `base` to produce
-// an RFC3339 ISO string in the local timezone. Returns null on invalid input.
-export function buildClockISO(base: Date, hhmm: string): string | null {
+function withClock(base: Date, hhmm: string): Date | null {
     const m = /^\s*(\d{1,2})\s*:\s*(\d{2})\s*$/.exec(hhmm);
     if (!m) return null;
     const h = Number(m[1]);
@@ -89,6 +87,35 @@ export function buildClockISO(base: Date, hhmm: string): string | null {
     if (h < 0 || h > 23 || min < 0 || min > 59) return null;
     const next = new Date(base);
     next.setHours(h, min, 0, 0);
+    return next;
+}
+// Parses "HH:MM" and combines it with the date portion of `base` to produce
+// an RFC3339 ISO string in the local timezone. Returns null on invalid input.
+export function buildClockISO(base: Date, hhmm: string): string | null {
+    const next = withClock(base, hhmm);
+    return next && toLocalISO(next);
+}
+// Like buildClockISO on the start's date, but an end clock earlier than the
+// start means the span ran past midnight, so it lands on the next day.
+export function buildEndISO(startISO: string, hhmm: string): string | null {
+    const start = new Date(startISO);
+    const end = withClock(start, hhmm);
+    if (!end) return null;
+    if (end.getTime() < start.getTime()) end.setDate(end.getDate() + 1);
+    return toLocalISO(end);
+}
+// Whole calendar days from `start` to `end`, for the "+1 day" hint beside an
+// end time.
+export function daysAfter(start: Date, end: Date): number {
+    return Math.round(
+        (startOfDay(end).getTime() - startOfDay(start).getTime()) /
+            (24 * 60 * 60 * 1000),
+    );
+}
+export function dayOffsetLabel(days: number): string {
+    return days === 1 ? '+1 day' : `+${days} days`;
+}
+function toLocalISO(next: Date): string {
     // Local ISO with offset, e.g. 2026-06-18T09:42:00+01:00 — Go time.Parse
     // RFC3339 accepts this.
     const tz = -next.getTimezoneOffset();
