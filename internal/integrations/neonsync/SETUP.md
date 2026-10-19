@@ -57,10 +57,12 @@ app.
 
 ### Reload the Data API schema cache after applying
 
-Whenever the schema adds a column, reload PostgREST's schema cache:
+Whenever the schema adds a table, function or column, reload the Data API's
+schema cache. `NOTIFY pgrst` does not reach Neon's Data API (a new table and
+RPC stayed invisible after it in October 2026); the CLI does:
 
 ```sh
-psql "$NEON_CONNECTION_STRING" -c "NOTIFY pgrst, 'reload schema';"
+neon data-api refresh-schema --project-id <project> --branch production --database neondb
 ```
 
 Skipping this fails in a way that looks like a client bug rather than a missing
