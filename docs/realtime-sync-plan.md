@@ -3,7 +3,7 @@
 ## Status (October 2026)
 
 Draft. Phase 1 is implemented and live on the Neon project. The Phase 2a spike is done and dropped the
-live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`), and so is Phase 4 up to 4f. Phase 3 is Android-only for now and implemented (`push_schema.sql`, `functions/`, `mobile/src/sync/push.ts`); `push_schema.sql` is live, the `notify` Function is not deployed yet. 2d is not started.
+live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`), and so is Phase 4 up to 4f. Phase 3 is Android-only for now and implemented (`push_schema.sql`, `functions/`, `mobile/src/sync/push.ts`); `push_schema.sql` is live and `notify` is deployed on the production branch. 2d is not started.
 
 **Problem:** the running timer never leaves the device it started on.
 `SyncNow` pushes only completed activities, every 5 minutes
