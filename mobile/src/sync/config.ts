@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 
-const extra = (Constants.expoConfig?.extra ?? {}) as { neonAuthUrl?: string; neonDataUrl?: string };
+const extra = (Constants.expoConfig?.extra ?? {}) as { neonAuthUrl?: string; neonDataUrl?: string; neonNotifyUrl?: string };
 
 export const AUTH_URL = (extra.neonAuthUrl ?? '').replace(/\/+$/, '');
 export const DATA_URL = (extra.neonDataUrl ?? '').replace(/\/+$/, '');
+export const NOTIFY_URL = (extra.neonNotifyUrl ?? '').replace(/\/+$/, '');
