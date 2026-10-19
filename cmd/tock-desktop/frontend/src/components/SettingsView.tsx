@@ -40,6 +40,8 @@ export function SettingsView({
     onDailyGoalChange,
     showScrollbars,
     onShowScrollbarsChange,
+    timePicker,
+    onTimePickerChange,
     autoCompleteTodos,
     onAutoCompleteTodosChange,
     theme,
@@ -58,6 +60,8 @@ export function SettingsView({
     onDailyGoalChange: (v: number) => void;
     showScrollbars: boolean;
     onShowScrollbarsChange: (v: boolean) => void;
+    timePicker: boolean;
+    onTimePickerChange: (v: boolean) => void;
     autoCompleteTodos: boolean;
     onAutoCompleteTodosChange: (v: boolean) => void;
     theme: Theme;
@@ -130,6 +134,12 @@ export function SettingsView({
                     description="Hidden by default for a cleaner look. Scrolling still works."
                     value={showScrollbars}
                     onChange={onShowScrollbarsChange}
+                />
+                <SettingRow
+                    title="Time picker"
+                    description="Clicking a time shows hour and minute columns to pick from. You can always type it as HH:MM."
+                    value={timePicker}
+                    onChange={onTimePickerChange}
                 />
                 <SettingRow
                     title="Tick off to-dos when stopped"

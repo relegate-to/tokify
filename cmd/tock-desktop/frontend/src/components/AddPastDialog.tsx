@@ -3,7 +3,13 @@ import { ChevronDown, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-import { buildClockISO, startOfDay } from '@/lib/time';
+import {
+    buildClockISO,
+    buildEndISO,
+    dayOffsetLabel,
+    daysAfter,
+    startOfDay,
+} from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -21,6 +27,7 @@ import {
     PopoverTrigger,
 } from '@/components/ui/popover';
 import { ProjectField } from '@/components/ProjectField';
+import { TimeField } from '@/components/TimeField';
 import { RichTextEditor } from '@/components/RichTextEditor';
 
 export function AddPastButton({
@@ -82,6 +89,13 @@ function AddPastDialog({
         setEndStr('10:00');
     }, [open]);
 
+    const startPreview = buildClockISO(date, startStr);
+    const endPreview = startPreview && buildEndISO(startPreview, endStr);
+    const endDays =
+        startPreview && endPreview
+            ? daysAfter(new Date(startPreview), new Date(endPreview))
+            : 0;
+
     const submit = () => {
         const trimmed = description.trim();
         if (!trimmed) {
@@ -93,7 +107,7 @@ function AddPastDialog({
             toast.error('Start must be HH:MM');
             return;
         }
-        const endISO = buildClockISO(date, endStr);
+        const endISO = buildEndISO(startISO, endStr);
         if (endISO === null) {
             toast.error('End must be HH:MM');
             return;
@@ -155,65 +169,68 @@ function AddPastDialog({
                             placeholder="project (optional)"
                         />
                     </div>
-                    <div className="grid grid-cols-[1fr_auto_auto] items-end gap-2">
-                        <div className="flex flex-col gap-1.5">
-                            <label className="text-xs text-muted-foreground">
-                                Date
-                            </label>
-                            <Popover
-                                open={datePickerOpen}
-                                onOpenChange={setDatePickerOpen}
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs text-muted-foreground">
+                            Date
+                        </label>
+                        <Popover
+                            open={datePickerOpen}
+                            onOpenChange={setDatePickerOpen}
+                        >
+                            <PopoverTrigger
+                                type="button"
+                                className="inline-flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 text-sm font-normal transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
                             >
-                                <PopoverTrigger
-                                    type="button"
-                                    className="inline-flex h-8 items-center justify-between gap-2 rounded-md border border-border bg-background px-3 text-sm font-normal transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
-                                >
-                                    {format(date, 'EEE, d MMM yyyy')}
-                                    <ChevronDown className="size-4 opacity-60" />
-                                </PopoverTrigger>
-                                <PopoverContent
-                                    className="z-[60] w-auto overflow-hidden p-0"
-                                    align="start"
-                                >
-                                    <Calendar
-                                        mode="single"
-                                        selected={date}
-                                        captionLayout="dropdown"
-                                        onSelect={(d) => {
-                                            if (!d) return;
-                                            setDate(startOfDay(d));
-                                            setDatePickerOpen(false);
-                                        }}
-                                    />
-                                </PopoverContent>
-                            </Popover>
-                        </div>
+                                {format(date, 'EEE, d MMM yyyy')}
+                                <ChevronDown className="size-4 opacity-60" />
+                            </PopoverTrigger>
+                            <PopoverContent
+                                className="z-[60] w-auto overflow-hidden p-0"
+                                align="start"
+                            >
+                                <Calendar
+                                    mode="single"
+                                    selected={date}
+                                    captionLayout="dropdown"
+                                    onSelect={(d) => {
+                                        if (!d) return;
+                                        setDate(startOfDay(d));
+                                        setDatePickerOpen(false);
+                                    }}
+                                />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                    <div className="flex items-end gap-2">
                         <div className="flex flex-col gap-1.5">
                             <label className="text-xs text-muted-foreground">
                                 Start
                             </label>
-                            <Input
+                            <TimeField
                                 value={startStr}
-                                onChange={(e) => setStartStr(e.target.value)}
+                                onValueChange={setStartStr}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') submit();
                                 }}
-                                placeholder="HH:MM"
-                                className="h-8 w-20 px-2 text-center font-mono tabular-nums"
+                                aria-label="Start time"
                             />
                         </div>
                         <div className="flex flex-col gap-1.5">
-                            <label className="text-xs text-muted-foreground">
+                            <label className="whitespace-nowrap text-xs text-muted-foreground">
                                 End
+                                {endDays > 0 && (
+                                    <span className="opacity-60">
+                                        {' '}· {dayOffsetLabel(endDays)}
+                                    </span>
+                                )}
                             </label>
-                            <Input
+                            <TimeField
                                 value={endStr}
-                                onChange={(e) => setEndStr(e.target.value)}
+                                onValueChange={setEndStr}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') submit();
                                 }}
-                                placeholder="HH:MM"
-                                className="h-8 w-20 px-2 text-center font-mono tabular-nums"
+                                aria-label="End time"
                             />
                         </div>
                     </div>

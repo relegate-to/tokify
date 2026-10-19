@@ -5,9 +5,9 @@ import { toast } from 'sonner';
 import { FOCUS_STARTER_EVENT } from '@/lib/hotkeys';
 import { EASE_THUNK } from '@/lib/motion';
 import { buildClockISO, formatClock } from '@/lib/time';
-import { Input } from '@/components/ui/input';
 import { ProjectPicker } from '@/components/ProjectPicker';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { TimeField } from '@/components/TimeField';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
@@ -34,8 +34,6 @@ export function Starter({
     const [startAt, setStartAt] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const notesEditorRef = useRef<HTMLDivElement>(null);
-    const startAtRef = useRef<HTMLInputElement>(null);
-    const startAtOpen = startAt !== null;
 
     useEffect(() => {
         inputRef.current?.focus();
@@ -44,10 +42,6 @@ export function Starter({
         window.addEventListener(FOCUS_STARTER_EVENT, focus);
         return () => window.removeEventListener(FOCUS_STARTER_EVENT, focus);
     }, []);
-
-    useEffect(() => {
-        if (startAtOpen) startAtRef.current?.focus();
-    }, [startAtOpen]);
 
     useEffect(() => {
         if (!projectTouched.current) setProject(defaultProject);
@@ -178,17 +172,16 @@ export function Starter({
                             <span className="text-sm text-muted-foreground">
                                 started at
                             </span>
-                            <Input
-                                ref={startAtRef}
+                            <TimeField
+                                autoFocus
+                                compact
                                 value={startAt}
-                                onChange={(e) => setStartAt(e.target.value)}
+                                onValueChange={setStartAt}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') submit();
                                     if (e.key === 'Escape') setStartAt(null);
                                 }}
-                                placeholder="HH:MM"
                                 aria-label="Start time"
-                                className="h-6 w-[70px] px-2 text-center font-mono text-xs tabular-nums"
                             />
                             <button
                                 type="button"
