@@ -421,10 +421,6 @@ export function Masthead({
                   </DropdownMenuItem>
                 </>
               )}
-              {/*<DropdownMenuItem onSelect={() => onView('sharing')}>
-                            <Share2 className="size-4 opacity-70" />
-                            Sharing
-                        </DropdownMenuItem>*/}
               {showAccount && (
                 <>
                   <DropdownMenuSeparator />
@@ -435,6 +431,10 @@ export function Masthead({
                   <DropdownMenuItem onSelect={() => setExportOpen(true)}>
                     <Download className="size-4 opacity-70" />
                     Export…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onView("sharing")}>
+                    <Share2 className="size-4 opacity-70" />
+                    Share link…
                   </DropdownMenuItem>
                 </>
               )}
