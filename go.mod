@@ -7,7 +7,7 @@ require (
 	github.com/doug-martin/goqu/v9 v9.19.0
 	github.com/go-faster/errors v0.7.1
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible
-	github.com/modelcontextprotocol/go-sdk v1.6.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wailsapp/wails/v2 v2.13.0
 	golang.org/x/crypto v0.54.0
@@ -49,7 +49,9 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 )
