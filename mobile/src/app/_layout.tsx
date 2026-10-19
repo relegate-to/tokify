@@ -63,6 +63,7 @@ function Routes() {
                                 <Stack.Screen name="sign-in" />
                             </Stack.Protected>
                             <Stack.Screen name="crypto-check" />
+                            <Stack.Screen name="push-check" />
                         </Stack>
                     </UndoProvider>
                 </RunningTimerProvider>

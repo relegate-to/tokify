@@ -4,7 +4,7 @@
 
 Draft. Phase 1 is implemented in the repository; its migration still has to be
 applied to the live Neon project. The Phase 2a spike is done and dropped the
-live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`); 2d–4 are not started.
+live connection (see 2a). Phases 2b and 2c are implemented (`internal/integrations/neonsync/running.go`, `internal/app/timersync`), and so is Phase 4 up to 4f. Phase 3 is Android-only for now; its spike is done (see Phase 3). 2d is not started.
 
 **Problem:** the running timer never leaves the device it started on.
 `SyncNow` pushes only completed activities, every 5 minutes
@@ -142,11 +142,19 @@ it only depends on 2c living in `internal/`.
 
 ## Phase 3 — Push notifications
 
-Prerequisites (owner): Firebase project, Apple Developer account, APNs key
-uploaded to Firebase.
+Android first (decided October 2026). The Firebase project is `tokify-b12cf`;
+the Android app's `google-services.json` is gitignored and picked up by
+`mobile/app.config.ts` when present. The service-account key stays outside
+the repo. iOS waits on an Apple Developer account and an APNs key uploaded to
+Firebase; FCM cannot reach an iPhone without them.
 
-- Spike first: confirm outbound FCM (and APNs, if needed) from a Neon
-  Function; confirm whether FCM can start and update iOS Live Activities.
+- Spike (done, October 2026): a Neon Function on a throwaway branch signed a
+  JWT with the service account, exchanged it for an access token and called
+  the FCM HTTP v1 API with `fetch` alone, no SDK. A push reached an Android 16
+  phone. Sends took about 250 ms cold (token exchange included) and 50–70 ms
+  warm, with the access token cached per isolate. `mobile/src/app/push-check`
+  (open `tokify://push-check`) shows a device's token for testing. Live
+  Activities are untested until iOS.
 - `push_devices` table: device token, platform, owner, last seen; RLS to the
   owner; registration and removal endpoints.
 - `notify` is a short Neon Function the app calls after a start or stop; it
