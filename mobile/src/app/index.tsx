@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 import PagerView, { type PagerViewOnPageScrollEventData } from 'react-native-pager-view';
 import Animated, { useDerivedValue, useEvent, useSharedValue } from 'react-native-reanimated';
@@ -44,7 +44,9 @@ export default function MainScreen() {
     const { progress, onPageScroll } = usePagerProgress();
     // The masthead's highlight runs from Activity to Log.
     const tabProgress = useDerivedValue(() => progress.value - NOW);
-    const goTo = (p: Page) => pager.current?.setPage(PAGES.indexOf(p));
+    // Stable, so the memoised pages don't re-render on every swipe.
+    const goTo = useCallback((p: Page) => pager.current?.setPage(PAGES.indexOf(p)), []);
+    const onSketchStarted = useCallback(() => goTo('now'), [goTo]);
     return (
         <ResumeProvider>
             <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -58,7 +60,7 @@ export default function MainScreen() {
                     onPageSelected={(e) => setPage(PAGES[e.nativeEvent.position])}
                 >
                     <View key="sketchpad" style={{ flex: 1 }}>
-                        <SketchpadPage onStarted={() => goTo('now')} />
+                        <SketchpadPage onStarted={onSketchStarted} />
                     </View>
                     <NowPage key="now" />
                     <LogPage key="log" />

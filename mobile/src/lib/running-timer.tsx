@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { randomBytes } from '@noble/hashes/utils.js';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
 import { bytesToHex } from '@/crypto/bytes';
@@ -181,7 +181,12 @@ function useTimerState() {
         [account, run],
     );
 
-    return { state, loaded, localOnly, error, start, stop, edit, refresh };
+    // Memoised so the masthead and every page only re-render when the timer
+    // itself changes, not whenever the provider does.
+    return useMemo(
+        () => ({ state, loaded, localOnly, error, start, stop, edit, refresh }),
+        [state, loaded, localOnly, error, start, stop, edit, refresh],
+    );
 }
 
 type RunningTimerState = ReturnType<typeof useTimerState>;

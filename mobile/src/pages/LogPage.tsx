@@ -1,7 +1,7 @@
 import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Check as CheckIcon, Plus, Search, Trash2, Users, X } from 'lucide-react-native';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { BackHandler, Pressable, RefreshControl, View } from 'react-native';
 import Animated, { FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -71,6 +71,8 @@ function flatten(entries: LogEntry[]) {
 }
 
 const tabular = { fontVariant: ['tabular-nums' as const] };
+const itemKey = (item: Item) => item.key;
+const itemType = (item: Item) => item.kind;
 
 // A ticked circle, drawn in as selection mode starts.
 function Check({ on, partial = false }: { on: boolean; partial?: boolean }) {
@@ -230,7 +232,7 @@ const Row = memo(function Row({
 });
 
 // The synced history, newest first, grouped by day as on the desktop's Log.
-export function LogPage() {
+export const LogPage = memo(function LogPage() {
     const { account } = useSession();
     const { entries, error, reload: load } = useEntries();
     const [refreshing, setRefreshing] = useState(false);
@@ -320,8 +322,11 @@ export function LogPage() {
     useEffect(() => {
         if (who && who !== SELF && !authors.some((a) => a.authorId === who)) setWho('');
     }, [authors, who]);
+    // Refiltering and regrouping the whole history is heavy; deferring it keeps
+    // each keystroke landing in the field at once, with the list catching up.
+    const search = useDeferredValue(query.trim().toLowerCase());
     const shown = useMemo(() => {
-        const q = query.trim().toLowerCase();
+        const q = search;
         const seen = new Set<string>();
         const theirs = shared.filter((e) => !seen.has(e.id) && seen.add(e.id));
         const all: LogEntry[] = entries ? [...entries, ...theirs].sort((a, b) => b.start.localeCompare(a.start)) : [];
@@ -330,8 +335,29 @@ export function LogPage() {
             if (!q) return true;
             return e.description.toLowerCase().includes(q) || e.project.toLowerCase().includes(q) || (isShared(e) && e.authorName.toLowerCase().includes(q));
         });
-    }, [entries, shared, query, who]);
+    }, [entries, shared, search, who]);
     const { items, headers } = useMemo(() => flatten(shown), [shown]);
+    const graphEntries = useMemo(() => (entries ? (who || search ? shown : [...entries, ...shared]) : null), [entries, shared, shown, who, search]);
+    const extraData = useMemo(() => [selection, colorsVersion], [selection, colorsVersion]);
+    const renderItem = useCallback(
+        ({ item }: { item: Item }) =>
+            item.kind === 'day' ? (
+                <DayHeader day={item} selecting={selecting} selected={selection ? item.ids.filter((id) => selection.has(id)).length : 0} onToggleDay={onToggleDay} />
+            ) : item.kind === 'shared' ? (
+                <SharedRow entry={item.entry} from={item.from} to={item.to} />
+            ) : (
+                <Row
+                    entry={item.entry}
+                    from={item.from}
+                    to={item.to}
+                    selecting={selecting}
+                    selected={selection?.has(item.entry.id) ?? false}
+                    onPress={onPress}
+                    onToggle={onToggle}
+                />
+            ),
+        [selecting, selection, onToggleDay, onPress, onToggle],
+    );
     const now = new Date();
 
     return (
@@ -339,12 +365,12 @@ export function LogPage() {
             <FlashList
                 showsVerticalScrollIndicator={false}
                 data={items}
-                keyExtractor={(item) => item.key}
-                getItemType={(item) => item.kind}
+                keyExtractor={itemKey}
+                getItemType={itemType}
                 stickyHeaderIndices={headers}
                 ListHeaderComponent={
                     <View className="gap-3 px-5 pt-2">
-                        {entries ? <ContributionGraph entries={who || query.trim() ? shown : [...entries, ...shared]} /> : <ContributionGraphSkeleton />}
+                        {graphEntries ? <ContributionGraph entries={graphEntries} /> : <ContributionGraphSkeleton />}
                         <View className="flex-row items-center gap-2">
                             <View className="h-11 flex-1 flex-row items-center gap-2 rounded-xl border border-subtle-surface-border bg-subtle-surface px-3">
                                 <Icon as={Search} className="size-4 text-muted-foreground opacity-60" />
@@ -390,7 +416,7 @@ export function LogPage() {
                         </View>
                     </View>
                 }
-                extraData={[selection, colorsVersion]}
+                extraData={extraData}
                 contentContainerStyle={{ paddingBottom: selecting ? 120 + insets.bottom : 40 }}
                 refreshControl={
                     <RefreshControl
@@ -402,28 +428,7 @@ export function LogPage() {
                         }}
                     />
                 }
-                renderItem={({ item }) =>
-                    item.kind === 'day' ? (
-                        <DayHeader
-                            day={item}
-                            selecting={selecting}
-                            selected={selection ? item.ids.filter((id) => selection.has(id)).length : 0}
-                            onToggleDay={onToggleDay}
-                        />
-                    ) : item.kind === 'shared' ? (
-                        <SharedRow entry={item.entry} from={item.from} to={item.to} />
-                    ) : (
-                        <Row
-                            entry={item.entry}
-                            from={item.from}
-                            to={item.to}
-                            selecting={selecting}
-                            selected={selection?.has(item.entry.id) ?? false}
-                            onPress={onPress}
-                            onToggle={onToggle}
-                        />
-                    )
-                }
+                renderItem={renderItem}
                 ListEmptyComponent={
                     entries === null && !error ? (
                         <LogRowsSkeleton />
@@ -486,4 +491,4 @@ export function LogPage() {
             </Dialog>
         </View>
     );
-}
+});

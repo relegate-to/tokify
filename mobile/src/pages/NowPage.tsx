@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Play } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Keyboard, ScrollView, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -29,7 +29,7 @@ const QUICK_START_COUNT = 4;
 const quickStartKey = (description: string, project: string) => JSON.stringify([description, project]);
 
 // Now: start a timer, or see and stop the one that is running on any device.
-export function NowPage() {
+export const NowPage = memo(function NowPage() {
     const insets = useSafeAreaInsets();
     const [draft, setDraft] = useState<Omit<StarterDraft, 'project'>>({ description: '', notes: '', startAt: null });
     const [picked, setPicked] = useState<string | null>(null);
@@ -39,7 +39,6 @@ export function NowPage() {
     const { entries } = useEntries();
     const { activityView, dailyGoal } = usePrefs();
     const running = isRunning(state.timer) ? state.timer : null;
-    const now = useNow();
 
     // As on the desktop (NowView): the last few distinct activities, the
     // project last tracked against as the starter's default, and today's total
@@ -73,7 +72,6 @@ export function NowPage() {
             todayMs: total,
         };
     }, [entries, running]);
-    const runningMs = running ? Math.max(0, now - Math.max(parseInstant(running.s).getTime(), new Date(new Date(now).setHours(0, 0, 0, 0)).getTime())) : 0;
     const project = picked ?? defaultProject;
 
     const canStart = draft.description.trim().length > 0;
@@ -121,7 +119,7 @@ export function NowPage() {
                         </>
                     ) : (
                         <Animated.View entering={FadeIn.duration(300)}>
-                            <TodayGoal totalMs={todayMs + runningMs} goalMinutes={dailyGoal} />
+                            <LiveTodayGoal baseMs={todayMs} runningStart={running ? parseInstant(running.s).getTime() : null} goalMinutes={dailyGoal} />
                         </Animated.View>
                     )}
                     {activityView === 'all' && quickStarts.length > 0 ? (
@@ -157,4 +155,13 @@ export function NowPage() {
             {editing ? <EntryEditor entry={editing} onClose={() => setEditing(null)} /> : null}
         </SafeAreaView>
     );
+});
+
+// Today's total, live while a timer runs. Its own component so only the goal
+// strip re-renders as the minutes turn over; the page used to re-render every
+// second, timer or not.
+function LiveTodayGoal({ baseMs, runningStart, goalMinutes }: { baseMs: number; runningStart: number | null; goalMinutes: number }) {
+    const now = useNow(runningStart !== null, 60_000, runningStart ?? 0);
+    const runningMs = runningStart === null ? 0 : Math.max(0, now - Math.max(runningStart, new Date(now).setHours(0, 0, 0, 0)));
+    return <TodayGoal totalMs={baseMs + runningMs} goalMinutes={goalMinutes} />;
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -28,7 +28,9 @@ function level(ms: number) {
 
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-export function ContributionGraph({ entries }: { entries: Entry[] }) {
+// Memoised: the Log re-renders on every keystroke and selection tap, and a
+// year of squares is the heaviest thing in its header.
+export const ContributionGraph = memo(function ContributionGraph({ entries }: { entries: Entry[] }) {
     const [width, setWidth] = useState(0);
     const weeks = Math.max(1, Math.floor((width + GAP) / (BLOCK + GAP)));
 
@@ -102,4 +104,4 @@ export function ContributionGraph({ entries }: { entries: Entry[] }) {
             </View>
         </Animated.View>
     );
-}
+});
