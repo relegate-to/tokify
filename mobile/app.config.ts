@@ -28,8 +28,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     const googleServicesFile = env.GOOGLE_SERVICES_JSON ?? './google-services.json';
     return {
         ...(config as ExpoConfig),
+        // Release builds stamp the version from the git tag; see release.yml.
+        version: env.TOKIFY_VERSION ?? config.version,
         android: {
             ...config.android,
+            ...(env.TOKIFY_VERSION_CODE && { versionCode: Number(env.TOKIFY_VERSION_CODE) }),
             ...(existsSync(resolve(__dirname, googleServicesFile)) && { googleServicesFile }),
         },
         extra: {
