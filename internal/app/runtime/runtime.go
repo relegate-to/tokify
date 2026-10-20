@@ -37,7 +37,10 @@ func Load(ctx context.Context, path string) (*Runtime, error) {
 	notesRepo := sqlite.NewNotesRepository(repo.DB)
 
 	return &Runtime{
-		ActivityService: activity.NewService(repo, notesRepo),
+		// No notes repository for the service: SQLite reads and writes notes and
+		// tags with the activity row itself, so a separate store only re-queried
+		// every listed row one at a time and re-wrote notes after each save.
+		ActivityService: activity.NewService(repo, nil),
 		ActivityRepo:    repo,
 		NotesRepository: notesRepo,
 		History:         history.New(repo, 100),

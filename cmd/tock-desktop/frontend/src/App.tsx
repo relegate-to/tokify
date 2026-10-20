@@ -1,5 +1,6 @@
 import {
     useCallback,
+    useDeferredValue,
     useEffect,
     useLayoutEffect,
     useMemo,
@@ -47,6 +48,7 @@ import { EASE_FLIP, REMOVE_ANIM_MS, REMOVE_FLIP_MS } from '@/lib/motion';
 import { captureFlip, playFlip, type FlipSnapshot } from '@/lib/flip';
 import { setProjectColorOverrides } from '@/lib/colors';
 import { cn } from '@/lib/utils';
+import { localDayKey } from '@/lib/time';
 import { CompactContext } from '@/lib/compact';
 import { TimePickerContext } from '@/lib/time-input';
 import {
@@ -54,6 +56,7 @@ import {
     type ProjectSharesMap,
 } from '@/lib/project-shares';
 import { TeamsCacheContext } from '@/lib/teams-cache';
+import { ProjectsContext } from '@/lib/projects-context';
 import { Toaster } from '@/components/ui/sonner';
 import { Masthead } from '@/components/Masthead';
 import { NowView } from '@/components/NowView';
@@ -64,6 +67,7 @@ import {
     writeTodoRuns,
     type TodoRun,
 } from '@/components/SketchpadView';
+import type { StartTodo } from '@/components/RichTextEditor';
 import { FinishTodoDialog } from '@/components/FinishTodoDialog';
 import { HistoryView } from '@/components/HistoryView';
 import { SettingsView } from '@/components/SettingsView';
@@ -216,6 +220,42 @@ function sameShared(a: ActivityItem[], b: ActivityItem[]): boolean {
             x.shared?.teamName === y.shared?.teamName
         );
     });
+}
+
+function sameActivity(a: Activity, b: Activity): boolean {
+    return (
+        a.start_time === b.start_time &&
+        a.end_time === b.end_time &&
+        a.description === b.description &&
+        a.project === b.project &&
+        a.notes === b.notes &&
+        (a.tags ?? []).join('\u0000') === (b.tags ?? []).join('\u0000')
+    );
+}
+
+// The same trap as sameShared, for the local log: every refresh decodes brand-new
+// objects, so an unchanged log still re-rendered every row, day group, summary
+// and the contribution graph — a few hundred milliseconds of main-thread work
+// every REFRESH_MS and after every edit. Keep the previous object for each
+// activity that hasn't changed, and the previous array when none has, so the
+// memoised views and rows only redo what actually moved.
+function keepUnchanged(prev: Activity[], next: Activity[]): Activity[] {
+    const byStart = new Map(prev.map((a) => [String(a.start_time), a]));
+    let same = prev.length === next.length;
+    const out = next.map((a, i) => {
+        const old = byStart.get(String(a.start_time));
+        const kept = old && sameActivity(old, a) ? old : a;
+        if (kept !== prev[i]) same = false;
+        return kept;
+    });
+    return same ? prev : out;
+}
+
+// For the small, rarely-changing polled values (projects, undo labels, teams,
+// share filters): adopt the new answer only when it differs, so a poll that
+// learns nothing new renders nothing.
+function keepIfEqual<T>(prev: T, next: T): T {
+    return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 }
 
 function App() {
@@ -380,11 +420,24 @@ function App() {
         return () => mql.removeEventListener('change', apply);
     }, [theme]);
 
+    const refreshDay = useRef(localDayKey(new Date()));
     // Stable identity: the row handlers close over it, and they in turn are what
     // let the memoised ActivityRow skip re-rendering the whole log.
     // isSuppressed/withoutSuppressed only read a ref, so they need no deps.
+    // `repaint` adopts every row as new, for when something the rows read outside
+    // their data changed and memoised views must redraw anyway: project colors,
+    // or the date itself — "Today", the week in Reports and the graph's last
+    // cell all turn over at midnight without any activity changing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    const refresh = useCallback(() => {
+    const refresh = useCallback((repaint = false) => {
+        const day = localDayKey(new Date());
+        if (day !== refreshDay.current) {
+            refreshDay.current = day;
+            repaint = true;
+        }
+        const keep = repaint
+            ? (_cur: Activity[], next: Activity[]) => next
+            : keepUnchanged;
         return Promise.all([
             GetRunning(),
             ListToday(),
@@ -394,19 +447,27 @@ function App() {
         ])
             .then(([r, t, year, all, p]) => {
                 const run = (r as Activity) ?? null;
-                setRunning(isSuppressed(run) ? null : run);
+                const nextRun = isSuppressed(run) ? null : run;
+                setRunning((cur) =>
+                    !repaint && cur && nextRun && sameActivity(cur, nextRun) ? cur : nextRun,
+                );
                 setRunningLoaded(true);
-                setToday(withoutSuppressed((t as Activity[]) ?? []));
-                setPastYear(withoutSuppressed((year as Activity[]) ?? []));
-                setRecent(withoutSuppressed((all as Activity[]) ?? []));
-                setProjects(p ?? []);
+                setToday((cur) => keep(cur, withoutSuppressed((t as Activity[]) ?? [])));
+                setPastYear((cur) => keep(cur, withoutSuppressed((year as Activity[]) ?? [])));
+                setRecent((cur) => keep(cur, withoutSuppressed((all as Activity[]) ?? [])));
+                setProjects((cur) => keepIfEqual(cur, p ?? []));
             })
             .catch((e) => toast.error(String(e)));
     }, []);
 
+    const adoptUndoState = useCallback((status: string) => {
+        const next = parseUndoState(status);
+        setUndoState((cur) => keepIfEqual(cur, next));
+    }, []);
+
     const refreshUndoState = useCallback(() => {
         return ActivityHistoryState()
-            .then((status) => setUndoState(parseUndoState(status)))
+            .then(adoptUndoState)
             .catch(() => {
                 // History is an enhancement; activity refreshes remain usable if
                 // the backend has not finished starting yet.
@@ -416,7 +477,7 @@ function App() {
     useEffect(() => {
         refresh();
         refreshUndoState();
-        const id = setInterval(refresh, REFRESH_MS);
+        const id = setInterval(() => refresh(), REFRESH_MS);
         return () => clearInterval(id);
     }, []);
 
@@ -425,6 +486,7 @@ function App() {
     // activity data so the memoized charts recompute against the new colors. This
     // also runs after a rename or color change on the Projects page (onChanged),
     // which is what refreshes the stats under a project's new name promptly.
+    const colorsKey = useRef('{}');
     const loadColors = () => {
         ListProjects()
             .then((list) => {
@@ -433,7 +495,10 @@ function App() {
                     if (p.color) map[p.name] = p.color;
                 }
                 setProjectColorOverrides(map);
-                refresh();
+                const key = JSON.stringify(map);
+                const recolored = key !== colorsKey.current;
+                colorsKey.current = key;
+                refresh(recolored);
             })
             .catch(() => {
                 // colors are cosmetic; a failure just keeps the derived defaults
@@ -540,8 +605,10 @@ function App() {
                 .then((list) => {
                     if (cancelled) return;
                     const all = list ?? [];
-                    setTeams(all);
-                    setPendingInvites(all.filter((t) => t.Pending));
+                    setTeams((cur) => keepIfEqual(cur, all));
+                    setPendingInvites((cur) =>
+                        keepIfEqual(cur, all.filter((t) => t.Pending)),
+                    );
                 })
                 .catch(() => {
                     // keep last-good invites
@@ -554,7 +621,9 @@ function App() {
                     if (cancelled) return;
                     const map: ProjectSharesMap = {};
                     for (const s of shares ?? []) map[s.Project] = s;
-                    setProjectShares(map);
+                    // Every ProjectTag in the log reads this context, so a new
+                    // map identity re-renders hundreds of them.
+                    setProjectShares((cur) => keepIfEqual(cur, map));
                 })
                 .catch(() => {
                     // keep last-good badge data
@@ -597,21 +666,21 @@ function App() {
     const handleUndo = useCallback(() => {
         UndoLastActivityChange()
             .then((status) => {
-                setUndoState(parseUndoState(status));
+                adoptUndoState(status);
                 return refresh();
             })
             .then(() => toast.success('Change undone'))
             .catch((e) => toast.error(String(e)));
-    }, [refresh]);
+    }, [refresh, adoptUndoState]);
     const handleRedo = useCallback(() => {
         RedoLastActivityChange()
             .then((status) => {
-                setUndoState(parseUndoState(status));
+                adoptUndoState(status);
                 return refresh();
             })
             .then(() => toast.success('Change redone'))
             .catch((e) => toast.error(String(e)));
-    }, [refresh]);
+    }, [refresh, adoptUndoState]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -698,14 +767,42 @@ function App() {
         setFinishingTodo(null);
     };
 
-    const handleStart = (description: string, project: string, notes: string) =>
-        Start(description, project, notes).then(afterMutation).catch((e) => toast.error(String(e)));
-    const handleStartAt = (description: string, project: string, notes: string, startISO: string) =>
-        StartAt(description, project, notes, startISO)
-            .then(afterMutation)
-            .catch((e) => toast.error(String(e)));
-    const handleStop = () =>
-        Stop().then(afterMutation).catch((e) => toast.error(String(e)));
+    // The handlers below keep a stable identity so the memoised swipe views
+    // only re-render when their data changes, not whenever App does.
+    const handleStart = useCallback(
+        (description: string, project: string, notes: string) =>
+            Start(description, project, notes).then(afterMutation).catch((e) => toast.error(String(e))),
+        [afterMutation],
+    );
+    const handleStartAt = useCallback(
+        (description: string, project: string, notes: string, startISO: string) =>
+            StartAt(description, project, notes, startISO)
+                .then(afterMutation)
+                .catch((e) => toast.error(String(e))),
+        [afterMutation],
+    );
+    const handleStop = useCallback(
+        () => Stop().then(afterMutation).catch((e) => toast.error(String(e))),
+        [afterMutation],
+    );
+    const handleStartTodo = useCallback(
+        (todo: StartTodo) =>
+            Start(todo.description, todo.project, todo.notes)
+                .then((activity) => {
+                    writeTodoRuns([
+                        ...readTodoRuns(),
+                        { start: String(activity.start_time), id: todo.id, description: todo.description },
+                    ]);
+                    return afterMutation();
+                })
+                .then(() => setView('now'))
+                .catch((e) => toast.error(String(e))),
+        [afterMutation],
+    );
+    const openSharing = useCallback((project?: string) => {
+        setSharingProject(project);
+        setView('sharing');
+    }, []);
     const handleResume = useCallback(
         (orig: Activity) => {
             setView('now');
@@ -715,16 +812,19 @@ function App() {
         },
         [afterMutation],
     );
-    const handleAddPast = (
-        description: string,
-        project: string,
-        notes: string,
-        startISO: string,
-        endISO: string,
-    ) =>
-        AddActivity(description, project, notes, startISO, endISO)
-            .then(afterMutation)
-            .catch((e) => toast.error(String(e)));
+    const handleAddPast = useCallback(
+        (
+            description: string,
+            project: string,
+            notes: string,
+            startISO: string,
+            endISO: string,
+        ) =>
+            AddActivity(description, project, notes, startISO, endISO)
+                .then(afterMutation)
+                .catch((e) => toast.error(String(e))),
+        [afterMutation],
+    );
     const handleUpdate = useCallback(
         (
             orig: Activity,
@@ -900,11 +1000,18 @@ function App() {
         return extra.length ? [...pastYear, ...extra] : pastYear;
     }, [pastYear, today]);
 
+    // The year-long views (Reports, Charts, Stats and the Log's graph) rebuild
+    // from these on every edit. Deferring them lets the edit commit on its own,
+    // and the rebuild follow as interruptible background work.
+    const deferredSummary = useDeferredValue(summaryActivities);
+    const deferredPastYear = useDeferredValue(pastYear);
+
     return (
         <ProjectSharesContext.Provider value={projectShares}>
         <TeamsCacheContext.Provider value={teams}>
         <CompactContext.Provider value={menuBar}>
         <TimePickerContext.Provider value={timePicker}>
+        <ProjectsContext.Provider value={mergedProjects}>
         {menuBar && <MenuBarTail x={tailX ?? window.innerWidth / 2} />}
         <div
             className={cn(
@@ -976,18 +1083,7 @@ function App() {
                         >
                             <SwiperSlide>
                                 <div className={cn('h-full overflow-y-auto', pagePadding)}>
-                                    <SketchpadView projects={mergedProjects} onStartTodo={(todo) =>
-                                        Start(todo.description, todo.project, todo.notes)
-                                            .then((activity) => {
-                                                writeTodoRuns([
-                                                    ...readTodoRuns(),
-                                                    { start: String(activity.start_time), id: todo.id, description: todo.description },
-                                                ]);
-                                                return afterMutation();
-                                            })
-                                            .then(() => setView('now'))
-                                            .catch((e) => toast.error(String(e)))
-                                    } />
+                                    <SketchpadView projects={mergedProjects} onStartTodo={handleStartTodo} />
                                 </div>
                             </SwiperSlide>
                             <SwiperSlide>
@@ -1003,10 +1099,7 @@ function App() {
                                             onStart={handleStart}
                                             onStartAt={handleStartAt}
                                             onStop={handleStop}
-                                            onShare={(project) => {
-                                                setSharingProject(project);
-                                                setView('sharing');
-                                            }}
+                                            onShare={openSharing}
                                             onResume={handleResume}
                                             onUpdate={handleUpdate}
                                             onRemove={handleRemove}
@@ -1018,33 +1111,30 @@ function App() {
                                         <HistoryView
                                             activities={recent}
                                             sharedActivities={shared}
-                                            graphActivities={pastYear}
+                                            graphActivities={deferredPastYear}
                                             projects={mergedProjects}
                                             removingKeys={removingKeys}
                                             onUpdate={handleUpdate}
                                             onRemove={handleRemove}
                                             onResume={handleResume}
                                             onAddPast={handleAddPast}
-                                            onOpenSharing={(project) => {
-                                                setSharingProject(project);
-                                                setView('sharing');
-                                            }}
+                                            onOpenSharing={openSharing}
                                         />
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
                                 <div className={cn('h-full overflow-y-auto', pagePadding)}>
-                                    <ReportsView activities={summaryActivities} />
+                                    <ReportsView activities={deferredSummary} />
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
                                 <div className={cn('h-full overflow-y-auto', pagePadding)}>
-                                    <ChartsView activities={summaryActivities} />
+                                    <ChartsView activities={deferredSummary} />
                                     </div>
                             </SwiperSlide>
                             <SwiperSlide>
                                 <div className={cn('h-full overflow-y-auto', pagePadding)}>
-                                    <StatsView activities={summaryActivities} />
+                                    <StatsView activities={deferredSummary} />
                                     </div>
                                 </SwiperSlide>
                             </Swiper>
@@ -1124,6 +1214,7 @@ function App() {
             />
             <Toaster position="bottom-right" richColors closeButton />
         </div>
+        </ProjectsContext.Provider>
         </TimePickerContext.Provider>
         </CompactContext.Provider>
         </TeamsCacheContext.Provider>

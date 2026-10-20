@@ -26,7 +26,10 @@ export function DayTimeline({
 }) {
     const dayStart = startOfDay(day).getTime();
     const dayEnd = dayStart + DAY_MS;
-    const now = useNow(activities.some((activity) => !activity.end_time));
+    const now = useNow(
+        activities.some((activity) => !activity.end_time),
+        60_000,
+    );
 
     const spans = activities.map((a) => {
         const start = new Date(a.start_time as any).getTime();

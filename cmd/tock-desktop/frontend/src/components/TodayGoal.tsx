@@ -15,7 +15,11 @@ export function TodayGoal({
     running: Activity | null;
     goalMinutes: number;
 }) {
-    const now = useNow(!!running);
+    const now = useNow(
+        !!running,
+        60_000,
+        running ? new Date(running.start_time as any).getTime() : 0,
+    );
     const goalMs = goalMinutes * 60_000;
 
     const totalMs = useMemo(() => {

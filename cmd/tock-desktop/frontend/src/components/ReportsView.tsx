@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import type { Activity } from '@/types';
@@ -15,7 +15,7 @@ import {
     StackedBarChart,
 } from '@/components/SummaryBits';
 
-export function ReportsView({ activities }: { activities: Activity[] }) {
+export const ReportsView = memo(function ReportsView({ activities }: { activities: Activity[] }) {
     const [period, setPeriod] = useState<'weekly' | 'monthly'>('weekly');
     const [offset, setOffset] = useState(0);
 
@@ -201,7 +201,7 @@ export function ReportsView({ activities }: { activities: Activity[] }) {
             </div>
         </div>
     );
-}
+});
 
 function StepButton({
     disabled,

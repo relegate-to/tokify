@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 import type { Activity, ActivityItem } from '@/types';
 import { cn } from '@/lib/utils';
 import { REMOVE_ANIM_MS, EASE_OUT } from '@/lib/motion';
@@ -66,25 +68,46 @@ export function DayHeader({
 const rowKey = (a: ActivityItem) =>
     a.shared ? `s:${a.shared.authorId}:${String(a.start_time)}` : String(a.start_time);
 
-export function DayGroup({
-    day,
-    activities,
-    projects,
-    removingKeys,
-    variant = 'now',
-    onUpdate,
-    onRemove,
-    onResume,
-}: {
+type DayGroupProps = {
     day: Date;
     activities: ActivityItem[];
-    projects: string[];
     removingKeys: Set<string>;
     variant?: 'now' | 'history';
     onUpdate: (orig: Activity, description: string, project: string, notes: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
     onResume?: (orig: Activity) => void;
-}) {
+};
+
+// Regrouping the log hands every day a fresh array even when its rows are the
+// same objects, and a delete swaps in a new removingKeys set, so compare what
+// this day actually shows: an edit or a delete re-renders its own day only.
+function sameDay(a: DayGroupProps, b: DayGroupProps): boolean {
+    return (
+        a.day.getTime() === b.day.getTime() &&
+        a.activities.length === b.activities.length &&
+        a.activities.every((x, i) => {
+            const key = String(x.start_time);
+            return (
+                x === b.activities[i] &&
+                a.removingKeys.has(key) === b.removingKeys.has(key)
+            );
+        }) &&
+        a.variant === b.variant &&
+        a.onUpdate === b.onUpdate &&
+        a.onRemove === b.onRemove &&
+        a.onResume === b.onResume
+    );
+}
+
+export const DayGroup = memo(function DayGroup({
+    day,
+    activities,
+    removingKeys,
+    variant = 'now',
+    onUpdate,
+    onRemove,
+    onResume,
+}: DayGroupProps) {
     const visible = activities.filter(
         (a) => a.shared || !removingKeys.has(String(a.start_time)),
     );
@@ -105,6 +128,15 @@ export function DayGroup({
             style={{
                 opacity: allRemoving ? 0 : 1,
                 transition: `opacity ${REMOVE_ANIM_MS}ms ${EASE_OUT}`,
+                // The Log keeps a year of days mounted. Days off screen skip
+                // style, layout and paint until scrolled near — a theme switch
+                // went from ~140ms to ~25ms. The size stands in until a day is
+                // first drawn (header plus a row height each), then `auto`
+                // keeps its real one, so the scrollbar barely moves.
+                ...(variant === 'history' && {
+                    contentVisibility: 'auto',
+                    containIntrinsicSize: `auto ${32 + 44 * activities.length}px`,
+                }),
             }}
         >
             <div
@@ -126,7 +158,6 @@ export function DayGroup({
                         <ActivityRow
                             key={rowKey(a)}
                             activity={a}
-                            projects={projects}
                             isRemoving={
                                 !a.shared &&
                                 removingKeys.has(String(a.start_time))
@@ -140,4 +171,4 @@ export function DayGroup({
             </div>
         </div>
     );
-}
+}, sameDay);

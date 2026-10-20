@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { Keyboard } from 'lucide-react';
 
 import { RichTextEditor, type StartTodo } from '@/components/RichTextEditor';
@@ -54,7 +54,7 @@ export function writeTodoRuns(runs: TodoRun[]) {
     }
 }
 
-export function SketchpadView({ onStartTodo, projects }: { onStartTodo?: (todo: StartTodo) => Promise<unknown>; projects?: string[] }) {
+export const SketchpadView = memo(function SketchpadView({ onStartTodo, projects }: { onStartTodo?: (todo: StartTodo) => Promise<unknown>; projects?: string[] }) {
     const [text, setText] = useState(readSketchpad);
 
     useEffect(() => {
@@ -125,4 +125,4 @@ export function SketchpadView({ onStartTodo, projects }: { onStartTodo?: (todo: 
             </div>
         </section>
     );
-}
+});
