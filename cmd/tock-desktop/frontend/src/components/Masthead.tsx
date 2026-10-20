@@ -123,6 +123,9 @@ export function Masthead({
   const runningTitle = activityTitle(running?.description, running?.project);
   const logSelected = LOG_VIEWS.includes(view);
   const nowSelected = view === "now" || view === "sketchpad";
+  const chipInk = nowSelected
+    ? "var(--navigation-active-foreground)"
+    : "var(--running-card-foreground)";
   const showLogIcons = logSelected || logHover;
 
   // The tab's width animates, so it has to be explicit — measured from the
@@ -384,9 +387,22 @@ export function Masthead({
                   <span
                     ref={timerRef}
                     className="inline-flex shrink-0 items-center gap-1 font-mono text-[11.5px] font-semibold tabular-nums"
-                    style={{ color: runningAccent, marginLeft: TIMER_MARGIN }}
+                    style={
+                      {
+                        marginLeft: TIMER_MARGIN,
+                        color: runningAccent,
+                        // A project color alone can vanish against the tab, so
+                        // the readout is outlined in the same color pulled
+                        // toward the tab's own text color: darker on a light
+                        // tab, lighter on a dark one. Painted under the fill,
+                        // the stroke only shows outside the glyphs.
+                        "--timer-outline": `color-mix(in oklab, ${runningAccent} 45%, ${chipInk})`,
+                        WebkitTextStroke: "1.5px var(--timer-outline)",
+                        paintOrder: "stroke fill",
+                      } as CSSProperties
+                    }
                   >
-                    <span className="size-[5px] shrink-0 rounded-full bg-current" />
+                    <span className="size-[5px] shrink-0 rounded-full bg-current shadow-[0_0_0_1px_var(--timer-outline)]" />
                     {runningDuration}
                   </span>
                 )}
