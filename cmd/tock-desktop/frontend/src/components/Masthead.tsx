@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   Activity as ActivityIcon,
   BarChart3,
@@ -20,7 +26,7 @@ import type { Activity, UndoState, View } from "@/types";
 import type { main, neonauth } from "../../wailsjs/go/models";
 import { cn } from "@/lib/utils";
 import { accountDisplayName, accountInitials } from "@/lib/account";
-import { formatDuration } from "@/lib/time";
+import { formatTotal } from "@/lib/time";
 import { projectColor } from "@/lib/colors";
 import { useNow } from "@/lib/use-now";
 import {
@@ -51,13 +57,16 @@ const noDragStyle = {
 const SIZE_TRANSITION = "width 0.3s cubic-bezier(0.16, 1, 0.3, 1)";
 const TAB_GROUP_PADDING_X = 6;
 const TAB_GROUP_GAP = 4;
-const TAB_PADDING_X = 22;
+const TAB_PADDING = 12;
 const TAB_ICON_WIDTH = 13;
 const TAB_CONTENT_GAP = 7;
-const IDLE_ACTIVITY_LABEL_WIDTH = 64;
+// A touch more air before the timer than between the icon and the label, so the
+// readout reads as its own thing.
+const TIMER_MARGIN = 2;
 const RUNNING_ACTIVITY_LABEL_MIN_WIDTH = 28;
-const RUNNING_ACTIVITY_LABEL_MAX_WIDTH = 160;
-const HISTORY_TAB_WIDTH = 66;
+// Kept clear between the tabs and the controls on the right.
+const HEADER_BREATHING_ROOM = 24;
+const HISTORY_TAB_WIDTH = 68;
 const LOG_ICON_PANEL_WIDTH = 88;
 const LOG_VIEWS: View[] = ["history", "reports", "charts", "stats"];
 
@@ -100,33 +109,119 @@ export function Masthead({
   const [logHover, setLogHover] = useState(false);
   const hasRunning = !!running;
   const runningStart = running ? new Date(running.start_time as any).getTime() : 0;
-  // The tab reads HH:MM, so it only needs to hear about whole minutes.
+  // The tab reads whole minutes ("0m", "1h 5m"), so it only needs to hear
+  // about them.
   const now = useNow(hasRunning, 60_000, runningStart);
 
   const [exportOpen, setExportOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const runningMs = running ? now - runningStart : 0;
-  const runningDuration = formatDuration(runningMs);
+  const runningDuration = formatTotal(runningMs);
   const runningAccent = running?.project
     ? projectColor(running.project)
     : "#f5c451";
   const runningTitle = activityTitle(running?.description, running?.project);
-  const runningLabel = running
-    ? runningShorthand || runningTitle
-    : runningTitle;
   const logSelected = LOG_VIEWS.includes(view);
   const nowSelected = view === "now" || view === "sketchpad";
   const showLogIcons = logSelected || logHover;
+
+  // The tab's width animates, so it has to be explicit — measured from the
+  // rendered text rather than guessed from a character count, which left a gap
+  // after short labels and squeezed the timer against the edge on long ones.
+  // Hidden copies of the title and its shorthand inherit the tab's current
+  // weight. The label may grow into whatever the header has free, so the full
+  // title shows whenever it fits and the shorthand only when it doesn't.
+  const headerRef = useRef<HTMLElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const titleGhostRef = useRef<HTMLSpanElement>(null);
+  const shortGhostRef = useRef<HTMLSpanElement>(null);
+  const timerRef = useRef<HTMLSpanElement>(null);
+  const [measured, setMeasured] = useState({
+    title: 0,
+    short: 0,
+    timer: 0,
+    room: Infinity,
+  });
+  const measure = () => {
+    // Rounded up from the exact width: offsetWidth rounds to the nearest pixel,
+    // and half a pixel short is enough to truncate the label to an ellipsis.
+    const width = (el: Element | null) =>
+      el ? Math.ceil(el.getBoundingClientRect().width) : 0;
+    const timer = width(timerRef.current);
+    let room = Infinity;
+    const header = headerRef.current;
+    if (header && controlsRef.current) {
+      const style = getComputedStyle(header);
+      room = Math.floor(
+        header.clientWidth -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight) -
+          width(controlsRef.current) -
+          HEADER_BREATHING_ROOM -
+          TAB_GROUP_PADDING_X -
+          TAB_GROUP_GAP -
+          HISTORY_TAB_WIDTH -
+          // Held back even while the log icons are tucked away, so hovering
+          // Log doesn't squeeze the label.
+          LOG_ICON_PANEL_WIDTH -
+          nowTabWidth(0, timer),
+      );
+    }
+    const next = {
+      title: width(titleGhostRef.current),
+      short: width(shortGhostRef.current),
+      timer,
+      room,
+    };
+    setMeasured((cur) =>
+      cur.title === next.title &&
+      cur.short === next.short &&
+      cur.timer === next.timer &&
+      cur.room === next.room
+        ? cur
+        : next,
+    );
+  };
+  useLayoutEffect(measure);
+  // Web fonts landing late change the text's width, and resizing the window or
+  // an invitation badge appearing changes the room.
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    for (const el of [
+      headerRef.current,
+      controlsRef.current,
+      titleGhostRef.current,
+    ]) {
+      if (el) ro.observe(el);
+    }
+    return () => ro.disconnect();
+  }, []);
+  // Size changes animate only after the first paint, so the tab doesn't slide
+  // open at launch.
+  const [sized, setSized] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setSized(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const sizeTransition = sized ? SIZE_TRANSITION : "none";
+
+  const labelRoom = Math.max(RUNNING_ACTIVITY_LABEL_MIN_WIDTH, measured.room);
+  const showShorthand =
+    hasRunning && !!runningShorthand && measured.title > labelRoom;
+  const runningLabel = showShorthand ? runningShorthand : runningTitle;
   const activityLabelWidth = hasRunning
-    ? labelWidth(
-        runningLabel,
-        RUNNING_ACTIVITY_LABEL_MAX_WIDTH,
-        RUNNING_ACTIVITY_LABEL_MIN_WIDTH,
+    ? Math.min(
+        labelRoom,
+        Math.max(
+          RUNNING_ACTIVITY_LABEL_MIN_WIDTH,
+          showShorthand ? measured.short : measured.title,
+        ),
       )
-    : IDLE_ACTIVITY_LABEL_WIDTH;
+    : measured.title;
   const activityTabWidth = nowTabWidth(
     activityLabelWidth,
-    hasRunning ? timerWidth(runningDuration) : 0,
+    hasRunning ? measured.timer : 0,
   );
   const tabGroupWidth =
     activityTabWidth + HISTORY_TAB_WIDTH + TAB_GROUP_GAP + TAB_GROUP_PADDING_X;
@@ -146,13 +241,13 @@ export function Masthead({
         color: "var(--running-card-foreground)",
         fontWeight: 600,
         fontSize: 13.5,
-        padding: "4px 10px 4px 12px",
+        padding: `4px ${TAB_PADDING}px`,
         borderRadius: 8,
         cursor: "pointer",
         boxShadow: "var(--navigation-shadow)",
         overflow: "hidden",
         width: activityTabWidth,
-        transition: `${SIZE_TRANSITION}, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease`,
+        transition: `${sizeTransition}, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease`,
       };
     }
     return {
@@ -166,13 +261,13 @@ export function Masthead({
         : "var(--navigation-muted-foreground)",
       fontWeight: active ? 600 : 500,
       fontSize: 13.5,
-      padding: "4px 10px 4px 12px",
+      padding: `4px ${TAB_PADDING}px`,
       borderRadius: 8,
       cursor: "pointer",
       boxShadow: active ? "var(--navigation-shadow)" : "none",
       overflow: "hidden",
       width: name === "now" ? activityTabWidth : HISTORY_TAB_WIDTH,
-      transition: `${SIZE_TRANSITION}, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease`,
+      transition: `${sizeTransition}, background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease`,
     };
   };
 
@@ -229,6 +324,7 @@ export function Masthead({
   return (
     <>
       <header
+        ref={headerRef}
         className={cn(
           "absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-background/75 pb-4 pr-4 pt-3 backdrop-blur-md",
           menuBar ? "pl-4" : "pl-28",
@@ -240,7 +336,7 @@ export function Masthead({
             className="inline-flex items-center gap-1 overflow-hidden rounded-[10px] bg-navigation p-[3px]"
             style={{
               width: tabGroupExpandedWidth,
-              transition: SIZE_TRANSITION,
+              transition: sizeTransition,
             }}
           >
             <button
@@ -256,13 +352,29 @@ export function Masthead({
               onClick={() => onView("now")}
               aria-pressed={nowSelected}
             >
+              <span
+                ref={titleGhostRef}
+                aria-hidden
+                className="pointer-events-none invisible absolute whitespace-nowrap"
+              >
+                {runningTitle}
+              </span>
+              {hasRunning && runningShorthand && (
+                <span
+                  ref={shortGhostRef}
+                  aria-hidden
+                  className="pointer-events-none invisible absolute whitespace-nowrap"
+                >
+                  {runningShorthand}
+                </span>
+              )}
               <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
                 <ActivityIcon />
                 <span
                   className="truncate"
                   style={{
                     width: activityLabelWidth,
-                    transition: SIZE_TRANSITION,
+                    transition: sizeTransition,
                   }}
                   title={runningTitle}
                 >
@@ -270,8 +382,9 @@ export function Masthead({
                 </span>
                 {running && (
                   <span
-                    className="inline-flex items-center gap-1 font-mono text-[11.5px] font-semibold tabular-nums"
-                    style={{ color: runningAccent, marginLeft: 2 }}
+                    ref={timerRef}
+                    className="inline-flex shrink-0 items-center gap-1 font-mono text-[11.5px] font-semibold tabular-nums"
+                    style={{ color: runningAccent, marginLeft: TIMER_MARGIN }}
                   >
                     <span className="size-[5px] shrink-0 rounded-full bg-current" />
                     {runningDuration}
@@ -328,7 +441,11 @@ export function Masthead({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2" style={noDragStyle}>
+        <div
+          ref={controlsRef}
+          className="flex items-center gap-2"
+          style={noDragStyle}
+        >
           <InviteBadge invites={invites} onOpen={() => onView("teams")} />
           <DropdownMenu open={open} onOpenChange={handleOpenChange}>
             <DropdownMenuTrigger asChild>
@@ -497,11 +614,11 @@ function InviteBadge({
 
 function nowTabWidth(label: number, timer: number) {
   return Math.ceil(
-    TAB_PADDING_X +
+    TAB_PADDING * 2 +
       TAB_ICON_WIDTH +
       TAB_CONTENT_GAP +
       label +
-      (timer > 0 ? TAB_CONTENT_GAP + timer : 0),
+      (timer > 0 ? TAB_CONTENT_GAP + TIMER_MARGIN + timer : 0),
   );
 }
 
@@ -534,19 +651,4 @@ function LogIconButton({
       <Icon />
     </button>
   );
-}
-
-function labelWidth(
-  label: string,
-  max: number,
-  min = IDLE_ACTIVITY_LABEL_WIDTH,
-) {
-  const wideChars = [...label].filter((char) => /[MW@#%&]/.test(char)).length;
-  const width = Math.ceil(label.length * 7 + wideChars * 1.5 + 6);
-
-  return Math.min(max, Math.max(min, width));
-}
-
-function timerWidth(duration: string) {
-  return Math.ceil(5 + 4 + duration.length * 7.2 + 2);
 }
