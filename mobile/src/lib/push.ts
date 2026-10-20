@@ -1,5 +1,5 @@
 import * as Notifications from 'expo-notifications';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { dataToken } from '@/sync/account';
 import { isTimerPush, pushSupported, registerDevice } from '@/sync/push';
@@ -22,7 +22,9 @@ export function usePushDevice(userId: string | undefined, onTimerPush: () => voi
     }, [userId]);
 
     const latest = useRef(onTimerPush);
-    latest.current = onTimerPush;
+    useLayoutEffect(() => {
+        latest.current = onTimerPush;
+    }, [onTimerPush]);
     useEffect(() => {
         const sub = Notifications.addNotificationReceivedListener((n) => {
             if (isTimerPush(n)) latest.current();

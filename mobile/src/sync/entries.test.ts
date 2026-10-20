@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('expo-secure-store', () => ({}));
-let identity: Identity | null = null;
-vi.mock('./identity', () => ({ loadIdentity: async () => identity }));
-const calls: { path: string; init: { method?: string; body?: string } }[] = [];
-vi.mock('./data', () => ({ dataFetch: vi.fn(async (_t: string, path: string, init: { method?: string; body?: string }) => void calls.push({ path, init })) }));
-
 import { fromBase64 } from '@/crypto/bytes';
 import { generateIdentity, publicIdentity, verifyEntrySig, type Identity } from '@/crypto/sharing';
 import { canonicalize, decryptOwnEntry, entryId } from '@/crypto/sync';
 
 import { editEntry, entryFromTimer, pushEntries, syncTime } from './entries';
+
+vi.mock('expo-secure-store', () => ({}));
+let identity: Identity | null = null;
+vi.mock('./identity', () => ({ loadIdentity: async () => identity }));
+const calls: { path: string; init: { method?: string; body?: string } }[] = [];
+vi.mock('./data', () => ({ dataFetch: vi.fn(async (_t: string, path: string, init: { method?: string; body?: string }) => void calls.push({ path, init })) }));
 
 describe('entries from the phone', () => {
     it('formats times as the desktop sync format, in local time', () => {

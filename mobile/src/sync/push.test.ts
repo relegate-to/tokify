@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { notifyDevices, registerDevice, removeDevice } from './push';
+
 const store = new Map<string, string>();
 vi.mock('expo-secure-store', () => ({
     getItemAsync: async (k: string) => store.get(k) ?? null,
@@ -11,8 +13,6 @@ vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 vi.mock('./config', () => ({ NOTIFY_URL: 'https://notify.test' }));
 const calls: { path: string; init: { method?: string; body?: string } }[] = [];
 vi.mock('./data', () => ({ dataFetch: vi.fn(async (_t: string, path: string, init: { method?: string; body?: string }) => void calls.push({ path, init })) }));
-
-import { notifyDevices, registerDevice, removeDevice } from './push';
 
 beforeEach(() => {
     store.clear();

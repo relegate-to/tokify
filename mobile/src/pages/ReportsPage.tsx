@@ -95,7 +95,7 @@ export function ReportsPage() {
                         {rep.projects.length === 0 ? (
                             <View className="items-center gap-1 py-6">
                                 <Text className="font-sans-semibold">Nothing tracked this {period === 'weekly' ? 'week' : 'month'}</Text>
-                                <Text className="text-muted-foreground">Track some time and it'll break down here.</Text>
+                                <Text className="text-muted-foreground">Track some time and it’ll break down here.</Text>
                             </View>
                         ) : (
                             rep.projects.map((p) => (

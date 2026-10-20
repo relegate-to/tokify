@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('./data', () => ({ dataFetch: vi.fn(), DataError: class extends Error {} }));
-
 import { mergeColors } from './project-colors';
+
+vi.mock('./data', () => ({ dataFetch: vi.fn(), DataError: class extends Error {} }));
 
 describe('project colors, merged as the desktop merges them', () => {
     it('keeps each project’s newest choice, resets included', () => {

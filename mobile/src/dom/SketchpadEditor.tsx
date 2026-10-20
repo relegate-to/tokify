@@ -9,7 +9,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import type { DOMImperativeFactory, DOMProps } from 'expo/dom';
 import { useDOMImperativeHandle } from 'expo/dom';
-import { useCallback, useEffect, useMemo, useRef, type Ref } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type Ref } from 'react';
 
 import './sketchpad.css';
 
@@ -113,9 +113,11 @@ export default function SketchpadEditor({
     const onChangeRef = useRef(onChange);
     const onStartTodoRef = useRef(onStartTodo);
     const onStateRef = useRef(onState);
-    onChangeRef.current = onChange;
-    onStartTodoRef.current = onStartTodo;
-    onStateRef.current = onState;
+    useLayoutEffect(() => {
+        onChangeRef.current = onChange;
+        onStartTodoRef.current = onStartTodo;
+        onStateRef.current = onState;
+    }, [onChange, onStartTodo, onState]);
     const lastValue = useRef(value);
     const lastState = useRef('');
     const pending = useRef<Editor | null>(null);

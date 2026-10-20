@@ -58,7 +58,7 @@ export default function ProjectsScreen() {
             cur.last = Math.max(cur.last, from);
             stats.set(e.project, cur);
         }
-        if (running && !stats.has(running)) stats.set(running, { ms: 0, sessions: 0, last: Date.now() });
+        if (running && !stats.has(running)) stats.set(running, { ms: 0, sessions: 0, last: 0 });
         return [...stats.entries()]
             .map(([name, roll]) => ({ name, roll }))
             .sort((a, b) => Number(b.name === running) - Number(a.name === running) || b.roll.last - a.roll.last || a.name.localeCompare(b.name));
@@ -184,7 +184,7 @@ function ColorDialog({ name, open, onClose }: { name: string; open: boolean; onC
             <DialogContent className="w-[92vw] max-w-md">
                 <DialogHeader>
                     <DialogTitle>Project color</DialogTitle>
-                    <DialogDescription>Pick a color for {name}. It's used everywhere this project appears, on all your devices.</DialogDescription>
+                    <DialogDescription>Pick a color for {name}. It’s used everywhere this project appears, on all your devices.</DialogDescription>
                 </DialogHeader>
                 <View className="flex-row flex-wrap gap-3 py-1">
                     {Array.from({ length: PROJECT_PALETTE_SIZE }, (_, i) => (

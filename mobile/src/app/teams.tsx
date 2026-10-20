@@ -84,6 +84,7 @@ export default function TeamsScreen() {
     }, [account, refreshShared]);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- load only sets state after an await, which the rule doesn't see past.
         load();
     }, [load]);
 
@@ -247,7 +248,7 @@ function UnlockCard({ onUnlock }: { onUnlock: (password: string) => Promise<void
                 <Text className="font-sans-semibold text-base">Unlock sharing</Text>
             </View>
             <Text className="text-sm leading-5 text-muted-foreground">
-                Teams use your account's encrypted identity, which this phone hasn't unlocked yet. Enter your password once to set it up.
+                Teams use your account’s encrypted identity, which this phone hasn’t unlocked yet. Enter your password once to set it up.
             </Text>
             <Input value={password} onChangeText={setPassword} onSubmitEditing={submit} placeholder="Password" secureTextEntry autoCapitalize="none" returnKeyType="go" />
             {error ? <Text className="text-sm text-destructive">{error}</Text> : null}
@@ -289,7 +290,7 @@ function InviteCard({ team, onAccepted, onDeclined }: { team: Team; onAccepted: 
                 </View>
                 <View className="flex-1 gap-0.5">
                     <Text className="text-[15px] leading-5">
-                        You're invited to join <Text className="font-sans-semibold text-[15px]">{team.invitedBy.trim() || 'Someone'}'s team</Text>
+                        You’re invited to join <Text className="font-sans-semibold text-[15px]">{team.invitedBy.trim() || 'Someone'}’s team</Text>
                         {team.role === 'admin' ? ' as an admin' : ''}
                     </Text>
                     <Text className="text-[13px] text-muted-foreground">Accept to see what they share with the team.</Text>
