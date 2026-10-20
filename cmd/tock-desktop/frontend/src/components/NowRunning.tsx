@@ -30,8 +30,6 @@ export function NowRunning({
     ) => void;
 }) {
     const since = new Date(activity.start_time as any);
-    const now = useNow();
-    const ms = now - since.getTime();
     const [stopping, setStopping] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
     const project = activity.project || '';
@@ -89,7 +87,7 @@ export function NowRunning({
                     className="font-mono text-[28px] font-medium leading-none tabular-nums tracking-[-0.02em] compact:mr-auto compact:text-[22px]"
                     aria-live="polite"
                 >
-                    {formatStopwatch(ms)}
+                    <Stopwatch since={since.getTime()} />
                 </div>
                 <button
                     type="button"
@@ -123,4 +121,11 @@ export function NowRunning({
         />
         </>
     );
+}
+
+// The only part of the hero that changes every second, so it is the only part
+// that re-renders every second — the card, and the edit dialog with its notes
+// editor when open, stay put.
+function Stopwatch({ since }: { since: number }) {
+    return <>{formatStopwatch(useNow() - since)}</>;
 }

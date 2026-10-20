@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    memo,
+    startTransition,
+    useCallback,
+    useDeferredValue,
+    useEffect,
+    useMemo,
+    useState,
+} from 'react';
 import { Check, ChevronDown, Search, Share2, Users } from 'lucide-react';
 
 import type { Activity, ActivityItem } from '@/types';
@@ -37,6 +45,11 @@ const SELF_USER = '\u0000self';
 // hand it, so the row keeps its usual size.
 const PROJECT_FILTER_LIMIT = 8;
 
+// Mounting the whole log in one go is the largest render the app does, and it
+// lands at launch. The latest days render first; the rest follow as background
+// work that yields to input.
+const FIRST_DAYS = 14;
+
 function userKey(a: ActivityItem) {
     return a.shared?.authorName ?? SELF_USER;
 }
@@ -58,7 +71,7 @@ function UserOption({
     );
 }
 
-export function HistoryView({
+export const HistoryView = memo(function HistoryView({
     activities,
     sharedActivities,
     graphActivities,
@@ -110,7 +123,9 @@ export function HistoryView({
         }
     }, [authors, userFilter]);
 
-    const q = query.trim().toLowerCase();
+    // Refiltering the log and the year graph is heavy; deferring it keeps each
+    // keystroke landing in the field at once, with the list catching up after.
+    const q = useDeferredValue(query.trim().toLowerCase());
     const matches = useCallback(
         (a: ActivityItem) => {
             if (projectFilter && (a.project ?? '') !== projectFilter) return false;
@@ -174,6 +189,13 @@ export function HistoryView({
     }, [finished, projectFilter]);
 
     const groups = useMemo(() => groupByLocalDate(filtered, true), [filtered]);
+    const [allDays, setAllDays] = useState(false);
+    useEffect(() => {
+        if (!allDays && groups.length > FIRST_DAYS) {
+            startTransition(() => setAllDays(true));
+        }
+    }, [allDays, groups.length]);
+    const shownGroups = allDays ? groups : groups.slice(0, FIRST_DAYS);
 
     const userLabel =
         userFilter === ''
@@ -303,12 +325,11 @@ export function HistoryView({
                 </Empty>
             ) : (
                 <div className="flex flex-col gap-6">
-                    {groups.map((g) => (
+                    {shownGroups.map((g) => (
                         <DayGroup
                             key={g.dateKey}
                             day={g.date}
                             activities={g.items}
-                            projects={projects}
                             removingKeys={removingKeys}
                             variant="history"
                             onUpdate={onUpdate}
@@ -321,4 +342,4 @@ export function HistoryView({
 
         </div>
     );
-}
+});

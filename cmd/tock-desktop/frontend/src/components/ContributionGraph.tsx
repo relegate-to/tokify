@@ -1,4 +1,14 @@
-import { cloneElement, useMemo } from 'react';
+import {
+    cloneElement,
+    memo,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    type MouseEvent,
+} from 'react';
+import { createPortal } from 'react-dom';
 import {
     eachDayOfInterval,
     format,
@@ -46,7 +56,7 @@ function contributionLevel(ms: number) {
     return 4;
 }
 
-export function ContributionGraph({ activities }: { activities: Activity[] }) {
+export const ContributionGraph = memo(function ContributionGraph({ activities }: { activities: Activity[] }) {
     const compact = useCompact();
     const todayKey = localDayKey(new Date());
     const { data, dominantProjects, totalMs, activityCount } = useMemo(() => {
@@ -118,6 +128,8 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
         };
     }, [activities, todayKey, compact]);
 
+    const cellTip = useCellTooltip();
+
     return (
         <Card
             role="region"
@@ -140,7 +152,11 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
                     {formatTotal(totalMs)} logged
                 </CardAction>
             </CardHeader>
-            <CardContent className="px-3">
+            <CardContent
+                className="px-3"
+                onMouseOver={cellTip.onMouseOver}
+                onMouseLeave={cellTip.hide}
+            >
                 <ActivityCalendar
                     className="tokify-contribution-calendar"
                     data={data}
@@ -153,11 +169,15 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
                     }}
                     renderBlock={(block, activity) => {
                         const project = dominantProjects.get(activity.date);
-                        if (!project) return block;
-                        return cloneElement(block, {
-                            fill: projectColor(project),
-                            fillOpacity: CONTRIBUTION_OPACITY[activity.level],
-                        });
+                        const props = {
+                            'data-date': activity.date,
+                            'data-count': activity.count,
+                            ...(project && {
+                                fill: projectColor(project),
+                                fillOpacity: CONTRIBUTION_OPACITY[activity.level],
+                            }),
+                        };
+                        return cloneElement(block, props);
                     }}
                     showTotalCount={false}
                     showWeekdayLabels={['mon', 'wed', 'fri']}
@@ -165,18 +185,98 @@ export function ContributionGraph({ activities }: { activities: Activity[] }) {
                         light: CONTRIBUTION_COLORS,
                         dark: CONTRIBUTION_COLORS,
                     }}
-                    tooltips={{
-                        activity: {
-                            text: (activity) =>
-                                `${formatTotal(activity.count)} on ${format(
-                                    parseISO(activity.date),
-                                    'EEEE, MMM d',
-                                )}`,
-                        },
-                    }}
                 />
+                {cellTip.tip &&
+                    createPortal(<CellTooltip {...cellTip.tip} />, document.body)}
             </CardContent>
         </Card>
     );
+});
+
+const TIP_REST_MS = 150;
+const TIP_GAP = 6;
+const TIP_EDGE = 8;
+
+type Tip = { text: string; x: number; y: number };
+
+// One tooltip for the whole calendar. The library's own gives each of the 365
+// cells a floating-ui instance with hover, dismiss and transition hooks, which
+// was most of the graph's render cost on every edit. Here the cells only carry
+// data attributes, and hovering reads whichever cell is under the pointer.
+function useCellTooltip() {
+    const [tip, setTip] = useState<Tip | null>(null);
+    const shown = useRef(false);
+    const rest = useRef<number | null>(null);
+
+    const clearRest = () => {
+        if (rest.current !== null) window.clearTimeout(rest.current);
+        rest.current = null;
+    };
+
+    const hide = () => {
+        clearRest();
+        shown.current = false;
+        setTip(null);
+    };
+
+    const onMouseOver = (e: MouseEvent) => {
+        const cell = (e.target as Element).closest?.('rect[data-date]');
+        if (!cell) return;
+        const date = cell.getAttribute('data-date') ?? '';
+        const count = Number(cell.getAttribute('data-count')) || 0;
+        const r = cell.getBoundingClientRect();
+        const next = {
+            text: `${formatTotal(count)} on ${format(parseISO(date), 'EEEE, MMM d')}`,
+            x: r.left + r.width / 2,
+            y: r.top,
+        };
+        clearRest();
+        // Once one is up, moving across cells follows at once; only the first
+        // waits for the pointer to settle.
+        if (shown.current) {
+            setTip(next);
+            return;
+        }
+        rest.current = window.setTimeout(() => {
+            shown.current = true;
+            setTip(next);
+        }, TIP_REST_MS);
+    };
+
+    useEffect(() => {
+        if (!tip) return;
+        window.addEventListener('scroll', hide, true);
+        return () => window.removeEventListener('scroll', hide, true);
+    }, [tip]);
+
+    useEffect(() => clearRest, []);
+
+    return { tip, onMouseOver, hide };
 }
 
+function CellTooltip({ text, x, y }: Tip) {
+    const ref = useRef<HTMLDivElement>(null);
+
+    // Centered over the cell, but held inside the window at the year's edges.
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const half = el.offsetWidth / 2;
+        const left = Math.min(
+            Math.max(x, half + TIP_EDGE),
+            window.innerWidth - half - TIP_EDGE,
+        );
+        el.style.left = `${left}px`;
+    }, [text, x]);
+
+    return (
+        <div
+            ref={ref}
+            role="tooltip"
+            className="react-activity-calendar__tooltip pointer-events-none fixed z-50 animate-in fade-in-0 duration-150"
+            style={{ left: x, top: y - TIP_GAP, transform: 'translate(-50%, -100%)' }}
+        >
+            {text}
+        </div>
+    );
+}

@@ -7,7 +7,6 @@ import { ActivityRow } from '@/components/ActivityRow';
 export function JumpBackIn({
     items,
     contextLabel,
-    projects,
     removingKeys,
     onResume,
     onUpdate,
@@ -15,7 +14,6 @@ export function JumpBackIn({
 }: {
     items: Activity[];
     contextLabel: string;
-    projects: string[];
     removingKeys: Set<string>;
     onResume: (orig: Activity) => void;
     onUpdate: (
@@ -45,7 +43,6 @@ export function JumpBackIn({
                     <ActivityRow
                         key={String(a.start_time)}
                         activity={a}
-                        projects={projects}
                         isRemoving={removingKeys.has(String(a.start_time))}
                         variant="ledger"
                         onUpdate={onUpdate}

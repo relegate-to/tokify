@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useContext, useState, type ComponentProps } from 'react';
 import { FileText, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 
 import type { Activity, ActivityItem } from '@/types';
@@ -7,6 +7,7 @@ import { projectColor } from '@/lib/colors';
 import { REMOVE_ROW_TRANSITION } from '@/lib/motion';
 import { formatClock, formatDuration, formatTotal } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
+import { ProjectsContext } from '@/lib/projects-context';
 import { Button } from '@/components/ui/button';
 import {
     ContextMenu,
@@ -34,7 +35,6 @@ const LEDGER_ROW_HEIGHT = 'h-[50px] compact:h-10';
 // list stutter as it closed the gap. Relies on its handler props being stable.
 export const ActivityRow = memo(function ActivityRow({
     activity,
-    projects,
     isRemoving = false,
     onUpdate,
     onRemove,
@@ -43,7 +43,6 @@ export const ActivityRow = memo(function ActivityRow({
     variant = 'log',
 }: {
     activity: ActivityItem;
-    projects: string[];
     isRemoving?: boolean;
     onUpdate: (orig: Activity, description: string, project: string, notes: string, startISO: string, endISO: string) => void;
     onRemove: (orig: Activity) => void;
@@ -59,13 +58,21 @@ export const ActivityRow = memo(function ActivityRow({
     const start = new Date(activity.start_time as any);
     const end = activity.end_time ? new Date(activity.end_time as any) : null;
     const isRunning = !end;
-    const now = useNow(isRunning);
+    const now = useNow(isRunning, 60_000, start.getTime());
     const ms = (end?.getTime() ?? now) - start.getTime();
 
     const [editOpen, setEditOpen] = useState(false);
+    // The dialog mounts on first use and then stays for its close animation. The
+    // Log mounts hundreds of rows at once, and a closed dialog apiece — with its
+    // form state and time parsing — was a large share of that cost.
+    const [editUsed, setEditUsed] = useState(false);
+    const openEdit = () => {
+        setEditUsed(true);
+        setEditOpen(true);
+    };
 
     const enterEdit = () => {
-        if (!readOnly) setEditOpen(true);
+        if (!readOnly) openEdit();
     };
 
     const flipId = shared
@@ -134,7 +141,7 @@ export const ActivityRow = memo(function ActivityRow({
                                 variant="ghost"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    setEditOpen(true);
+                                    openEdit();
                                 }}
                                 className={cn(
                                     'transition-opacity focus-visible:opacity-100',
@@ -222,7 +229,7 @@ export const ActivityRow = memo(function ActivityRow({
                             <Button
                                 size="icon-xs"
                                 variant="ghost"
-                                onClick={() => setEditOpen(true)}
+                                onClick={openEdit}
                                 className={cn(
                                     'transition-opacity focus-visible:opacity-100',
                                     activity.notes
@@ -270,7 +277,7 @@ export const ActivityRow = memo(function ActivityRow({
             <ContextMenu>
                 <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
                 <ContextMenuContent className="w-44">
-                    <ContextMenuItem onSelect={() => setEditOpen(true)}>
+                    <ContextMenuItem onSelect={openEdit}>
                         <Pencil className="size-4 opacity-70" />
                         Edit…
                     </ContextMenuItem>
@@ -290,13 +297,18 @@ export const ActivityRow = memo(function ActivityRow({
                     </ContextMenuItem>
                 </ContextMenuContent>
             </ContextMenu>
-            <EditActivityDialog
-                open={editOpen}
-                onOpenChange={setEditOpen}
-                activity={activity}
-                projects={projects}
-                onUpdate={onUpdate}
-            />
+            {editUsed && (
+                <RowEditDialog
+                    open={editOpen}
+                    onOpenChange={setEditOpen}
+                    activity={activity}
+                    onUpdate={onUpdate}
+                />
+            )}
         </>
     );
 });
+
+function RowEditDialog(props: Omit<ComponentProps<typeof EditActivityDialog>, 'projects'>) {
+    return <EditActivityDialog {...props} projects={useContext(ProjectsContext)} />;
+}

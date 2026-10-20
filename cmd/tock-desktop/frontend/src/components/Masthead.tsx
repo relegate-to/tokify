@@ -99,12 +99,13 @@ export function Masthead({
   const [runningShorthand, setRunningShorthand] = useState<string | null>(null);
   const [logHover, setLogHover] = useState(false);
   const hasRunning = !!running;
-  const now = useNow(hasRunning);
+  const runningStart = running ? new Date(running.start_time as any).getTime() : 0;
+  // The tab reads HH:MM, so it only needs to hear about whole minutes.
+  const now = useNow(hasRunning, 60_000, runningStart);
 
   const [exportOpen, setExportOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const runningStart = running ? new Date(running.start_time as any) : null;
-  const runningMs = runningStart ? now - runningStart.getTime() : 0;
+  const runningMs = running ? now - runningStart : 0;
   const runningDuration = formatDuration(runningMs);
   const runningAccent = running?.project
     ? projectColor(running.project)

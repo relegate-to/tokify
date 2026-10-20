@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 
 import type { Activity, ActivityView } from '@/types';
 import { dayLabel, startOfDay } from '@/lib/time';
@@ -23,7 +23,7 @@ function quickStartKey(activity: Activity) {
     ]);
 }
 
-export function NowView({
+export const NowView = memo(function NowView({
     running,
     today,
     recent,
@@ -161,7 +161,6 @@ export function NowView({
                 <JumpBackIn
                     items={quickStarts}
                     contextLabel={contextLabel}
-                    projects={projects}
                     removingKeys={removingKeys}
                     onResume={onResume}
                     onUpdate={onUpdate}
@@ -172,7 +171,7 @@ export function NowView({
             {isColdStart && <EmptyDay />}
         </div>
     );
-}
+});
 
 function EmptyDay() {
     const nowPct =

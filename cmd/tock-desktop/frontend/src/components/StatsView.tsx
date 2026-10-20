@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { CalendarRange, Hourglass, Sun } from 'lucide-react';
 
 import type { Activity } from '@/types';
@@ -16,7 +16,7 @@ const RECORD_ICONS = {
     week: CalendarRange,
 } as const;
 
-export function StatsView({ activities }: { activities: Activity[] }) {
+export const StatsView = memo(function StatsView({ activities }: { activities: Activity[] }) {
     const stats = useMemo(() => buildStats(activities), [activities]);
 
     if (stats.empty) {
@@ -117,7 +117,7 @@ export function StatsView({ activities }: { activities: Activity[] }) {
             </Panel>
         </div>
     );
-}
+});
 
 function RecordItem({ record, last }: { record: RecordRow; last: boolean }) {
     const Icon = RECORD_ICONS[record.icon];

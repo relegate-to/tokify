@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 
 import type { Activity } from '@/types';
 import {
@@ -21,7 +21,7 @@ import {
 // directly to a stroke-dasharray length; a small gap keeps segments legible.
 const GAP = 1.4;
 
-export function ChartsView({ activities }: { activities: Activity[] }) {
+export const ChartsView = memo(function ChartsView({ activities }: { activities: Activity[] }) {
     const donut = useMemo(() => buildDonut(activities, 'all'), [activities]);
     const weekday = useMemo(() => buildWeekdayStacks(activities), [activities]);
     const hourly = useMemo(() => buildHourly(activities), [activities]);
@@ -145,7 +145,7 @@ export function ChartsView({ activities }: { activities: Activity[] }) {
             </Panel>
         </div>
     );
-}
+});
 
 function donutArcs(segs: DonutSeg[]) {
     let cursor = 0;
