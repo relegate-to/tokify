@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Play } from 'lucide-react-native';
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -11,7 +11,7 @@ import { formatTotal, parseInstant } from '@/lib/time';
 import { isRunning } from '@/sync/timer';
 
 type Start = { description: string; project: string; notes?: string };
-type Pending = Start & { resolve: (started: string | undefined) => void };
+type Pending = Start & { elapsed: string; resolve: (started: string | undefined) => void };
 
 // resume starts an activity again, asking first when it would stop the one
 // that's running. It settles with the new timer's start, or undefined when
@@ -25,7 +25,9 @@ export function ResumeProvider({ children }: { children: ReactNode }) {
     const [pending, setPending] = useState<Pending | null>(null);
     const running = isRunning(state.timer) ? state.timer : null;
     const runningRef = useRef(running);
-    runningRef.current = running;
+    useLayoutEffect(() => {
+        runningRef.current = running;
+    }, [running]);
 
     const go = useCallback(
         (s: Start) => {
@@ -41,7 +43,8 @@ export function ResumeProvider({ children }: { children: ReactNode }) {
             if (!current) return go(s);
             if (current.d === s.description && current.p === s.project) return undefined;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-            return new Promise((resolve) => setPending({ ...s, resolve }));
+            const elapsed = formatTotal(Date.now() - parseInstant(current.s).getTime());
+            return new Promise((resolve) => setPending({ ...s, elapsed, resolve }));
         },
         [go],
     );
@@ -52,7 +55,6 @@ export function ResumeProvider({ children }: { children: ReactNode }) {
         pending.resolve(confirmed ? await go(pending) : undefined);
     };
 
-    const elapsed = running ? formatTotal(Date.now() - parseInstant(running.s).getTime()) : '';
     return (
         <ResumeContext.Provider value={resume}>
             {children}
@@ -61,7 +63,7 @@ export function ResumeProvider({ children }: { children: ReactNode }) {
                     <DialogHeader>
                         <DialogTitle>Switch to “{pending?.description}”?</DialogTitle>
                         <DialogDescription>
-                            “{running?.d || running?.p || 'Your activity'}” has been running for {elapsed}. Switching stops it and keeps its time in the log.
+                            “{running?.d || running?.p || 'Your activity'}” has been running for {pending?.elapsed}. Switching stops it and keeps its time in the log.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

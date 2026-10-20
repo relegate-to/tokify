@@ -5,7 +5,7 @@ import { Placeholder } from '@tiptap/extensions';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import type { DOMProps } from 'expo/dom';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import './sketchpad.css';
 import './notes.css';
@@ -41,7 +41,9 @@ export default function NotesEditor({
     dom?: DOMProps;
 }) {
     const onChangeRef = useRef(onChange);
-    onChangeRef.current = onChange;
+    useLayoutEffect(() => {
+        onChangeRef.current = onChange;
+    }, [onChange]);
     const editor = useEditor({
         extensions: [
             StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: { openOnClick: false, autolink: true, defaultProtocol: 'https' } }),

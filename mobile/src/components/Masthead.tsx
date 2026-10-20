@@ -193,7 +193,7 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
                     </Animated.View>
                     <Pressable
                         onPress={() => onPage('log')}
-                        onLayout={(e) => (logWidth.value = e.nativeEvent.layout.width)}
+                        onLayout={(e) => logWidth.set(e.nativeEvent.layout.width)}
                         accessibilityRole="tab"
                         accessibilityState={{ selected: onLog }}
                         className="h-9 flex-row items-center gap-2 pl-3.5 pr-3"

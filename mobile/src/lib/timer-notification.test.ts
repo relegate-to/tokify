@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { showTimerNotification } from './timer-notification';
+
 const native = vi.hoisted(() => ({ show: vi.fn(), hide: vi.fn() }));
 vi.mock('../../modules/tokify-timer-notification', () => ({ default: native }));
 vi.mock('expo-notifications', () => ({}));
-
-import { showTimerNotification } from './timer-notification';
 
 describe('the running-timer notification', () => {
     it('shows a running timer counting from its start, nanoseconds and all', () => {

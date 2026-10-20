@@ -317,9 +317,7 @@ export function LogPage() {
         for (const e of shared) if (!byId.has(e.authorId)) byId.set(e.authorId, e);
         return [...byId.values()].sort((a, b) => (a.authorName || 'Someone').localeCompare(b.authorName || 'Someone'));
     }, [shared]);
-    useEffect(() => {
-        if (who && who !== SELF && !authors.some((a) => a.authorId === who)) setWho('');
-    }, [authors, who]);
+    if (who && who !== SELF && !authors.some((a) => a.authorId === who)) setWho('');
     const shown = useMemo(() => {
         const q = query.trim().toLowerCase();
         const seen = new Set<string>();
@@ -472,7 +470,7 @@ export function LogPage() {
                         <DialogTitle>
                             Delete {chosen.length} {chosen.length === 1 ? 'activity' : 'activities'}?
                         </DialogTitle>
-                        <DialogDescription>This removes {formatTotal(chosenMs)} from your log on every device. It can't be undone.</DialogDescription>
+                        <DialogDescription>This removes {formatTotal(chosenMs)} from your log on every device. It can’t be undone.</DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="ghost" disabled={deleting} onPress={() => setConfirming(false)}>

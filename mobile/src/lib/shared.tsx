@@ -21,6 +21,12 @@ export function SharedProvider({ children }: { children: ReactNode }) {
     const [shared, setShared] = useState<SharedActivity[]>(() => (account ? cachedSharedActivities(account.user.id) : []));
     const [invites, setInvites] = useState(0);
     const reading = useRef(false);
+    const [owner, setOwner] = useState(account);
+    if (account !== owner) {
+        setOwner(account);
+        setShared(account ? cachedSharedActivities(account.user.id) : []);
+        setInvites(0);
+    }
 
     const refresh = useCallback(async () => {
         if (!account) return;
@@ -39,8 +45,7 @@ export function SharedProvider({ children }: { children: ReactNode }) {
     }, [account]);
 
     useEffect(() => {
-        setShared(account ? cachedSharedActivities(account.user.id) : []);
-        setInvites(0);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh only sets state after an await, which the rule doesn't see past.
         refresh();
         let timer = setInterval(refresh, REFRESH_MS);
         const sub = AppState.addEventListener('change', (s) => {

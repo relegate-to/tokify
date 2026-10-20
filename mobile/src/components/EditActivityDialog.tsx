@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { RotateCcw } from 'lucide-react-native';
@@ -54,14 +54,15 @@ export function EditActivityDialog({
     const [edit, setEdit] = useState(initial);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
-    useEffect(() => {
+    // Reset only when the dialog opens.
+    const [wasOpen, setWasOpen] = useState(open);
+    if (open !== wasOpen) {
+        setWasOpen(open);
         if (open) {
             setEdit(initial);
             setError('');
         }
-        // Reset only when the dialog opens.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open]);
+    }
 
     const set = (patch: Partial<ActivityEdit>) => setEdit((e) => ({ ...e, ...patch }));
 

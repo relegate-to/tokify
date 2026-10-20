@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Bold, Check, Folder, Heading2, IndentDecrease, IndentIncrease, Italic, KeyboardOff, List, ListTodo } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
@@ -45,7 +45,9 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
     const resume = useResume();
     const { autoCompleteTodos, set: setPref } = usePrefs();
     const autoComplete = useRef(autoCompleteTodos);
-    autoComplete.current = autoCompleteTodos;
+    useLayoutEffect(() => {
+        autoComplete.current = autoCompleteTodos;
+    }, [autoCompleteTodos]);
     const { entries } = useEntries();
     const insets = useSafeAreaInsets();
     const keyboard = useReanimatedKeyboardAnimation();
@@ -54,8 +56,7 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
     const colors = useCSSVariable(THEME_VARS);
     const theme = useMemo(
         () => Object.fromEntries(THEME_VARS.map((name, i) => [name.replace('--color-', ''), String(colors[i] ?? '')])),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [colors.join()],
+        [colors],
     );
     const projects = useMemo(() => [...new Set((entries ?? []).map((e) => e.project).filter(Boolean))], [entries]);
 
@@ -199,9 +200,11 @@ function Tool({ icon, label, active = false, onPress }: { icon: typeof Bold; lab
 // The desktop's FinishTodoDialog.
 function FinishTodoDialog({ description, onAnswer }: { description: string | null; onAnswer: (done: boolean, always: boolean) => void }) {
     const [always, setAlways] = useState(false);
-    useEffect(() => {
+    const [asked, setAsked] = useState(description);
+    if (description !== asked) {
+        setAsked(description);
         if (description !== null) setAlways(false);
-    }, [description]);
+    }
     return (
         <Dialog open={description !== null} onOpenChange={(open) => !open && onAnswer(false, false)}>
             <DialogContent className="w-[92vw] max-w-md">

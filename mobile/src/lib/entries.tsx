@@ -15,6 +15,13 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     const { account } = useSession();
     const [entries, setEntries] = useState<Entry[] | null>(null);
     const [error, setError] = useState('');
+    // Now above the signed-in screens, so a sign-out mustn't leave the last
+    // account's history behind.
+    const [owner, setOwner] = useState(account);
+    if (account !== owner) {
+        setOwner(account);
+        if (!account) setEntries(null);
+    }
     const reload = useCallback(async () => {
         if (!account) return;
         try {
@@ -28,11 +35,9 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
         }
     }, [account]);
     useEffect(() => {
-        // Now above the signed-in screens, so a sign-out mustn't leave the last
-        // account's history behind.
-        if (!account) setEntries(null);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- reload only sets state after an await, which the rule doesn't see past.
         reload();
-    }, [reload, account]);
+    }, [reload]);
     return <EntriesContext.Provider value={{ entries, error, reload }}>{children}</EntriesContext.Provider>;
 }
 

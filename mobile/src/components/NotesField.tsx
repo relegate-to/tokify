@@ -12,8 +12,7 @@ export function NotesField({ value, onChange, placeholder, className }: { value:
     const colors = useCSSVariable(THEME_VARS);
     const theme = useMemo(
         () => Object.fromEntries(THEME_VARS.map((name, i) => [name.replace('--color-', ''), String(colors[i] ?? '')])),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [colors.join()],
+        [colors],
     );
     return (
         <View className={cn('h-40 overflow-hidden rounded-lg border border-input bg-card', className)}>

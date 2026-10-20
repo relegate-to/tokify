@@ -66,6 +66,8 @@
     "@types/node": "^26.6.4",
     "@types/react": "~19.2.2",
     "@types/react-dom": "~19.2.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3",
     "vitest": "^5.0.3"
   },
@@ -75,7 +77,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "expo lint"
   },
   "private": true
 }
