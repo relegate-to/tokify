@@ -6,6 +6,7 @@ import Animated, {
     interpolate,
     interpolateColor,
     useAnimatedStyle,
+    useDerivedValue,
     useSharedValue,
     withTiming,
     type SharedValue,
@@ -28,7 +29,7 @@ import { EASE_SIZE, enter, LivePulse } from '@/lib/motion';
 import { useRunningTimer } from '@/lib/running-timer';
 import { useSession } from '@/lib/session';
 import { useShared } from '@/lib/shared';
-import { formatDuration, parseInstant } from '@/lib/time';
+import { formatTotal, parseInstant } from '@/lib/time';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { isRunning } from '@/sync/timer';
@@ -49,10 +50,18 @@ const GAP = 4;
 const ICON = 32;
 const ICON_GAP = 2;
 const ICONS_WIDTH = 4 + LOG_VIEWS.length * ICON + (LOG_VIEWS.length - 1) * ICON_GAP;
-// The running title's widest on Activity. On the Log pages, where the view
-// icons need the room, it folds away to leave the live dot and the time.
+// On Activity the running title takes whatever room the row has left; on the
+// Log pages, where the view icons need the room, it folds away to leave the
+// live dot and the time. Until the row is measured it holds to TITLE_MAX.
 const TITLE_MAX = 150;
+const TITLE_MIN = 40;
+// Either side of the live dot, so it sits evenly between title and time.
 const TITLE_GAP = 8;
+// The row's px-4, the account button (p-2 around its size-7 square), and
+// air kept clear between the tabs and that button.
+const ROW_PAD = 16;
+const ACCOUNT_WIDTH = 44;
+const BREATHING_ROOM = 12;
 const LABEL = { fontFamily: 'InstrumentSans_600SemiBold', fontSize: 15 } as const;
 // The desktop's SIZE_TRANSITION.
 const resize = { duration: 300, easing: EASE_SIZE };
@@ -89,16 +98,28 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
     const activityWidth = useSharedValue(0);
     const titleWidth = useSharedValue(0);
     const logWidth = useSharedValue(0);
+    // Unanimated copies of the measurements, and the row's width, to work out
+    // how wide the title may grow.
+    const rowWidth = useSharedValue(0);
+    const activityNatural = useSharedValue(0);
+    const titleNatural = useSharedValue(0);
+    const titleMax = useDerivedValue(() => {
+        if (rowWidth.value === 0) return TITLE_MAX;
+        const room = rowWidth.value - ROW_PAD * 2 - ACCOUNT_WIDTH - BREATHING_ROOM - PAD * 2 - GAP * 2 - logWidth.value;
+        return Math.max(TITLE_MIN, room - (activityNatural.value - titleNatural.value) - TITLE_GAP);
+    });
     const live = useSharedValue(running ? 1 : 0);
     useEffect(() => {
         live.value = withTiming(running ? 1 : 0, { duration: 180 });
     }, [running, live]);
     const measureActivity = (e: LayoutChangeEvent) => {
         const w = Math.ceil(e.nativeEvent.layout.width);
+        activityNatural.value = w;
         activityWidth.value = activityWidth.value === 0 ? w : withTiming(w, resize);
     };
     const measureTitle = (e: LayoutChangeEvent) => {
         const w = Math.ceil(e.nativeEvent.layout.width);
+        titleNatural.value = w;
         titleWidth.value = titleWidth.value === 0 ? w : withTiming(w, resize);
     };
 
@@ -106,24 +127,24 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
     // only for the values its own closure touches) and hands them to these
     // pure helpers.
     const hasTitle = running !== null;
-    const shownTitle = (t: number, title: number) => {
+    const shownTitle = (t: number, title: number, max: number) => {
         'worklet';
-        return Math.min(title, TITLE_MAX + TITLE_GAP) * (1 - t);
+        return Math.min(title, max + TITLE_GAP) * (1 - t);
     };
-    const tabWidth = (t: number, natural: number, title: number) => {
+    const tabWidth = (t: number, natural: number, title: number, max: number) => {
         'worklet';
-        return hasTitle ? natural - title + shownTitle(t, title) : natural;
+        return hasTitle ? natural - title + shownTitle(t, title, max) : natural;
     };
     const titleFold = useAnimatedStyle(() => {
         const t = clamp(progress.value, 0, 1);
-        return { width: shownTitle(t, titleWidth.value), opacity: 1 - t };
+        return { width: shownTitle(t, titleWidth.value, titleMax.value), opacity: 1 - t };
     });
-    const titleCap = { maxWidth: TITLE_MAX };
+    const titleCap = useAnimatedStyle(() => ({ maxWidth: titleMax.value }));
 
-    const activityStyle = useAnimatedStyle(() => ({ width: tabWidth(clamp(progress.value, 0, 1), activityWidth.value, titleWidth.value) }));
+    const activityStyle = useAnimatedStyle(() => ({ width: tabWidth(clamp(progress.value, 0, 1), activityWidth.value, titleWidth.value, titleMax.value) }));
     const highlight = useAnimatedStyle(() => {
         const t = clamp(progress.value, 0, 1);
-        const tab = tabWidth(t, activityWidth.value, titleWidth.value);
+        const tab = tabWidth(t, activityWidth.value, titleWidth.value, titleMax.value);
         return {
             transform: [{ translateX: PAD + interpolate(t, [0, 1], [0, tab + GAP]) }],
             width: interpolate(t, [0, 1], [tab, logWidth.value]),
@@ -168,7 +189,7 @@ export function Masthead({ page, progress, onPage }: { page: Page; progress: Sha
 
     return (
         <>
-            <View className="flex-row items-center justify-between px-4 pb-3 pt-2">
+            <View className="flex-row items-center justify-between px-4 pb-3 pt-2" onLayout={(e) => (rowWidth.value = e.nativeEvent.layout.width)}>
                 <View className="flex-row items-center gap-1 overflow-hidden rounded-xl bg-navigation p-[3px]">
                     <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: PAD, bottom: PAD, left: 0 }, highlight]}>
                         <View className="flex-1 rounded-[9px] bg-navigation-active shadow-sm shadow-black/10" />
@@ -337,7 +358,10 @@ function RunningLabel({
     cap?: TextAnim;
     onTitleLayout?: (e: LayoutChangeEvent) => void;
 }) {
-    const now = useNow();
+    const startMs = parseInstant(start).getTime();
+    // The time reads in whole minutes ("0m", "1h 5m"), so it only needs to
+    // hear about them.
+    const now = useNow(true, 60_000, startMs);
     return (
         <>
             <Animated.View style={[{ overflow: 'hidden' }, fold]}>
@@ -347,10 +371,10 @@ function RunningLabel({
                     </Animated.Text>
                 </View>
             </Animated.View>
-            <View className="shrink-0 flex-row items-center gap-1.5">
+            <View className="shrink-0 flex-row items-center" style={{ gap: TITLE_GAP }}>
                 <LivePulse className={cn('size-[5px]', project ? projectColorClass(project) : 'bg-[#f5c451]')} />
                 <Animated.Text style={[{ fontFamily: 'IBMPlexMono_500Medium', fontSize: 13, fontVariant: ['tabular-nums'] }, ink]}>
-                    {formatDuration(now - parseInstant(start).getTime())}
+                    {formatTotal(now - startMs)}
                 </Animated.Text>
             </View>
         </>

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Bold, Check, Folder, Heading2, IndentDecrease, IndentIncrease, Italic, KeyboardOff, List, ListTodo } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
@@ -35,7 +35,7 @@ const IDLE: EditorState = { focused: false, task: false, bold: false, italic: fa
 
 // The desktop's sketchpad: a free-form pad, unlabelled and to the left of
 // Activity, whose to-dos start activities and get ticked off when those stop.
-export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
+export const SketchpadPage = memo(function SketchpadPage({ onStarted }: { onStarted: () => void }) {
     const editor = useRef<SketchpadHandle>(null);
     const [value, setValue] = useState(readSketchpad);
     const text = useRef(value);
@@ -180,7 +180,7 @@ export function SketchpadPage({ onStarted }: { onStarted: () => void }) {
             <FinishTodoDialog description={finishing?.description ?? null} onAnswer={answer} />
         </Animated.View>
     );
-}
+});
 
 function Tool({ icon, label, active = false, onPress }: { icon: typeof Bold; label: string; active?: boolean; onPress: () => void }) {
     return (

@@ -1,5 +1,5 @@
 import { CalendarRange, Hourglass, Sun } from 'lucide-react-native';
-import { useMemo } from 'react';
+import { memo, useDeferredValue, useMemo } from 'react';
 import { ScrollView, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -23,11 +23,14 @@ function rise(delay = 0) {
     return enter({ dy: 4, duration: 500, delay, easing: EASE_OUT });
 }
 
-export function StatsPage() {
-    const { entries } = useEntries();
+export const StatsPage = memo(function StatsPage() {
+    // Built in the background: these walk the whole history, so they start
+    // from their skeleton and never hold up a swipe, an edit or app start.
+    const entries = useDeferredValue(useEntries().entries, null);
     const color = useColor();
     const stats = useMemo(() => buildStats((entries ?? []).map(toActivity)), [entries]);
 
+    if (entries === null) return <SummarySkeleton />;
     if (stats.empty) {
         return (
             <View className="flex-1 items-center justify-center gap-2 px-10">
@@ -37,7 +40,6 @@ export function StatsPage() {
         );
     }
 
-    if (entries === null) return <SummarySkeleton />;
     return (
         <Animated.View entering={FadeIn.duration(300)} style={{ flex: 1 }}>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="gap-3 px-5 pb-10 pt-2">
@@ -101,7 +103,7 @@ export function StatsPage() {
             </ScrollView>
         </Animated.View>
     );
-}
+});
 
 function RecordItem({ record, last }: { record: RecordRow; last: boolean }) {
     return (

@@ -89,8 +89,10 @@ async function readPending(): Promise<CanonicalEntry[]> {
 export type Entry = CanonicalEntry & { id: string; signed?: boolean };
 
 // The caller's live entries, newest first. Rows that fail to decrypt are
-// skipped rather than failing the list.
-export async function listEntries(token: string, dek: Uint8Array, owner: string): Promise<Entry[]> {
+// skipped rather than failing the list. An id is a MAC of the entry's content,
+// so a row already in `known` is that same entry: it is reused as is rather
+// than decrypted again, which also keeps its identity for memoised views.
+export async function listEntries(token: string, dek: Uint8Array, owner: string, known?: ReadonlyMap<string, Entry>): Promise<Entry[]> {
     const rows = (await dataFetch(token, `/entries?select=id,ciphertext,nonce,author_sig&user_id=eq.${encodeURIComponent(owner)}&deleted=eq.false`)) as {
         id: string;
         ciphertext: string;
@@ -99,8 +101,14 @@ export async function listEntries(token: string, dek: Uint8Array, owner: string)
     }[];
     const out: Entry[] = [];
     for (const row of rows) {
+        const signed = Boolean(row.author_sig);
+        const seen = known?.get(row.id);
+        if (seen && seen.signed === signed) {
+            out.push(seen);
+            continue;
+        }
         try {
-            out.push({ id: row.id, ...decryptOwnEntry(dek, owner, row), signed: Boolean(row.author_sig) });
+            out.push({ id: row.id, ...decryptOwnEntry(dek, owner, row), signed });
         } catch {
             // Not decryptable with this account's key; nothing to show.
         }

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
 import { useSession } from '@/lib/session';
@@ -30,7 +30,10 @@ export function SharedProvider({ children }: { children: ReactNode }) {
         if (reading.current || !(await sharingUnlocked())) return;
         reading.current = true;
         try {
-            setShared((await listSharedEntries(account)).entries);
+            const next = (await listSharedEntries(account)).entries;
+            // The poll rebuilds every row; adopt them only when they differ, or
+            // the Log regroups and redraws its graph once a minute for nothing.
+            setShared((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
         } catch {
             // Keep showing the last good read.
         } finally {
@@ -56,7 +59,8 @@ export function SharedProvider({ children }: { children: ReactNode }) {
         };
     }, [account, refresh]);
 
-    return <SharedContext.Provider value={{ shared, invites, refresh }}>{children}</SharedContext.Provider>;
+    const value = useMemo(() => ({ shared, invites, refresh }), [shared, invites, refresh]);
+    return <SharedContext.Provider value={value}>{children}</SharedContext.Provider>;
 }
 
 export function useShared() {

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useDeferredValue, useMemo } from 'react';
 import { ScrollView, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
@@ -37,8 +37,10 @@ function Header({ title, note }: { title: string; note: string }) {
     );
 }
 
-export function ChartsPage() {
-    const { entries } = useEntries();
+export const ChartsPage = memo(function ChartsPage() {
+    // Built in the background: these walk the whole history, so they start
+    // from their skeleton and never hold up a swipe, an edit or app start.
+    const entries = useDeferredValue(useEntries().entries, null);
     const color = useColor();
     const muted = String(useCSSVariable('--color-muted') ?? 'transparent');
     const activities = useMemo(() => (entries ?? []).map(toActivity), [entries]);
@@ -126,4 +128,4 @@ export function ChartsPage() {
             </ScrollView>
         </Animated.View>
     );
-}
+});

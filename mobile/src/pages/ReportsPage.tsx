@@ -1,5 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { memo, useDeferredValue, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -19,8 +19,10 @@ import { cn } from '@/lib/utils';
 const tabular = { fontVariant: ['tabular-nums' as const] };
 const rise = (delay = 0) => enter({ dy: 4, duration: 500, delay, easing: EASE_OUT });
 
-export function ReportsPage() {
-    const { entries } = useEntries();
+export const ReportsPage = memo(function ReportsPage() {
+    // Built in the background: these walk the whole history, so they start
+    // from their skeleton and never hold up a swipe, an edit or app start.
+    const entries = useDeferredValue(useEntries().entries, null);
     const color = useColor();
     const [period, setPeriod] = useState<'weekly' | 'monthly'>('weekly');
     const [offset, setOffset] = useState(0);
@@ -144,7 +146,7 @@ export function ReportsPage() {
             </ScrollView>
         </Animated.View>
     );
-}
+});
 
 function StepButton({ onPress, disabled, label, icon }: { onPress: () => void; disabled?: boolean; label: string; icon: typeof ChevronLeft }) {
     return (

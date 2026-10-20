@@ -36,7 +36,6 @@ export function NowRunning({
     onStop: () => void;
     onEdit: (description: string, project: string, notes: string) => Promise<void> | void;
 }) {
-    const now = useNow();
     const [editing, setEditing] = useState(false);
     const leaving = useSharedValue(0);
     const exitStyle = useAnimatedStyle(() => ({
@@ -76,7 +75,7 @@ export function NowRunning({
                     </View>
                     <View className="flex-row items-center border-t border-running-card-faint/20 pt-4">
                         <Text accessibilityLiveRegion="polite" className="mr-auto font-mono-medium text-[34px] tracking-[-0.6px] text-running-card-foreground" style={tabular}>
-                            {formatStopwatch(now - start.getTime())}
+                            <Stopwatch since={start.getTime()} />
                         </Text>
                         <Pressable
                             onPress={() => setEditing(true)}
@@ -108,4 +107,10 @@ export function NowRunning({
             />
         </Animated.View>
     );
+}
+
+// The only part of the card that changes every second, so the only part that
+// re-renders every second; the card and its edit dialog stay put.
+function Stopwatch({ since }: { since: number }) {
+    return <>{formatStopwatch(useNow() - since)}</>;
 }

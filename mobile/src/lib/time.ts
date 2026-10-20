@@ -10,8 +10,8 @@ export function formatStopwatch(ms: number) {
     const h = Math.floor(total / 3600);
     const m = Math.floor((total % 3600) / 60);
     const s = total % 60;
-    if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
-    return `${pad(m)}:${pad(s)}`;
+    if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+    return `${m}:${pad(s)}`;
 }
 
 // Parses an RFC 3339 instant for display. Desktop timestamps carry nanoseconds,
@@ -47,10 +47,4 @@ export function parseSyncTime(s: string): Date {
     const [y, mo, d] = date.split('-').map(Number);
     const [h, mi] = time.split(':').map(Number);
     return new Date(y, mo - 1, d, h, mi);
-}
-
-// The masthead's HH:MM readout of a running timer.
-export function formatDuration(ms: number) {
-    const total = Math.max(0, Math.floor(ms / 60_000));
-    return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 }
