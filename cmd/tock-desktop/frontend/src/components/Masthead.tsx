@@ -60,9 +60,6 @@ const TAB_GROUP_GAP = 4;
 const TAB_PADDING = 12;
 const TAB_ICON_WIDTH = 13;
 const TAB_CONTENT_GAP = 7;
-// A touch more air before the timer than between the icon and the label, so the
-// readout reads as its own thing.
-const TIMER_MARGIN = 2;
 const RUNNING_ACTIVITY_LABEL_MIN_WIDTH = 28;
 // Kept clear between the tabs and the controls on the right.
 const HEADER_BREATHING_ROOM = 24;
@@ -386,9 +383,10 @@ export function Masthead({
                 {running && (
                   <span
                     ref={timerRef}
-                    className="inline-flex shrink-0 items-center gap-1 font-mono text-[11.5px] font-semibold tabular-nums"
+                    // The dot separates title and time, so it sits the same
+                    // distance from each.
+                    className="inline-flex shrink-0 items-center gap-[7px] font-mono text-[11.5px] font-semibold tabular-nums"
                     style={{
-                      marginLeft: TIMER_MARGIN,
                       // A project color alone can vanish against the tab, so it
                       // is pulled toward the tab's own text color: darker on a
                       // light tab, lighter on a dark one.
@@ -627,7 +625,7 @@ function nowTabWidth(label: number, timer: number) {
       TAB_ICON_WIDTH +
       TAB_CONTENT_GAP +
       label +
-      (timer > 0 ? TAB_CONTENT_GAP + TIMER_MARGIN + timer : 0),
+      (timer > 0 ? TAB_CONTENT_GAP + timer : 0),
   );
 }
 
