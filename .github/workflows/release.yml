@@ -9,8 +9,6 @@ jobs:
   build-macos:
     name: Build Tokify.app (macOS universal)
     runs-on: macos-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
 
@@ -82,13 +80,128 @@ jobs:
 
       - name: Zip Tokify.app
         run: |
-          cd cmd/tock-desktop/build/bin
+          mkdir -p dist
+          cp THIRD_PARTY_NOTICES.txt dist/
           ASSET="Tokify-${GITHUB_REF_NAME}-macos-universal.zip"
           # `ditto` preserves macOS bundle attributes (resource forks,
           # extended attrs) better than plain `zip`.
-          ditto -c -k --sequesterRsrc --keepParent Tokify.app "$ASSET"
+          ditto -c -k --sequesterRsrc --keepParent cmd/tock-desktop/build/bin/Tokify.app "dist/$ASSET"
+          cd dist
           shasum -a 256 "$ASSET" > "${ASSET}.sha256"
           ls -la
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: dist/
+          if-no-files-found: error
+
+  build-android:
+    name: Build Tokify APK (Android)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      # app.config.ts bakes these into the bundle at prebuild and again when
+      # Gradle exports the JS, so both steps need them.
+      NEON_AUTH_URL: ${{ secrets.NEON_AUTH_URL }}
+      NEON_DATA_URL: ${{ secrets.NEON_DATA_URL }}
+      NEON_NOTIFY_URL: ${{ secrets.NEON_NOTIFY_URL }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write upload key and Firebase config
+        # After `npm ci`, so no install script ever sees them. A missing
+        # secret would otherwise quietly ship a debug-signed or push-less APK.
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          GOOGLE_SERVICES_JSON_CONTENT: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          for name in NEON_AUTH_URL NEON_DATA_URL NEON_NOTIFY_URL ANDROID_KEYSTORE_BASE64 GOOGLE_SERVICES_JSON_CONTENT; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret for ${name} is not set"
+              exit 1
+            fi
+          done
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          printf '%s' "$GOOGLE_SERVICES_JSON_CONTENT" > "$RUNNER_TEMP/google-services.json"
+          echo "ORG_GRADLE_PROJECT_tokifyUploadStoreFile=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          echo "GOOGLE_SERVICES_JSON=$RUNNER_TEMP/google-services.json" >> "$GITHUB_ENV"
+
+      - name: Stamp version from tag
+        # versionName is the tag without the "v"; versionCode packs
+        # major.minor.patch so every later release installs over the last.
+        # A prerelease shares its final release's code.
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "${VERSION%%-*}"
+          echo "TOKIFY_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "TOKIFY_VERSION_CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))" >> "$GITHUB_ENV"
+
+      - name: Generate the native project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build release APK
+        working-directory: mobile/android
+        env:
+          ORG_GRADLE_PROJECT_tokifyUploadStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_tokifyUploadKeyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_tokifyUploadKeyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Check the APK is signed with the upload key
+        working-directory: mobile/android/app/build/outputs/apk/release
+        run: |
+          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --print-certs app-release.apk | tee certs.txt
+          if grep -q 'CN=Android Debug' certs.txt; then
+            echo "::error::app-release.apk is signed with the debug key"
+            exit 1
+          fi
+
+      - name: Name APK
+        run: |
+          mkdir -p dist
+          ASSET="Tokify-${GITHUB_REF_NAME}-android.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/$ASSET"
+          cd dist
+          sha256sum "$ASSET" > "${ASSET}.sha256"
+          ls -la
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android
+          path: mobile/dist/
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: [build-macos, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
@@ -98,9 +211,12 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           files: |
-            cmd/tock-desktop/build/bin/Tokify-${{ github.ref_name }}-macos-universal.zip
-            cmd/tock-desktop/build/bin/Tokify-${{ github.ref_name }}-macos-universal.zip.sha256
-            THIRD_PARTY_NOTICES.txt
+            dist/Tokify-${{ github.ref_name }}-macos-universal.zip
+            dist/Tokify-${{ github.ref_name }}-macos-universal.zip.sha256
+            dist/Tokify-${{ github.ref_name }}-android.apk
+            dist/Tokify-${{ github.ref_name }}-android.apk.sha256
+            dist/THIRD_PARTY_NOTICES.txt
+          fail_on_unmatched_files: true
           body: |
             ## Install
 
@@ -120,3 +236,9 @@ jobs:
             Tokify releases are not yet signed with an Apple Developer ID;
             see the [README](https://github.com/relegate-to/tokify#install) for
             details.
+
+            ### Android
+
+            Download `Tokify-${{ github.ref_name }}-android.apk` below and open
+            it on your phone; Android will ask you to allow installs from your
+            browser or file manager the first time.
