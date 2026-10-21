@@ -74,6 +74,8 @@ export function RedoLastActivityChange():Promise<string>;
 
 export function RefreshRunningTimer():Promise<void>;
 
+export function RefreshSketchpad():Promise<void>;
+
 export function RemoveActivity(arg1:models.Activity):Promise<void>;
 
 export function RenameProject(arg1:string,arg2:string):Promise<projects.Project>;
@@ -121,6 +123,10 @@ export function SharingSharedEntries():Promise<Array<main.SharedActivity>>;
 export function SharingTeamMembers(arg1:string):Promise<Array<neonsync.TeamMember>>;
 
 export function SharingTeamShare(arg1:string):Promise<neonsync.ShareView>;
+
+export function SketchpadLoad(arg1:string):Promise<string>;
+
+export function SketchpadSave(arg1:string,arg2:string):Promise<string>;
 
 export function Start(arg1:string,arg2:string,arg3:string):Promise<models.Activity>;
 

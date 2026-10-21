@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Bold, Check, Folder, Heading2, IndentDecrease, IndentIncrease, Italic, KeyboardOff, List, ListTodo } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { AppState, Pressable, View } from 'react-native';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,11 +18,14 @@ import { useEntries } from '@/lib/entries';
 import { usePrefs } from '@/lib/prefs';
 import { useResume } from '@/lib/resume';
 import { useRunningTimer } from '@/lib/running-timer';
+import { useSession } from '@/lib/session';
 import {
     completeTodo,
-    readSketchpad,
+    onSketchpad,
     readTodoRuns,
-    writeSketchpad,
+    saveSketchpad,
+    sketchpadText,
+    syncSketchpad,
     writeTodoRuns,
     type TodoRun,
 } from '@/lib/sketchpad';
@@ -31,14 +34,17 @@ import { isRunning } from '@/sync/timer';
 
 const THEME_VARS = ['--color-foreground', '--color-muted-foreground', '--color-muted', '--color-border', '--color-destructive'];
 
+// How often an open app checks for edits made on another device.
+const SYNC_MS = 30_000;
+
 const IDLE: EditorState = { focused: false, task: false, bold: false, italic: false, heading: false, bullet: false, list: false };
 
 // The desktop's sketchpad: a free-form pad, unlabelled and to the left of
 // Activity, whose to-dos start activities and get ticked off when those stop.
 export const SketchpadPage = memo(function SketchpadPage({ onStarted }: { onStarted: () => void }) {
     const editor = useRef<SketchpadHandle>(null);
-    const [value, setValue] = useState(readSketchpad);
-    const text = useRef(value);
+    const [value, setValue] = useState(sketchpadText);
+    const { account } = useSession();
     const [editing, setEditing] = useState(IDLE);
     const [finishing, setFinishing] = useState<TodoRun | null>(null);
     const { state, loaded } = useRunningTimer();
@@ -59,13 +65,35 @@ export const SketchpadPage = memo(function SketchpadPage({ onStarted }: { onStar
     );
     const projects = useMemo(() => [...new Set((entries ?? []).map((e) => e.project).filter(Boolean))], [entries]);
 
-    const save = useCallback(async (html: string) => {
-        text.current = html;
-        writeSketchpad(html);
-    }, []);
+    useEffect(() => onSketchpad(setValue), []);
+
+    useEffect(() => {
+        if (!account) return;
+        syncSketchpad(account);
+        let timer = setInterval(() => syncSketchpad(account), SYNC_MS);
+        const sub = AppState.addEventListener('change', (s) => {
+            clearInterval(timer);
+            if (s === 'active') {
+                syncSketchpad(account);
+                timer = setInterval(() => syncSketchpad(account), SYNC_MS);
+            }
+        });
+        return () => {
+            clearInterval(timer);
+            sub.remove();
+        };
+    }, [account]);
+
+    const save = useCallback(
+        async (html: string, base: string) => {
+            saveSketchpad(account, html, base);
+        },
+        [account],
+    );
 
     const tick = useCallback((ids: string[]) => {
-        let html = text.current;
+        const base = sketchpadText();
+        let html = base;
         let ticked = 0;
         for (const id of ids) {
             const next = completeTodo(html, id);
@@ -75,11 +103,9 @@ export const SketchpadPage = memo(function SketchpadPage({ onStarted }: { onStar
             }
         }
         if (!ticked) return;
-        text.current = html;
-        writeSketchpad(html);
-        setValue(html);
+        setValue(saveSketchpad(account, html, base));
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-    }, []);
+    }, [account]);
 
     const startTodo = useCallback(
         async (todo: StartTodo) => {

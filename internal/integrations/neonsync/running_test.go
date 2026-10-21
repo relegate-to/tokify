@@ -19,7 +19,7 @@ import (
 // a stale version matches no row, as the schema trigger and RLS make it.
 type fakeTimerAPI struct {
 	mu  sync.Mutex
-	row *runningTimerRow
+	row *versionedRow
 }
 
 func (f *fakeTimerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -27,13 +27,13 @@ func (f *fakeTimerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	switch r.Method {
 	case http.MethodGet:
-		rows := []runningTimerRow{}
+		rows := []versionedRow{}
 		if f.row != nil {
 			rows = append(rows, *f.row)
 		}
 		_ = json.NewEncoder(w).Encode(rows)
 	case http.MethodPost:
-		var row runningTimerRow
+		var row versionedRow
 		_ = json.NewDecoder(r.Body).Decode(&row)
 		if f.row != nil {
 			w.WriteHeader(http.StatusConflict)
@@ -43,7 +43,7 @@ func (f *fakeTimerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.row = &row
 		w.WriteHeader(http.StatusCreated)
 	case http.MethodPatch:
-		var row runningTimerRow
+		var row versionedRow
 		_ = json.NewDecoder(r.Body).Decode(&row)
 		want, _ := strconv.ParseInt(strings.TrimPrefix(r.URL.Query().Get("version"), "eq."), 10, 64)
 		if f.row == nil || f.row.Version != want {
@@ -51,7 +51,7 @@ func (f *fakeTimerAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.row = &row
-		_ = json.NewEncoder(w).Encode([]runningTimerRow{row})
+		_ = json.NewEncoder(w).Encode([]versionedRow{row})
 	}
 }
 

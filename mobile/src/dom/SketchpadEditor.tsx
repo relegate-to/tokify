@@ -104,7 +104,8 @@ export default function SketchpadEditor({
 }: {
     value: string;
     theme: Record<string, string>;
-    onChange: (html: string) => Promise<void>;
+    // base is the value the edit started from.
+    onChange: (html: string, base: string) => Promise<void>;
     onStartTodo: (todo: StartTodo) => Promise<void>;
     onState: (state: EditorState) => Promise<void>;
     ref?: Ref<SketchpadHandle>;
@@ -129,8 +130,9 @@ export default function SketchpadEditor({
         if (!current || current.isDestroyed) return;
         const html = current.getHTML();
         const next = html === '<p></p>' ? '' : html;
+        const base = lastValue.current;
         lastValue.current = next;
-        onChangeRef.current(next);
+        onChangeRef.current(next, base);
     }, []);
 
     const report = useCallback((editor: Editor) => {
@@ -262,11 +264,20 @@ export default function SketchpadEditor({
     // The native side changes the pad only to tick off a finished to-do.
     useEffect(() => {
         if (!editor || value === lastValue.current) return;
-        if (timer.current !== null) clearTimeout(timer.current);
-        pending.current = null;
+        // As the desktop: an edit not yet reported goes first, and the app
+        // answers with a value that includes both.
+        if (pending.current) {
+            flush();
+            return;
+        }
         lastValue.current = value;
+        const { from, to } = editor.state.selection;
         editor.commands.setContent(value, { emitUpdate: false });
-    }, [editor, value]);
+        if (editor.isFocused) {
+            const end = editor.state.doc.content.size;
+            editor.commands.setTextSelection({ from: Math.min(from, end), to: Math.min(to, end) });
+        }
+    }, [editor, value, flush]);
 
     useEffect(() => {
         const onHide = () => document.visibilityState === 'hidden' && flush();

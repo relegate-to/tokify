@@ -36,6 +36,7 @@ internal/             Tokify domain and application code
   app/                application services (runtime, export, storage, …)
     cli/              CLI commands over the shared SQLite runtime
     logbook/          agent-facing list/add/edit/delete rules (overlaps, time parsing)
+    sketchpad/        the Notes page: stored here, synced and block-merged across devices
     mcpserver/        MCP tools over logbook; setup snippets shown in Settings
   adapters/           SQLite plus the legacy text-log migration reader
   core/               models, ports, errors — the domain
@@ -119,10 +120,13 @@ Stack:
   reserves room for them — preserve that.
 - Persisted UI state lives in `localStorage` keys prefixed `tokify.*`
   (`tokify.theme`, `tokify.activityView`, `tokify.showScrollbars`,
-  `tokify.showAccount`, `tokify.timePicker`, `tokify.displayName`, `tokify.email`,
-  `tokify.sketchpad`). Use the same prefix and `try { … } catch {}` pattern for
-  any new key. The sketchpad is the unlabelled swipe screen immediately to the
-  left of Now; keep it out of the masthead navigation.
+  `tokify.showAccount`, `tokify.timePicker`, `tokify.displayName`, `tokify.email`).
+  Use the same prefix and `try { … } catch {}` pattern for any new key. The
+  sketchpad is the unlabelled swipe screen immediately to the left of Now; keep
+  it out of the masthead navigation. Its text lives in the backend
+  (`internal/app/sketchpad`, `SketchpadLoad`/`SketchpadSave`), not
+  localStorage, so it can sync; `tokify.sketchpad` is only read once to import
+  the old copy.
 - Closing the window leaves the app in the menu bar
   (`HideWindowOnClose: true`). The tray code lives in `cmd/tock-desktop/app.go`
   — re-render its title and menu via `refreshTrayTitle` after any mutation

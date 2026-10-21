@@ -221,7 +221,8 @@ export const RichTextEditor = memo(function RichTextEditor({
     projects,
 }: {
     value: string;
-    onValueChange: (value: string) => void;
+    // base is the value the edit started from.
+    onValueChange: (value: string, base: string) => void;
     className?: string;
     contentClassName?: string;
     placeholder?: string;
@@ -256,8 +257,9 @@ export const RichTextEditor = memo(function RichTextEditor({
         const html = current.getHTML();
         // An empty checklist or heading is meaningful editing state.
         const next = html === '<p></p>' ? '' : html;
+        const base = lastValue.current;
         lastValue.current = next;
-        onValueChangeRef.current(next);
+        onValueChangeRef.current(next, base);
     }, []);
 
     const extensions = useMemo(
@@ -429,11 +431,20 @@ export const RichTextEditor = memo(function RichTextEditor({
 
     useEffect(() => {
         if (!editor || value === lastValue.current) return;
-        if (timer.current !== null) clearTimeout(timer.current);
-        pending.current = null;
+        // An edit not yet reported would be lost under the new value, so report
+        // it instead; the owner answers with a value that includes both.
+        if (pending.current) {
+            flush();
+            return;
+        }
         lastValue.current = value;
+        const { from, to } = editor.state.selection;
         editor.commands.setContent(editorHTML(value), { emitUpdate: false });
-    }, [editor, value]);
+        if (editor.isFocused) {
+            const end = editor.state.doc.content.size;
+            editor.commands.setTextSelection({ from: Math.min(from, end), to: Math.min(to, end) });
+        }
+    }, [editor, value, flush]);
 
     useEffect(() => {
         const onVisibility = () => {

@@ -1,13 +1,18 @@
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Keyboard } from 'lucide-react';
+
+import { SketchpadLoad, SketchpadSave } from '../../wailsjs/go/main/App';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 import { RichTextEditor, type StartTodo } from '@/components/RichTextEditor';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
+// Where the window kept the pad before it moved to the backend; read once, to
+// import it, and written again only if the backend can't store the pad.
 const SKETCHPAD_KEY = 'tokify.sketchpad';
 const TODO_RUNS_KEY = 'tokify.todoRuns';
 
-function readSketchpad() {
+function readLegacy() {
     try {
         return localStorage.getItem(SKETCHPAD_KEY) ?? '';
     } catch {
@@ -15,23 +20,78 @@ function readSketchpad() {
     }
 }
 
-const sketchpadListeners = new Set<(text: string) => void>();
-
-// completeSketchpadTodo ticks off a to-do by id, whether or not the pad is open.
-export function completeSketchpadTodo(id: string) {
-    const doc = new DOMParser().parseFromString(readSketchpad(), 'text/html');
-    const item = doc.querySelector(`li[data-type="taskItem"][data-todo-id="${CSS.escape(id)}"]`);
-    if (!item) return false;
-    item.setAttribute('data-checked', 'true');
-    item.querySelector(':scope > label > input')?.setAttribute('checked', 'checked');
-    const text = doc.body.innerHTML;
+function writeLegacy(text: string) {
     try {
         localStorage.setItem(SKETCHPAD_KEY, text);
     } catch {
-        // The open pad still shows the change for this session.
+        // The open pad still holds the text for this session.
     }
-    sketchpadListeners.forEach((listener) => listener(text));
-    return true;
+}
+
+// The pad as the backend last returned it. Calls to the backend run one at a
+// time, each edit carrying the text it started from, so the backend can merge
+// it with whatever a sync brought in meanwhile.
+let pad = '';
+let queue: Promise<unknown> = Promise.resolve();
+let queued = 0;
+const sketchpadListeners = new Set<(text: string) => void>();
+
+function enqueue<T>(op: () => Promise<T>) {
+    queued++;
+    const run = queue.then(op).finally(() => queued--);
+    queue = run.catch(() => undefined);
+    return run;
+}
+
+// Shows the pad unless more calls are waiting; the last one shows its result,
+// so the editor never steps back to a text it has already moved past.
+function settle(text: string) {
+    pad = text;
+    if (queued <= 1) sketchpadListeners.forEach((listener) => listener(text));
+}
+
+function saveSketchpad(text: string, base: string) {
+    enqueue(() => SketchpadSave(base, text).then(settle, () => {
+        pad = text;
+        writeLegacy(text);
+    }));
+}
+
+// startSketchpad loads the pad and follows edits synced from other devices.
+export function startSketchpad() {
+    const legacy = readLegacy();
+    enqueue(() => SketchpadLoad(legacy).then(
+        (text) => {
+            try {
+                localStorage.removeItem(SKETCHPAD_KEY);
+            } catch {
+                // Read again on the next launch, where the backend ignores it.
+            }
+            settle(text);
+        },
+        () => settle(legacy),
+    ));
+    return EventsOn('sketchpad:changed', (text: string) => {
+        if (queued === 0) settle(text);
+    });
+}
+
+// completeSketchpadTodo ticks off a to-do by id, whether or not the pad is open.
+export function completeSketchpadTodo(id: string) {
+    return enqueue(async () => {
+        const doc = new DOMParser().parseFromString(pad, 'text/html');
+        const item = doc.querySelector(`li[data-type="taskItem"][data-todo-id="${CSS.escape(id)}"]`);
+        if (!item) return false;
+        item.setAttribute('data-checked', 'true');
+        item.querySelector(':scope > label > input')?.setAttribute('checked', 'checked');
+        const base = pad;
+        const text = doc.body.innerHTML;
+        await SketchpadSave(base, text).then(settle, () => {
+            writeLegacy(text);
+            settle(text);
+        });
+        return true;
+    });
 }
 
 // A todo run links an activity (by start time) to the to-do it was started from.
@@ -55,7 +115,7 @@ export function writeTodoRuns(runs: TodoRun[]) {
 }
 
 export const SketchpadView = memo(function SketchpadView({ onStartTodo, projects }: { onStartTodo?: (todo: StartTodo) => Promise<unknown>; projects?: string[] }) {
-    const [text, setText] = useState(readSketchpad);
+    const [text, setText] = useState(pad);
 
     useEffect(() => {
         sketchpadListeners.add(setText);
@@ -64,13 +124,6 @@ export const SketchpadView = memo(function SketchpadView({ onStartTodo, projects
         };
     }, []);
 
-    const saveText = useCallback((text: string) => {
-        try {
-            localStorage.setItem(SKETCHPAD_KEY, text);
-        } catch {
-            // The pad remains usable for this session if local storage is unavailable.
-        }
-    }, []);
 
     return (
         <section className="flex min-h-full flex-1 flex-col">
@@ -113,7 +166,7 @@ export const SketchpadView = memo(function SketchpadView({ onStartTodo, projects
                         className="rich-editor-document flex-1"
                         contentClassName="min-h-72 text-[17px] leading-8 tracking-[-0.01em]"
                         value={text}
-                        onValueChange={saveText}
+                        onValueChange={saveSketchpad}
                         updateDelay={250}
                         showToolbar={false}
                         onStartTodo={onStartTodo}
