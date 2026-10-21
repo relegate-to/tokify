@@ -24,6 +24,7 @@ import (
 	"github.com/kriuchkov/tock/internal/app/mcpserver"
 	projectreg "github.com/kriuchkov/tock/internal/app/projects"
 	"github.com/kriuchkov/tock/internal/app/runtime"
+	"github.com/kriuchkov/tock/internal/app/sketchpad"
 	appstorage "github.com/kriuchkov/tock/internal/app/storage"
 	teamreg "github.com/kriuchkov/tock/internal/app/teams"
 	"github.com/kriuchkov/tock/internal/app/timersync"
@@ -45,6 +46,8 @@ type App struct {
 	// timerSync mirrors the running activity through the account's running-
 	// timer record so other devices see it; nil when sync isn't set up.
 	timerSync *timersync.Syncer
+	// sketchpad holds the Notes page and syncs it when signed in.
+	sketchpad *sketchpad.Pad
 	projects  *projectreg.Registry
 	// teamNames is the client-side audience-id -> local name map for sharing
 	// teams.
@@ -59,6 +62,7 @@ type App struct {
 	trayLast   *models.Activity
 	trayRecent []models.Activity
 	syncKick   chan struct{}
+	padTimer   *time.Timer
 
 	// menuBar is set when the window lives in a popover under the status item.
 	menuBar atomic.Bool
@@ -146,6 +150,15 @@ func (a *App) startup(ctx context.Context) {
 			a.syncKick = make(chan struct{}, 1)
 			go a.autoSyncLoop()
 			go a.syncDebouncer()
+		}
+	}
+	if p, perr := appdir.Path("sketchpad.json"); perr == nil {
+		var remote sketchpad.Remote
+		if a.neonSync != nil {
+			remote = a.neonSync
+		}
+		if pad, oerr := sketchpad.Open(remote, p); oerr == nil {
+			a.sketchpad = pad
 		}
 	}
 }
@@ -239,6 +252,7 @@ func (a *App) autoSyncOnce() bool {
 		return true
 	}
 	a.syncProjectColors(ctx)
+	a.syncSketchpad()
 	a.refreshTrayTitle()
 	wailsruntime.EventsEmit(a.ctx, "sync:updated", status)
 	return true

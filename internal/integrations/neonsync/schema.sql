@@ -169,3 +169,57 @@ GRANT SELECT, INSERT, UPDATE ON public.running_timers TO authenticated;
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.user_keys ADD COLUMN IF NOT EXISTS wrapped_projects text;  -- base64 ciphertext
 ALTER TABLE public.user_keys ADD COLUMN IF NOT EXISTS projects_nonce text;    -- base64 24-byte nonce
+
+-- ---------------------------------------------------------------------------
+-- sketchpads: one row per user holding the sketchpad (the Notes page) as
+-- ciphertext under the DEK, with the AAD binding owner and version like
+-- running_timers. Devices merge their edits with the record's and write it
+-- back with the same `version=eq.<seen>` compare-and-swap.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.sketchpads (
+    user_id    text        PRIMARY KEY,
+    version    bigint      NOT NULL,
+    ciphertext text        NOT NULL,                     -- base64 XChaCha20-Poly1305 ciphertext of the pad JSON
+    nonce      text        NOT NULL,                     -- base64 24-byte nonce
+    updated_at timestamptz NOT NULL DEFAULT now()        -- bookkeeping only
+);
+
+CREATE OR REPLACE FUNCTION public.sketchpads_guard()
+RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.version <> 1 THEN
+            RAISE EXCEPTION 'sketchpads: first version must be 1';
+        END IF;
+    ELSE
+        IF NEW.user_id <> OLD.user_id THEN
+            RAISE EXCEPTION 'sketchpads: user_id is immutable';
+        END IF;
+        IF NEW.version <> OLD.version + 1 THEN
+            RAISE EXCEPTION 'sketchpads: version must advance by one';
+        END IF;
+    END IF;
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS sketchpads_guard ON public.sketchpads;
+CREATE TRIGGER sketchpads_guard
+    BEFORE INSERT OR UPDATE ON public.sketchpads
+    FOR EACH ROW EXECUTE FUNCTION public.sketchpads_guard();
+
+ALTER TABLE public.sketchpads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sketchpads FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS sketchpads_own_rows ON public.sketchpads;
+CREATE POLICY sketchpads_own_rows ON public.sketchpads
+    FOR ALL
+    TO authenticated
+    USING (user_id = auth.user_id())
+    WITH CHECK (user_id = auth.user_id());
+
+-- No DELETE: clearing the pad writes an empty one, keeping the version counter.
+-- The revoke undoes the project's default privileges, which grant it.
+GRANT SELECT, INSERT, UPDATE ON public.sketchpads TO authenticated;
+REVOKE DELETE ON public.sketchpads FROM authenticated;

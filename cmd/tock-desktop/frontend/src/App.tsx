@@ -31,6 +31,7 @@ import {
     SharingProjectShares,
     SharingSharedEntries,
     RefreshRunningTimer,
+    RefreshSketchpad,
     Start,
     StartAt,
     Stop,
@@ -63,6 +64,7 @@ import { NowView } from '@/components/NowView';
 import {
     SketchpadView,
     completeSketchpadTodo,
+    startSketchpad,
     readTodoRuns,
     writeTodoRuns,
     type TodoRun,
@@ -511,6 +513,8 @@ function App() {
         return EventsOn('projects:changed', loadColors);
     }, []);
 
+    useEffect(() => startSketchpad(), []);
+
     // Poll shared entries independently of the local refresh. A sharing/network
     // error (or sync being off) is best-effort: it must never break local state,
     // and a transient failure keeps the last-good rows rather than flickering the
@@ -524,6 +528,7 @@ function App() {
 
         const pull = () => {
             RefreshRunningTimer();
+            RefreshSketchpad();
             SharingSharedEntries()
                 .then((entries) => {
                     if (cancelled) return;
@@ -753,9 +758,11 @@ function App() {
             return;
         }
         writeTodoRuns(runs.filter((run) => run.start === current));
-        const ticked = finished.filter((run) => completeSketchpadTodo(run.id));
-        if (ticked.length === 1) toast.success(`Ticked off “${ticked[0].description}”`);
-        else if (ticked.length > 1) toast.success(`Ticked off ${ticked.length} to-dos`);
+        Promise.all(finished.map((run) => completeSketchpadTodo(run.id))).then((done) => {
+            const ticked = finished.filter((_, i) => done[i]);
+            if (ticked.length === 1) toast.success(`Ticked off “${ticked[0].description}”`);
+            else if (ticked.length > 1) toast.success(`Ticked off ${ticked.length} to-dos`);
+        });
     }, [running, runningLoaded, finishingTodo, autoCompleteTodos]);
 
     const answerFinishingTodo = (done: boolean, always: boolean) => {

@@ -46,7 +46,9 @@ type TimerState struct {
 	Timer   *RunningTimer
 }
 
-type runningTimerRow struct {
+// versionedRow is a one-row-per-user record whose version is a
+// compare-and-swap counter: running_timers and sketchpads.
+type versionedRow struct {
 	UserID     string `json:"user_id"`
 	Version    int64  `json:"version"`
 	Ciphertext string `json:"ciphertext"`
@@ -159,7 +161,7 @@ func readTimer(ctx context.Context, hc *http.Client, base, token string, dek []b
 	if err != nil {
 		return TimerState{}, gerrors.Wrap(err, "read running timer")
 	}
-	var rows []runningTimerRow
+	var rows []versionedRow
 	if uerr := json.Unmarshal(data, &rows); uerr != nil {
 		return TimerState{}, gerrors.Wrap(uerr, "decode running timer")
 	}
@@ -190,7 +192,7 @@ func writeTimer(
 		return TimerState{}, err
 	}
 
-	won, err := putTimerRow(ctx, hc, base, token, seen, body)
+	won, err := putVersioned(ctx, hc, base, token, "running_timers", seen, body)
 	if err != nil {
 		return TimerState{}, err
 	}
@@ -200,27 +202,27 @@ func writeTimer(
 	return TimerState{Version: row.Version, Timer: &timer}, nil
 }
 
-// putTimerRow creates the record (seen 0) or advances it from version seen,
-// reporting false when another device got there first.
-func putTimerRow(ctx context.Context, hc *http.Client, base, token string, seen int64, body []byte) (bool, error) {
+// putVersioned creates a one-row-per-user record (seen 0) or advances it from
+// version seen, reporting false when another device got there first.
+func putVersioned(ctx context.Context, hc *http.Client, base, token, table string, seen int64, body []byte) (bool, error) {
 	if seen == 0 {
-		_, err := doJSON(ctx, hc, http.MethodPost, endpoint(base, "/running_timers"), token, body, "return=minimal")
+		_, err := doJSON(ctx, hc, http.MethodPost, endpoint(base, "/"+table), token, body, "return=minimal")
 		if isUniqueViolation(err) {
 			return false, nil
 		}
 		if err != nil {
-			return false, gerrors.Wrap(err, "create running timer")
+			return false, gerrors.Wrap(err, "create "+table)
 		}
 		return true, nil
 	}
-	path := "/running_timers?version=eq." + strconv.FormatInt(seen, 10)
+	path := "/" + table + "?version=eq." + strconv.FormatInt(seen, 10)
 	data, err := doJSON(ctx, hc, http.MethodPatch, endpoint(base, path), token, body, "return=representation")
 	if err != nil {
-		return false, gerrors.Wrap(err, "update running timer")
+		return false, gerrors.Wrap(err, "update "+table)
 	}
-	var written []runningTimerRow
+	var written []versionedRow
 	if uerr := json.Unmarshal(data, &written); uerr != nil {
-		return false, gerrors.Wrap(uerr, "decode running timer")
+		return false, gerrors.Wrap(uerr, "decode "+table)
 	}
 	return len(written) > 0, nil
 }
@@ -239,19 +241,19 @@ func timerAAD(owner string, version int64) []byte {
 	return []byte("tokify/running-timer/v1\x00" + owner + "\x00" + strconv.FormatInt(version, 10))
 }
 
-func sealTimer(dek []byte, owner string, version int64, timer RunningTimer) (runningTimerRow, error) {
+func sealTimer(dek []byte, owner string, version int64, timer RunningTimer) (versionedRow, error) {
 	plain, err := json.Marshal(timer)
 	if err != nil {
-		return runningTimerRow{}, err
+		return versionedRow{}, err
 	}
 	ct, nonce, err := sealAAD(dek, plain, timerAAD(owner, version))
 	if err != nil {
-		return runningTimerRow{}, err
+		return versionedRow{}, err
 	}
-	return runningTimerRow{UserID: owner, Version: version, Ciphertext: b64(ct), Nonce: b64(nonce)}, nil
+	return versionedRow{UserID: owner, Version: version, Ciphertext: b64(ct), Nonce: b64(nonce)}, nil
 }
 
-func openTimer(dek []byte, row runningTimerRow) (TimerState, error) {
+func openTimer(dek []byte, row versionedRow) (TimerState, error) {
 	ct, err := unb64(row.Ciphertext)
 	if err != nil {
 		return TimerState{}, err

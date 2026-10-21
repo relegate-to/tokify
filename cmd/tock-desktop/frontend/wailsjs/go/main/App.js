@@ -134,6 +134,10 @@ export function RefreshRunningTimer() {
   return window['go']['main']['App']['RefreshRunningTimer']();
 }
 
+export function RefreshSketchpad() {
+  return window['go']['main']['App']['RefreshSketchpad']();
+}
+
 export function RemoveActivity(arg1) {
   return window['go']['main']['App']['RemoveActivity'](arg1);
 }
@@ -228,6 +232,14 @@ export function SharingTeamMembers(arg1) {
 
 export function SharingTeamShare(arg1) {
   return window['go']['main']['App']['SharingTeamShare'](arg1);
+}
+
+export function SketchpadLoad(arg1) {
+  return window['go']['main']['App']['SketchpadLoad'](arg1);
+}
+
+export function SketchpadSave(arg1, arg2) {
+  return window['go']['main']['App']['SketchpadSave'](arg1, arg2);
 }
 
 export function Start(arg1, arg2, arg3) {
